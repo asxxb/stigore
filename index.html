@@ -87,8 +87,8 @@
 
 <body>
     <canvas id="c"></canvas>
-    <div id="hud">A / D or ← → to walk · Shift to run · Space to jump · K: draw knife · J: stab (knife out) · L: throw
-        knife · E: pull knife out
+    <div id="hud">A / D or ← → to walk · Shift to run · Space to jump · Shift+Space (running): parkour tumble · K: knife
+        · J: stab · L: throw
     </div>
     <div class="btns">
         <div><span class="b" id="bl">◀</span><span class="b" id="br">▶</span></div>
@@ -146,7 +146,8 @@
             gk: 0, x: 0, vx: 0, z: 0, vz: 0, face: 1, phase: 0, dist: 0, atk: 0, kn: 0, kt: 0, amp: 0, lean: 0, tt: 0, rv: 0,
             jbuf: 0, coy: 0, cs: 0, ct: 0, chit: false, abuf: 0, clast: 0, cgr: 0, gt: 0, grabbed: null,
             skid: 0, skidDir: 1, skidK: 0, skA: 0, sk: null,
-            idle: 0, idleAt: 3.5, fid: 0, fidType: 0, fidT: 0, fidDur: 2.4, fidK: 0
+            idle: 0, idleAt: 3.5, fid: 0, fidType: 0, fidT: 0, fidDur: 2.4, fidK: 0,
+            pk: 0, pkT: 0, pkDir: 1, pkHit: [0, 0, 0]
         };
         // knife states: kn 0 = away, 1 = forward grip, 2 = reverse grip (blade to the back)
         let CUR = P; const PL = P;   // CUR = character being drawn/animated (player or NPC)
@@ -161,7 +162,7 @@
         const groundKnives = [];
         const TOSS_T = .95;
         function pressK() {
-            if (P.thw > 0 || P.fin > 0) return;
+            if (P.thw > 0 || P.fin > 0 || P.pk > 0) return;
             if (P.gun || P.gs === 2) { banner.t = .6; banner.text = 'HOLSTER GUN FIRST (G)'; return }
             P.idle = 0; P.fid = 0;
             if (P.tt > 0) return;
@@ -214,7 +215,7 @@
         function addGhost(P, pose) {
             if (ghosts.length > 14) ghosts.shift();
             ghosts.push({
-                x: P.x, z: P.z, face: P.face,
+                x: P.x, z: P.z, face: P.face, rot: P.rot || 0, py: (pose && pose.py !== undefined) ? pose.py : undefined,
                 pose: {
                     a0: pose.a0, f0: pose.f0, a1: pose.a1, f1: pose.f1,
                     lean: pose.lean, hipX: pose.hipX, hipY: pose.hipY,
@@ -233,16 +234,24 @@
                 if (a <= 0.01) continue;
                 const F = g.face, pose = g.pose;
                 ctx.save(); ctx.translate(sx, gy + 4); ctx.scale(S, S); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+                const z = g.z / S, hipY = -(ANK + 120) + z + (pose.hipY || 0);
+                if (g.rot) {
+                    const pk = Math.min(1, -z / 60);
+                    const py = (g.py !== undefined) ? g.py : (-40 * (1 - pk) + ((pose.hipY || 0) - 30) * pk);
+                    ctx.translate(0, py); ctx.rotate(g.rot); ctx.translate(0, -py);
+                }
                 ctx.globalAlpha = a * 0.75; ctx.strokeStyle = '#111'; ctx.fillStyle = '#111';
-                const z = g.z / S, hipX = F * (pose.hipX || 0), hipY = -(ANK + 120) + z + (pose.hipY || 0), l = F * pose.lean;
+                const hipX = F * (pose.hipX || 0), l = F * pose.lean;
                 const rot = (x, y) => [hipX + x * Math.cos(l) - y * Math.sin(l), hipY + x * Math.sin(l) + y * Math.cos(l)];
                 const nk = rot(0, -T), cp = rot(-F * (9 + (pose.arch || 0) * 28), -T / 2);
                 for (let i = 1; i >= 0; i--) {
-                    const targetL = i === 0 ? pose.l0 : pose.l1, fx = hipX + F * targetL[0], fy = targetL[1] - (targetL[2] || 0);
+                    const targetL = i === 0 ? pose.l0 : pose.l1, fx = hipX + F * targetL[0], fy = (P && P.pk > 0) ? targetL[1] : (targetL[1] - (targetL[2] || 0));
                     const ax = fx, ay = fy - ANK, dx = ax - hipX, dy = ay - hipY, dd = Math.hypot(dx, dy);
                     const d = Math.min(dd, 2 * L1 - 0.5), ux0 = dx / (dd || 1), uy0 = dy / (dd || 1), mx = hipX + ux0 * d / 2, my = hipY + uy0 * d / 2;
                     const h = Math.sqrt(Math.max(0, L1 * L1 - d * d / 4));
-                    let nx = -uy0, ny = ux0; if (nx * F < 0) { nx = -nx; ny = -ny }
+                    let nx = -uy0, ny = ux0;
+                    if (dx * F < -15) { if (nx * F > 0) { nx = -nx; ny = -ny } }
+                    else { if (nx * F < 0) { nx = -nx; ny = -ny } }
                     const kx = mx + nx * h, ky = my + ny * h;
                     ctx.lineWidth = 4.5; ctx.beginPath(); ctx.moveTo(hipX, hipY); ctx.lineTo(kx, ky); ctx.lineTo(ax, ay); ctx.stroke();
                     ctx.beginPath(); ctx.arc(ax, ay, 4, 0, 7); ctx.fill();
@@ -309,6 +318,14 @@
         function stretchEnv(u) { return u < .25 ? sm(u / .25) : u < .75 ? 1 : 1 - sm((u - .75) / .25) }
 
         function update(dt) {
+            if (P.pk > 0) {
+                parkourTick(dt);
+                if (P.atk > 0) P.atk -= dt;
+                comboTick(dt);
+                stabTick(dt);
+                fidgetTick(P, true, dt);
+                return;
+            }
             const dir = (P.fin > 0 || P.sm === 1) ? 0 : (keys.ArrowRight || keys.KeyD ? 1 : 0) - (keys.ArrowLeft || keys.KeyA ? 1 : 0);
             const run = keys.ShiftLeft || keys.ShiftRight;
             const max = run ? 520 : 190;
@@ -328,10 +345,17 @@
             const lim = max; if (Math.abs(P.vx) > lim) P.vx += (Math.sign(P.vx) * lim - P.vx) * Math.min(1, dt * 8);
             P.x += P.vx * dt;
 
+            // ---- parkour tumbling pass: Sprint + Jump at speed ----
+            const isSprinting = run && Math.abs(P.vx) > 220;
+            if (P.jbuf > 0 && isSprinting && grounded && !P.pk && !P.cs && !P.fin && !P.stbk) {
+                startParkour(vs || P.face || 1);
+                P.jbuf = 0;
+            }
+
             // ---- jump: buffering + coyote time + variable height ----
             if (grounded) P.coy = COYOTE; else P.coy = Math.max(0, P.coy - dt);
             if (P.jbuf > 0) {
-                if ((grounded || P.coy > 0) && !P.cs && !P.fin) { P.vz = -JUMP_V; P.jbuf = 0; P.coy = 0; P.grabbed = null; P.clast = 0 }  // jumping breaks the clinch
+                if ((grounded || P.coy > 0) && !P.cs && !P.fin && !P.pk) { P.vz = -JUMP_V; P.jbuf = 0; P.coy = 0; P.grabbed = null; P.clast = 0 }  // jumping breaks the clinch
                 else P.jbuf = Math.max(0, P.jbuf - dt);
             }
             const g = GRAV * (P.vz < 0 && !keys.Space ? CUT_MULT : 1);
@@ -739,6 +763,154 @@
                 P.cs = 0;
             }
         }
+        // ================= PARKOUR TUMBLING PASS =================
+        // ================= PARKOUR LEAP JUMP v2 (air-cycling legs) =================
+        const PK_DUR = 1;        // seconds; u = t / PK_DUR
+        const PK_TO = .22;        // toe-off
+        const PK_TD = .66;        // touchdown
+        const PK_EXIT = .82;      // hand back to the run cycle
+        const PK_H = 300;          // apex height
+        // air pedalling tuning
+        const CY_A = 95;          // fore/aft stride of each foot
+        const CY_B = 45;          // foot lift amplitude (knee drive)
+        const CY_R = 92;          // mean foot depth below hip
+        const CY_TURNS = 0.9;    // pedal cycles during the flight (1.25 = ends with the lead foot forward)
+
+        // [u, hipY, hipX, lean, a0,f0, a1,f1, headX,headY, L0x,L0rel,L0ground,L0lift, L1x,L1rel,L1ground,L1lift]
+        const PK_KEYS = [
+            [0, 0, 0, .45, .7, 1.2, -1.3, .5, 0, 0, 42, 106, 0, 20, -90, 118, 0, 20],
+            [.12, 8, 8, .85, -1.95, .35, -1.8, .3, 6, 4, 30, 78, 0, 20, -48, 120, 1, 0],
+            [.22, 0, 4, .35, 2.1, .35, -.7, .3, 2, 0, 26, 82, 0, 20, -78, 136, 1, 0],
+            [.32, 0, 0, .30, 1.6, .5, 1.6, .5, 0, 0, 60, 90, 0, 20, -60, 90, 0, 20],
+            [.44, 0, 0, .16, 1.6, .5, 1.6, .5, 0, 0, 60, 90, 0, 20, -60, 90, 0, 20],
+            [.56, 0, 0, .30, 1.6, .5, 1.6, .5, 0, 0, 60, 90, 0, 20, -60, 90, 0, 20],
+            [.66, 22, 6, .50, -.6, .5, 1.3, .4, 0, 0, 55, 110, 1, 0, -20, 100, 0, 20]   // touchdown; arms already set up for the run cycle
+        ];
+
+        function pkSpline(u) {
+            const K = PK_KEYS, n = K.length;
+            u = Math.max(0, Math.min(K[n - 1][0], u));
+            let i = 0; while (i < n - 2 && u >= K[i + 1][0]) i++;
+            const a = K[i], b = K[i + 1], p = K[Math.max(0, i - 1)], q = K[Math.min(n - 1, i + 2)];
+            const h = b[0] - a[0], t = (u - a[0]) / h, t2 = t * t, t3 = t2 * t, out = [];
+            for (let c = 1; c < a.length; c++) {
+                const m0 = (b[c] - p[c]) / (b[0] - p[0]) * h, m1 = (q[c] - a[c]) / (q[0] - a[0]) * h;
+                out.push((2 * t3 - 3 * t2 + 1) * a[c] + (t3 - 2 * t2 + t) * m0 + (-2 * t3 + 3 * t2) * b[c] + (t3 - t2) * m1);
+            }
+            return out;
+        }
+
+        function startParkour(dir) {
+            P.pk = 1; P.pkT = 0; P.pkRun = 0; P.pkDir = dir || P.face || 1;
+            P.face = P.pkDir; P.pkHit = [0];
+            P.idle = 0; P.fid = 0; P.grabbed = null; P.clast = 0;
+            P.skid = 0; P.skidK = 0; P.rot = 0; P.z = 0;
+            banner.t = .7; banner.text = 'LEAP JUMP!';
+        }
+
+        function hitEnemyParkour(e, dmg, kb, sh) {
+            e.hp -= dmg; e.hurt = .3;
+            e.vx = kb; e.kdir = Math.sign(kb) || 1;
+            burst(e.x, -160, 14, 280, e.kdir);
+            spray(e.x, -160, 16, 360, e.kdir);
+            shake = Math.max(shake, sh);
+            hitstop = Math.max(hitstop, .04);
+            combo.n++; combo.dmg += dmg; combo.t = 1.8; combo.pop = 1.3;
+            if (e.hp <= 0) { e.hp = 0; e.dying = .5; banner.t = 1.1; banner.text = 'K.O.!'; if (P.grabbed === e) P.grabbed = null }
+        }
+
+        function parkourPose(P) {
+            const t = P.pkT, u = Math.min(1, t / PK_DUR), S = CSc();
+            const s = pkSpline(u);
+            let hipY = s[0], hipX = s[1], lean = s[2], a0 = s[3], f0 = s[4], a1 = s[5], f1 = s[6], hx = s[7], hy = s[8];
+
+            let z = 0;   // parabolic arc (negative = up)
+            if (u > PK_TO && u < PK_TD) { const k = (u - (PK_TO + PK_TD) / 2) / ((PK_TD - PK_TO) / 2); z = -PK_H * (1 - k * k) }
+
+            const hipAbs = -136 + z + hipY;
+            const foot = (x, rel, g, lift) => { g = Math.max(0, Math.min(1, g)); return [x, (1 - g) * (hipAbs + rel), (1 - g) * lift] };
+            let l0 = foot(s[9], s[10], s[11], s[12]);
+            let l1 = foot(s[13], s[14], s[15], s[16]);
+
+            // ---- in the air: legs pedal like running, arms swing against them ----
+            const aw = sm((u - PK_TO) / .06) * (1 - sm((u - (PK_TD - .08)) / .08));
+            if (aw > 0) {
+                const k = Math.max(0, Math.min(1, (u - PK_TO) / (PK_TD - PK_TO)));
+                const ph = 1.5 * Math.PI + k * CY_TURNS * 2 * Math.PI;
+                const cyc = f => [CY_A * Math.cos(f), hipAbs + CY_R + CY_B * Math.sin(f), 20];
+                const mix = (a, b, w) => [lerp(a[0], b[0], w), lerp(a[1], b[1], w), lerp(a[2], b[2], w)];
+                l0 = mix(l0, cyc(ph), aw);
+                l1 = mix(l1, cyc(ph + Math.PI), aw);
+                const c0 = Math.cos(ph), wa = aw * .9;
+                a0 = lerp(a0, 1.0 - 1.2 * c0, wa); f0 = lerp(f0, 1.1 + .25 * c0, wa);
+                a1 = lerp(a1, 1.0 + 1.2 * c0, wa); f1 = lerp(f1, 1.1 - .25 * c0, wa);
+            }
+
+            let w = Math.min(1, t / .05);
+
+            if (u > PK_TD) {   // melt into the real run cycle after touchdown
+                const tt = t - PK_TD * PK_DUR, b = sm(tt / .14);
+                const u0 = P.pkRun % 1, hr = 114 + 10 * (1 - Math.cos(4 * Math.PI * (u0 - .19)));
+                const rf = ph => { const [x, l] = runFoot(((ph % 1) + 1) % 1); return [x, -l, l] };
+                const R0 = rf(u0), R1 = rf(u0 + .5), p0 = u0 * 2 * Math.PI;
+                const ra0 = -.35 + 1.1 * Math.cos(p0 - 2.9), rfl0 = 1.35 + .15 * Math.cos(p0 - 2.9);
+                const ra1 = -.35 + 1.1 * Math.cos(p0 + Math.PI - 2.9), rfl1 = 1.35 + .15 * Math.cos(p0 + Math.PI - 2.9);
+                hipY = lerp(hipY, 124 - hr, b); hipX = lerp(hipX, 0, b);
+                lean = lerp(lean, P.lean * BODY_LEAN, b);
+                a0 = lerp(a0, ra0, b); f0 = lerp(f0, rfl0, b); a1 = lerp(a1, ra1, b); f1 = lerp(f1, rfl1, b);
+                hx = lerp(hx, 0, b); hy = lerp(hy, 0, b);
+                l0 = R0;
+                l1 = [lerp(l1[0], R1[0], b), lerp(l1[1], R1[1], b), lerp(l1[2], R1[2], b)];
+            }
+            if (z < 0) lean -= .1;   // drawChar adds +.1 lean while airborne
+            return { w, a0, f0, a1, f1, lean, hipX, hipY, arch: 0, hx, hy, l0, l1, rot: 0, z };
+        }
+
+
+        function parkourTick(dt) {
+            if (P.hurt > 0 || P.down > 0 || P.dying > 0) { P.pk = 0; P.pkT = 0; P.rot = 0; P.z = 0; return }
+            const prevT = P.pkT, S = CSc();
+            P.pkT += dt;
+            const t = P.pkT, D = P.pkDir, u = t / PK_DUR;
+            const tTO = PK_TO * PK_DUR, tTD = PK_TD * PK_DUR, tAp = (PK_TO + PK_TD) / 2 * PK_DUR;
+
+            // smooth speed: gather -> peak at apex -> settle -> back to sprint speed
+            const k = Math.max(0, Math.min(1, (u - .08) / .58));
+            let sp = 720 + 190 * Math.sin(Math.PI * k);
+            if (u > PK_TD) sp = lerp(sp, 520, sm((t - tTD) / .12));
+            P.vx = D * sp; P.x += P.vx * dt;
+            if (u > PK_TD) P.pkRun = (P.pkRun || 0) + sp * dt / (RUN_LC * S);
+
+            const p = parkourPose(P);
+            P.z = p.z * S; P.rot = 0;
+
+            // FX
+            if (prevT < tTO && t >= tTO) {
+                flecks.push({ x: P.x - D * 30 * S, y: -2, vx: -D * (80 + Math.random() * 60), vy: -(70 + Math.random() * 80), r: 2.2, t: 0, life: .35 });
+                shake = Math.max(shake, 1.8); addGhost(P, p);
+            }
+            if (prevT < tAp && t >= tAp) { shake = Math.max(shake, 1.2); addGhost(P, p) }
+            if (prevT < tTD && t >= tTD) {
+                for (let i = 0; i < 4; i++) flecks.push({ x: P.x + D * 45 * S, y: -2, vx: D * (60 + Math.random() * 90), vy: -(40 + Math.random() * 80), r: 1.5 + Math.random() * 1.5, t: 0, life: .35 });
+                shake = Math.max(shake, 2.5); addGhost(P, p);
+            }
+
+            // hit detection while airborne
+            for (const e of ENEMIES) {
+                if (e.dead > 0 || e.dying > 0) continue;
+                if (Math.abs(e.x - P.x) < 95 * S && t >= tTO - .04 && t <= tTD && !P.pkHit[0]) {
+                    P.pkHit[0] = 1; hitEnemyParkour(e, 35, D * 400, 6);
+                }
+            }
+
+            // hand back to the run cycle on exactly the phase the pose ended on
+            if (u >= PK_EXIT) {
+                P.phase = ((P.pkRun || 0) % 1) * 2 * Math.PI;
+                P.pk = 0; P.pkT = 0; P.pkRun = 0; P.rot = 0; P.z = 0; P.face = D;
+            }
+        }
+
+
         function comboPose(Q) {
             if (!Q.cs || Q.cs < 1 || Q.cs > STEPS.length) {
                 if (Q === PL && PL.z >= 0 && PL.clast >= 1 && PL.clast <= 4 && PL.cgr > 0) {   // fists stay up while the combo window is open
@@ -1011,7 +1183,9 @@
         function leg(hx, hy, fx, fy, F, p, lift) {
             const ax = fx, ay = fy - ANK, dx = ax - hx, dy = ay - hy, dd = Math.hypot(dx, dy), d = Math.min(dd, 2 * L1 - .5);
             const ux0 = dx / dd, uy0 = dy / dd, mx = hx + ux0 * d / 2, my = hy + uy0 * d / 2, h = Math.sqrt(Math.max(0, L1 * L1 - d * d / 4));
-            let nx = -uy0, ny = ux0; if (nx * F < 0) { nx = -nx; ny = -ny }
+            let nx = -uy0, ny = ux0;
+            if (CUR && CUR.pk > 0) { nx = uy0 * F; ny = -ux0 * F; }   // knee always on the front of the thigh
+            else if (nx * F < 0) { nx = -nx; ny = -ny }
             if (footFlat > .5 && ny > 0) { nx = -nx; ny = -ny }   // stomping leg: knee points up, shin comes down onto the head
             const hs = h * (1 - .7 * (1 - Rf()) * (1 - (CUR.kneelK || 0))), kx = mx + nx * hs, ky = my + ny * hs;
             ctx.strokeStyle = '#111'; ctx.lineWidth = 7; ctx.lineCap = 'round';
@@ -1125,12 +1299,12 @@
             const now = performance.now() / 1000;
             const sk = P.skidK; let L = 0, st = 0;
             if (P.fidK > 0) { if (P.fidType === 1) L = lookCurve(P.fidT / P.fidDur) * P.fidK * F; else st = stretchEnv(P.fidT / P.fidDur) * P.fidK }
-            const cb = comboPose(P), hk = P.hurt > 0 ? Math.min(1, P.hurt / .2) : 0;
+            const cb = (P === PL && P.pk > 0) ? parkourPose(P) : comboPose(P), hk = P.hurt > 0 ? Math.min(1, P.hurt / .2) : 0;
             const isGrabbed = (P !== PL && ((PL.grabbed === P && (PL.cs >= 1 && PL.cs <= 4 || (PL.cs === 0 && PL.clast >= 1 && PL.clast <= 4))) || (PL.stbk > 0 && PL.stbk <= STAB_HOLD && PL.stbTgt === P)));
             const q = P.atk > 0 ? 1 - P.atk / .45 : 0, pq = Math.sin(Math.PI * q);
             const half = (70 + 30 * R) * P.amp, stance = 20 * (1 - P.amp); const bob = Math.sin(now * 2) * 1.2 * (1 - P.amp) + 14 * pq;
             const u0 = ((P.phase / (2 * Math.PI)) % 1 + 1) % 1, ex = half * Math.abs(1 - 4 * (u0 % .5)) + stance, Lm = 2 * L1 * .99, hw = Math.sqrt(Math.max(0, Lm * Lm - ex * ex)), hr = 114 + 10 * (1 - Math.cos(4 * Math.PI * (u0 - .19)));
-            const baseHipY = (-(ANK + hw * (1 - R) + hr * R) + bob + z) * (1 - sk) + (-(ANK + 120) + z) * sk;
+            const baseHipY = (P.pk > 0) ? (-136 + z) : ((-(ANK + hw * (1 - R) + hr * R) + bob + z) * (1 - sk) + (-(ANK + 120) + z) * sk);
             // ---- clinch: held enemy hunches with bent knees; attacker steps in and leans ----
             const grabHipY = isGrabbed ? 20 : 0;
             const kk = P.kneelK || 0, fk = P.fallK || 0;
@@ -1149,11 +1323,17 @@
             if (isGrabbed) hipX = -F * 8;
             hipX += Math.sin(now * 17) * 1.3 * kk;
             const grabLean = isGrabbed ? F * (.16 + Math.sin(now * 21) * .012) : 0;
-            const l = P.lean * (.2 + .8 * R) * BODY_LEAN * (1 - sk) - F * .5 * sk + (z < 0 ? .1 * F : 0) + .3 * pq * F - F * .2 * st + Math.sin(now * 30) * .012 * st + F * cbLean - F * (isGrabbed ? .1 : .4) * hk + grabLean + F * kk * KNEEL_BEND + Math.sin(now * 9) * .035 * kk * (1 - fk) + (fz ? F * fz.lean : 0) + F * fk * 0.47
+            const moveLean = (P.pk > 0) ? 0 : (P.lean * (.2 + .8 * R) * BODY_LEAN * (1 - sk));
+            const l = moveLean - F * .5 * sk + (z < 0 ? .1 * F : 0) + .3 * pq * F - F * .2 * st + Math.sin(now * 30) * .012 * st + F * cbLean - F * (isGrabbed ? .1 : .4) * hk + grabLean + F * kk * KNEEL_BEND + Math.sin(now * 9) * .035 * kk * (1 - fk) + (fz ? F * fz.lean : 0) + F * fk * 0.47
                 + ((P !== PL && P.fst === 1 && PL.fin > 0 && !P.stomachStabbed) ? F * .1 * finK(PL.fin).foot : 0) - F * .07 * (P === PL ? P.recoil : 0);
             const rot = (x, y) => [hipX + x * Math.cos(l) - y * Math.sin(l), hipY + x * Math.sin(l) + y * Math.cos(l)];
             ctx.save(); ctx.translate(cx, gy + 4); ctx.scale(S, S); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-            if (P.rot) { const pk = Math.min(1, -z / 60), py = -40 * (1 - pk) + (hipY - 30) * pk; ctx.translate(0, py); ctx.rotate(P.rot); ctx.translate(0, -py) }
+            if (P.rot) {
+                const pk = Math.min(1, -z / 60);
+                const py = (cb && cb.py !== undefined) ? cb.py : (-40 * (1 - pk) + (hipY - 30) * pk);
+                const px = (cb && cb.px !== undefined) ? cb.px : 0;
+                ctx.translate(px, py); ctx.rotate(P.rot); ctx.translate(-px, -py);
+            }
             const nk = rot(0, -T);
 
             if (pq > .05) arcs(hipX, nk[1] + 60, F, pq * .85);
@@ -1176,7 +1356,7 @@
                 if (cb && cb.w > 0.005) {
                     const targetL = (i === 0 ? cb.l0 : cb.l1);
                     const targetFx = hipX + F * targetL[0];
-                    const targetFy = targetL[1] - (targetL[2] || 0);
+                    const targetFy = (CUR && CUR.pk > 0) ? targetL[1] : (targetL[1] - (targetL[2] || 0));
                     const targetLift = targetL[2] || 0;
                     fx = fx * (1 - cb.w) + targetFx * cb.w;
                     fy = fy * (1 - cb.w) + targetFy * cb.w;
@@ -1360,7 +1540,7 @@
                 }
 
                 wristKick = (i === 0 && P === PL && P.gunK > .02) ? RC_WRIST * P.recoil * P.recoil + (P.rl > 0 ? rlTilt(P.rl / RELOAD_T) : 0) : 0;
-                arm(sh, ang, flex, F, i === 0 ? P.kt : 0, Math.max(pq, cb ? cb.w : 0), i === 0 ? P.tt / TOSS_T : 0);
+                arm(sh, ang, flex, F, (i === 0 && !P.pk) ? P.kt : 0, Math.max(pq, cb ? cb.w : 0), (i === 0 && !P.pk) ? P.tt / TOSS_T : 0);
                 if (i === 1 && P === PL && P.rl > 0) {
                     const u = P.rl / RELOAD_T;
                     if (u > RL_GRAB - .02 && u < RL_LOADED) {
@@ -1372,7 +1552,7 @@
                 }
                 wristKick = 0;
 
-                if (i === 0 && P === PL && P.gunK > .02 && !(P.fin > 0)) drawGun(F, S, now);
+                if (i === 0 && P === PL && P.gunK > .02 && !(P.fin > 0) && !P.pk) drawGun(F, S, now);
 
                 (P.armPts || (P.armPts = []))[i] = lastArm;
                 (P.armFullPts || (P.armFullPts = []))[i] = [sh, lastArm[0], lastArm[1]];
@@ -2074,7 +2254,7 @@
         P.muzzle = null; P.gunA = 0; P.gunW = null;
 
         function pressG() {
-            if (P.sm === 1 || P.sm === 3 || P.gs === 2) return;
+            if (P.sm === 1 || P.sm === 3 || P.gs === 2 || P.pk > 0) return;
             if (P.gun) {                                         // spin-to-holster
                 if (P.rl > 0 || P.fin > 0 || P.gunK < .6) { P.gun = 0; P.rl = 0; P.gs = 0; return }
                 P.idle = 0; P.fid = 0; P.q = 0;
@@ -2092,7 +2272,7 @@
             P.rl = .0001; P.rlShell = 0; P.rlLoad = 0; P.rlSnap = 0;
         }
         function pressFire() {
-            if (!P.gun || P.gunK < .8 || P.rl > 0 || P.fin > 0 || P.fireCd > 0) return;
+            if (!P.gun || P.gunK < .8 || P.rl > 0 || P.fin > 0 || P.fireCd > 0 || P.pk > 0) return;
             if (P.gs === 2) return;
             if (P.gs === 1) { P.gsEnd = 1; P.gsFast = 1; P.q = 1; P.qT = .5; return }
             if (P.ammo <= 0) { banner.t = .5; banner.text = 'CLICK! (R)'; P.fireCd = .3; return }
