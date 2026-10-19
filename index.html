@@ -326,7 +326,7 @@
                 fidgetTick(P, true, dt);
                 return;
             }
-            const dir = (P.fin > 0 || P.sm === 1) ? 0 : (keys.ArrowRight || keys.KeyD ? 1 : 0) - (keys.ArrowLeft || keys.KeyA ? 1 : 0);
+            const dir = (P.fin > 0 || P.sm === 1 || P.fs > 0) ? 0 : (keys.ArrowRight || keys.KeyD ? 1 : 0) - (keys.ArrowLeft || keys.KeyA ? 1 : 0);
             const run = keys.ShiftLeft || keys.ShiftRight;
             const max = run ? 520 : 190;
             const grounded = P.z >= 0;
@@ -373,6 +373,7 @@
                 if (P.thw >= THR_T) { P.thw = 0; P.thr = 0 }
             }
             if (P.fin > 0) finTick(dt);
+            fsTick(dt);
             comboTick(dt);
             stabTick(dt);
             const target = Math.min(1, sp / 200) * (run && sp > 220 ? 1.25 : 1);
@@ -395,7 +396,7 @@
                 }
             }
             // ---- idle fidgets ----
-            fidgetTick(P, dir || keys.Space || keys.KeyJ || keys.KeyF || P.sm > 0 || P.cs > 0 || P.skid || !grounded || sp > 8 || P.tt > 0 || P.atk > 0 || P.thw > 0 || P.stbk > 0, dt);
+            fidgetTick(P, dir || keys.Space || keys.KeyJ || keys.KeyF || P.sm > 0 || P.cs > 0 || P.skid || !grounded || sp > 8 || P.tt > 0 || P.atk > 0 || P.thw > 0 || P.stbk > 0 || P.fs > 0, dt);
         }
 
         // ================= COMBAT =================
@@ -465,6 +466,7 @@
         const combo = { n: 0, dmg: 0, t: 0, pop: 0 }, banner = { t: 0, text: '' };
         let hitstop = 0, shake = 0;
         function pressAtk() {
+            if (P.kn === 2 && P.kt > .5 && P.fs === 0 && P.stbk === 0 && P.z >= 0 && !P.fin && !P.thw && !P.tt && !P.cs && pressFootStab()) return;
             // If knife is in hand and fully drawn, do a stomach stab instead of punching
             if (P.kn > 0 && P.kt > 0.5 && P.stbk === 0 && P.z >= 0 && !P.fin && !P.thw && !P.tt) {
                 pressStab(); return;
@@ -763,6 +765,92 @@
                 P.cs = 0;
             }
         }
+
+
+        // ================= REVERSE-GRIP FOOT STAB (J with knife in reverse grip, next to an NPC) =================
+        const FS_WIND = .16, FS_HIT = .30, FS_HOLD = .48, FS_DUR = .85;
+        const FS_RANGE = 230;   // how close an NPC must be to trigger it (unscaled px)
+        const FS_DIST = 100;    // distance you step in to (unscaled px)
+        const FS_REACH = 190;   // max distance at which the stab still lands
+        const FS_DMG = 22;
+        P.fs = 0; P.fsHit = false; P.fsTgt = null;
+
+        function fsW() {   // crouch / arm envelope 0..1
+            const t = P.fs;
+            return t < FS_WIND ? sm(t / FS_WIND) : t < FS_HOLD ? 1 : 1 - sm((t - FS_HOLD) / (FS_DUR - FS_HOLD));
+        }
+
+        function pressFootStab() {
+            const S = CSc(); let best = null, bd = 1e9;
+            for (const e of ENEMIES) {
+                if (e.dead > 0 || e.dying > 0 || e.stab || e.fst) continue;
+                const d = Math.abs(e.x - P.x);
+                if (d < bd) { bd = d; best = e }
+            }
+            if (!best || bd > FS_RANGE * S) return false;
+            if (P.skid) endSkid();
+            P.face = best.x >= P.x ? 1 : -1;
+            P.fs = .0001; P.fsHit = false; P.fsTgt = best;
+            P.idle = 0; P.fid = 0; P.abuf = 0;
+            return true;
+        }
+
+        function footStabHit() {
+            P.fsHit = true;
+            const E = P.fsTgt, S = CSc(), F = P.face;
+            if (!E || E.dead > 0 || E.dying > 0 || Math.abs(E.x - P.x) > FS_REACH * S) return;
+            E.hp -= FS_DMG; E.bar = 2.5; E.kdir = F; E.face = -F;
+            E.hurt = Math.max(E.hurt, .9); E.vx = 0; E.wait = 1; E.fid = 0;
+            if (E.z >= 0) E.z = -1; E.vz = -260;                 // he hops in pain
+            combo.n++; combo.dmg += FS_DMG; combo.t = 1.8; combo.pop = 1.3;
+            const fx = E.x - F * 18 * S, fy = -6 * S;
+            burst(fx, fy, 18, 240, F);
+            spray(fx, fy, 26, 360, -F); spray(fx, fy, 14, 260, F); spray(fx, fy, 10, 200, 0);
+            impacts.push({ x: fx, y: fy, t: 0, life: .22, s: 70, seed: Math.random() * 50 });
+            hitstop = Math.max(hitstop, .07); shake = Math.max(shake, 6);
+            if (E.hp <= 0) { E.hp = 0; E.dying = .5; banner.t = 1.1; banner.text = 'K.O.!' }
+            else { banner.t = .9; banner.text = 'FOOT STAB!' }
+        }
+
+        function fsTick(dt) {
+            if (P.fs <= 0) return;
+            P.fs += dt; P.abuf = 0; P.jbuf = 0;
+            const S = CSc(), E = P.fsTgt;
+            P.vx *= Math.max(0, 1 - dt * 14);
+            if (E && E.dead <= 0 && E.dying <= 0 && P.fs < FS_HOLD) {
+                const tx = E.x - P.face * FS_DIST * S;      // step in to stabbing distance
+                P.x += (tx - P.x) * Math.min(1, dt * 8);
+                if (!P.fsHit) { E.vx = 0; E.wait = 1; E.fid = 0 }
+            }
+            if (!P.fsHit && P.fs >= FS_HIT) footStabHit();
+            if (P.fs >= FS_DUR) { P.fs = 0; P.fsHit = false; P.fsTgt = null }
+        }
+
+        // body pose: bend at the knees and hips, lean over, weight forward
+        function footStabPose(Q) {
+            const w = fsW();
+            return {
+                w, a0: 2.3, f0: .7, a1: -.6, f1: .3,
+                lean: .8, hipX: 12, hipY: 55, arch: .06, hx: 6, hy: 4,
+                l0: [40, 0, 0], l1: [-34, 0, 0],
+                st: STEPS[0], sw: 0, ik: 0
+            };
+        }
+
+        // knife arm: raise (icepick) -> snap down onto his foot -> hold -> withdraw
+        function footStabArm(i, sh, F, S) {
+            const t = P.fs, E = P.fsTgt;
+            if (i !== 0 || !E) return null;
+            const ox = (E.x - P.x) / S;
+            const [ia, ifl] = ik2(sh, ox - F * 42, -108, F);   // wrist target so the blade tip lands on his foot
+            const ra = 2.3, rf = .7;
+            let a, f, w = 1;
+            if (t < FS_WIND) { a = ra; f = rf; w = sm(t / FS_WIND) }
+            else if (t < FS_HIT) { const u = Math.pow(sm((t - FS_WIND) / (FS_HIT - FS_WIND)), 1.5); a = ra + (ia - ra) * u; f = rf + (ifl - rf) * u }
+            else if (t < FS_HOLD) { a = ia; f = ifl }
+            else { const u = sm((t - FS_HOLD) / (FS_DUR - FS_HOLD)); a = ia + (ra - ia) * u; f = ifl + (rf - ifl) * u; w = 1 - u }
+            return [a, f, w];
+        }
         // ================= PARKOUR TUMBLING PASS =================
         // ================= PARKOUR LEAP JUMP v2 (air-cycling legs) =================
         const PK_DUR = 1;        // seconds; u = t / PK_DUR
@@ -912,6 +1000,7 @@
 
 
         function comboPose(Q) {
+            if (Q === PL && Q.fs > 0) return footStabPose(Q);
             if (!Q.cs || Q.cs < 1 || Q.cs > STEPS.length) {
                 if (Q === PL && PL.z >= 0 && PL.clast >= 1 && PL.clast <= 4 && PL.cgr > 0) {   // fists stay up while the combo window is open
                     const g = GUARD, k = sm(Math.min(1, PL.cgr / .25)) * (1 - Math.min(1, Math.abs(PL.vx) / 140));
@@ -1253,7 +1342,7 @@
                 const gx = wr[0] + F * Math.cos(hand) * GRIP_OFF, gy = wr[1] + Math.sin(hand) * GRIP_OFF;
                 if (!flying) {
                     ctx.save(); ctx.translate(gx, gy); ctx.scale(F, 1);
-                    ctx.rotate(blade + KNIFE_SPRITE_TILT); ctx.scale(sc, sc);
+                    { let rr = blade + KNIFE_SPRITE_TILT; if (P.fs > 0) rr += wrapA(1.3 - rr) * fsW(); ctx.rotate(rr); } ctx.scale(sc, sc);
                     ctx.drawImage(KN, -nw * KGX, -nh * KGY); ctx.restore();
                 }
                 if (flying) {
@@ -1442,6 +1531,7 @@
                 }
                 if (cb && cb.w > .01 && P.tt <= 0) { const a = i ? cb.a1 : cb.a0, f = i ? cb.f1 : cb.f0; ang = ang * (1 - cb.w) + a * cb.w; flex = flex * (1 - cb.w) + f * cb.w }
                 // knife stab pose override (player only)
+                if (P === PL && P.fs > 0 && P.fsTgt) { const o = footStabArm(i, sh, F, S); if (o) { ang = ang * (1 - o[2]) + o[0] * o[2]; flex = flex * (1 - o[2]) + o[1] * o[2] } }
                 if (P === PL && P.stbk > 0) {
                     const sp = stabArmPose(sh, F, S);
                     if (sp && sp.w > 0.01) {
