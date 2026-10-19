@@ -1356,6 +1356,8 @@
             banner.t = .9; banner.text = 'KNIFE YANKED!';
             if (e.hp <= 0) { e.hp = 0; e.dying = .5; banner.t = 1.1; banner.text = 'K.O.!' }
         }
+
+
         function drawFootKnives(gy) {
             if (!KN.complete || !KN.naturalWidth) return;
             const S = CSc(), nw = KN.naturalWidth, nh = KN.naturalHeight, sc = KNIFE_LEN / nw * S, now = performance.now() / 1000;
@@ -1364,16 +1366,21 @@
                 const sx = e.x + e.fk.dx - P.x + W / 2, sy = gy + 4 + fkY(e);
                 if (sx < -150 || sx > W + 150) continue;
                 const w = footWound(e), wx = w[0] - P.x + W / 2, wy = gy + 4 + w[1];
-                const wob = Math.sin(now * 40) * .04 * (e.fkK || 0);
+                // same tug cycle as drawChar: he strains, the handle shakes, then he slips
+                const c = (now * .7) % 1, pull = c < .5 ? sm(c / .5) : c < .6 ? 1 - sm((c - .5) / .1) : 0;
+                const wob = (Math.sin(now * 38) * .07 * pull + Math.sin(now * 9) * .01) * (e.fkK || 0);
                 ctx.save();
-                ctx.beginPath(); ctx.rect(0, 0, W, wy); ctx.clip();            // the part below the foot line is "inside" him
-                ctx.translate(sx, sy); ctx.scale(e.fk.F, 1); ctx.rotate(1.3 + wob); ctx.scale(sc, sc);
+                ctx.beginPath(); ctx.rect(0, 0, W, wy); ctx.clip();               // part below the foot line stays hidden
+                ctx.translate(wx, wy); ctx.rotate(wob); ctx.translate(-wx, -wy);  // pivot at the wound, not the handle
+                ctx.translate(sx, sy); ctx.scale(e.fk.F, 1); ctx.rotate(1.3); ctx.scale(sc, sc);
                 ctx.drawImage(KN, -nw * KGX, -nh * KGY);
                 ctx.restore();
-                ctx.save(); ctx.fillStyle = '#8c0d14';                          // blood where it goes in
+                ctx.save(); ctx.fillStyle = '#8c0d14';
                 ctx.beginPath(); ctx.ellipse(wx, wy, 7 * S, 3.5 * S, 0, 0, 7); ctx.fill(); ctx.restore();
             }
         }
+
+
         // ---- knife grip tuning ----
         const GRIP_OFF = 12;
         const KNIFE_LEN = 105;
