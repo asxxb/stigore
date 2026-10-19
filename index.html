@@ -232,7 +232,7 @@
                 const F = g.face, pose = g.pose;
                 ctx.save(); ctx.translate(sx, gy + 4); ctx.scale(S, S); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
                 ctx.globalAlpha = a * 0.75; ctx.strokeStyle = '#111'; ctx.fillStyle = '#111';
-                const z = g.z / S, hipX = pose.hipX || 0, hipY = -(ANK + 120) + z + (pose.hipY || 0), l = F * pose.lean;
+                const z = g.z / S, hipX = F * (pose.hipX || 0), hipY = -(ANK + 120) + z + (pose.hipY || 0), l = F * pose.lean;
                 const rot = (x, y) => [hipX + x * Math.cos(l) - y * Math.sin(l), hipY + x * Math.sin(l) + y * Math.cos(l)];
                 const nk = rot(0, -T), cp = rot(-F * (9 + (pose.arch || 0) * 28), -T / 2);
                 for (let i = 1; i >= 0; i--) {
@@ -390,50 +390,49 @@
             };
         }
 
+        // boxing guard: rear fist (arm 0) under the chin, lead fist (arm 1) in front of it, knees soft, slight lean
+        const GUARD = { a0: .35, f0: 2.8, a1: .6, f1: 2.35, lean: .12, hipX: 6, hipY: 8, arch: .03, hx: 0, hy: 3, l0: [34, 0, 0], l1: [-40, 0, 0] };
+
         const STEPS = [
-            // 1. HEAD GRAB / CLINCH
+            // 1. JAB (lead hand): no wind-up, fist travels in a straight line from the chin
             {
-                name: 'grab', dur: 0.32, wind: 0.04, hit: 0.08, hold: 0.12, link: 0.11,
-                reach: 165, dmg: 6, kb: 0, up: 0, lv: 340, pause: 0.05, shake: 3.5, fx: 14,
-                sw: [110, -0.2, 0.3, 3, 25, -15],
-                kf0: { a0: 0.80, f0: 1.40, a1: 0.70, f1: 1.60, lean: 0.05, hipX: 0, hipY: 0, arch: 0.00, hx: 0, hy: 0, l0: [25, 0, 0], l1: [-30, 0, 0] },
-                kf1: { a0: 1.15, f0: 0.45, a1: 0.40, f1: 1.50, lean: 0.20, hipX: 16, hipY: 2, arch: 0.04, hx: 8, hy: 0, l0: [45, 0, 0], l1: [-45, 0, 0] },
-                kf2: { a0: 0.95, f0: 0.95, a1: 1.50, f1: -0.20, lean: 0.14, hipX: 12, hipY: 2, arch: 0.04, hx: 6, hy: -1, l0: [38, 0, 0], l1: [-48, 0, 0] },
-                kf3: { a0: 0.88, f0: 1.05, a1: 2.30, f1: -0.90, lean: 0.08, hipX: 10, hipY: 2, arch: 0.04, hx: 5, hy: -2, l0: [32, 0, 0], l1: [-50, 0, 0] },
-                kf4: { a0: 0.88, f0: 1.05, a1: 2.65, f1: -1.35, lean: 0.06, hipX: 8, hipY: 2, arch: 0.04, hx: 4, hy: -2, l0: [30, 0, 0], l1: [-52, 0, 0] }
+                name: 'grab', label: 'JAB!', line: 1, gap: 185, dur: .22, wind: .02, hit: .06, hold: .04, link: .20,
+                reach: 195, dmg: 6, kb: 0, up: 0, lv: 300, pause: .03, shake: 3, fx: 12,
+                kf0: GUARD,
+                kf1: { ...GUARD, a1: .45, f1: 2.55, lean: .08, hipX: 3 },
+                kf2: { a0: .35, f0: 2.85, a1: 1.7, f1: .04, lean: .16, hipX: 10, hipY: 6, arch: .03, hx: 4, hy: 1, l0: [40, 0, 0], l1: [-38, 0, 0] },
+                kf3: { a0: .35, f0: 2.85, a1: 1.72, f1: .02, lean: .17, hipX: 11, hipY: 6, arch: .03, hx: 4, hy: 1, l0: [40, 0, 0], l1: [-38, 0, 0] },
+                kf4: GUARD
             },
-            // 2. FACE PUNCH 1
+            // 2. CROSS (rear hand): sink and cock the shoulder back, then drive the hips through
             {
-                name: 'punch1', dur: 0.26, wind: 0.025, hit: 0.065, hold: 0.05, link: 0.10,
-                reach: 200, dmg: 10, kb: 0, up: 0, lv: 80, pause: 0.05, shake: 5.0, fx: 20,
-                sw: [120, -0.3, 0.25, 4, 30, -5],
-                kf0: { a0: 0.88, f0: 1.05, a1: 2.65, f1: -1.35, lean: 0.06, hipX: 8, hipY: 2, arch: 0.04, hx: 4, hy: -2, l0: [30, 0, 0], l1: [-52, 0, 0] },
-                kf1: { a0: 0.88, f0: 1.05, a1: 2.80, f1: -1.45, lean: 0.04, hipX: 6, hipY: 2, arch: 0.08, hx: 2, hy: -3, l0: [28, 0, 0], l1: [-52, 0, 0] },
-                kf2: { a0: 0.88, f0: 1.05, a1: 1.50, f1: 0.00, lean: 0.22, hipX: 18, hipY: 2, arch: 0.06, hx: 14, hy: -1, l0: [40, 0, 0], l1: [-52, 0, 0] },
-                kf3: { a0: 0.88, f0: 1.05, a1: 1.48, f1: 0.02, lean: 0.24, hipX: 19, hipY: 2, arch: 0.08, hx: 15, hy: -1, l0: [40, 0, 0], l1: [-52, 0, 0] },
-                kf4: { a0: 0.88, f0: 1.05, a1: 2.65, f1: -1.35, lean: 0.06, hipX: 8, hipY: 2, arch: 0.04, hx: 4, hy: -2, l0: [30, 0, 0], l1: [-52, 0, 0] }
+                name: 'punch1', label: 'CROSS!', line: 0, gap: 185, dur: .30, wind: .06, hit: .11, hold: .05, link: .27,
+                reach: 200, dmg: 12, kb: 0, up: 0, lv: 220, pause: .06, shake: 5, fx: 20,
+                kf0: GUARD,
+                kf1: { a0: .15, f0: 3.0, a1: .7, f1: 2.3, lean: -.04, hipX: 0, hipY: 12, arch: -.02, hx: -3, hy: 2, l0: [34, 0, 0], l1: [-44, 0, 0] },
+                kf2: { a0: 1.7, f0: .05, a1: .4, f1: 2.8, lean: .24, hipX: 14, hipY: 6, arch: .06, hx: 6, hy: 1, l0: [42, 0, 0], l1: [-36, 0, 10] },
+                kf3: { a0: 1.72, f0: .03, a1: .4, f1: 2.8, lean: .25, hipX: 15, hipY: 6, arch: .06, hx: 6, hy: 1, l0: [42, 0, 0], l1: [-36, 0, 10] },
+                kf4: GUARD
             },
-            // 3. FACE PUNCH 2
+            // 3. JAB again (a little heavier)
             {
-                name: 'punch2', dur: 0.26, wind: 0.025, hit: 0.065, hold: 0.05, link: 0.10,
-                reach: 200, dmg: 12, kb: 0, up: 0, lv: 80, pause: 0.06, shake: 6.0, fx: 22,
-                sw: [125, -0.4, 0.30, 4, 32, -8],
-                kf0: { a0: 0.88, f0: 1.05, a1: 2.65, f1: -1.35, lean: 0.06, hipX: 8, hipY: 2, arch: 0.04, hx: 4, hy: -2, l0: [30, 0, 0], l1: [-52, 0, 0] },
-                kf1: { a0: 0.88, f0: 1.05, a1: 2.85, f1: -1.50, lean: 0.03, hipX: 5, hipY: 3, arch: 0.10, hx: 2, hy: -4, l0: [28, 0, 0], l1: [-52, 0, 0] },
-                kf2: { a0: 0.88, f0: 1.05, a1: 1.52, f1: 0.00, lean: 0.26, hipX: 20, hipY: 2, arch: 0.10, hx: 16, hy: -1, l0: [42, 0, 0], l1: [-52, 0, 0] },
-                kf3: { a0: 0.88, f0: 1.05, a1: 1.50, f1: 0.02, lean: 0.28, hipX: 21, hipY: 2, arch: 0.12, hx: 17, hy: -1, l0: [42, 0, 0], l1: [-52, 0, 0] },
-                kf4: { a0: 0.88, f0: 1.05, a1: 2.65, f1: -1.35, lean: 0.06, hipX: 8, hipY: 2, arch: 0.04, hx: 4, hy: -2, l0: [30, 0, 0], l1: [-52, 0, 0] }
+                name: 'punch2', label: 'JAB!', line: 1, gap: 185, dur: .22, wind: .02, hit: .06, hold: .04, link: .20,
+                reach: 195, dmg: 8, kb: 0, up: 0, lv: 260, pause: .035, shake: 3.5, fx: 14,
+                kf0: GUARD,
+                kf1: { ...GUARD, a1: .45, f1: 2.55, lean: .08, hipX: 3 },
+                kf2: { a0: .35, f0: 2.85, a1: 1.72, f1: .02, lean: .17, hipX: 11, hipY: 6, arch: .03, hx: 4, hy: 1, l0: [40, 0, 0], l1: [-38, 0, 0] },
+                kf3: { a0: .35, f0: 2.85, a1: 1.74, f1: .0, lean: .18, hipX: 12, hipY: 6, arch: .03, hx: 4, hy: 1, l0: [40, 0, 0], l1: [-38, 0, 0] },
+                kf4: GUARD
             },
-            // 4. FACE PUNCH 3
+            // 4. POWER CROSS: deeper load, bigger hip turn, rear heel lifts
             {
-                name: 'punch3', dur: 0.30, wind: 0.035, hit: 0.080, hold: 0.07, link: 0.12,
-                reach: 200, dmg: 16, kb: 40, up: 0, lv: 110, pause: 0.08, shake: 7.5, fx: 28,
-                sw: [135, -0.45, 0.35, 5, 35, -10],
-                kf0: { a0: 0.88, f0: 1.05, a1: 2.65, f1: -1.35, lean: 0.06, hipX: 8, hipY: 2, arch: 0.04, hx: 4, hy: -2, l0: [30, 0, 0], l1: [-52, 0, 0] },
-                kf1: { a0: 0.88, f0: 1.05, a1: 2.92, f1: -1.55, lean: 0.02, hipX: 4, hipY: 4, arch: 0.14, hx: 1, hy: -4, l0: [26, 0, 0], l1: [-54, 0, 0] },
-                kf2: { a0: 0.88, f0: 1.05, a1: 1.54, f1: -0.01, lean: 0.32, hipX: 24, hipY: 2, arch: 0.14, hx: 20, hy: -1, l0: [46, 0, 0], l1: [-54, 0, 0] },
-                kf3: { a0: 0.88, f0: 1.05, a1: 1.52, f1: 0.01, lean: 0.34, hipX: 25, hipY: 2, arch: 0.16, hx: 21, hy: -1, l0: [46, 0, 0], l1: [-54, 0, 0] },
-                kf4: { a0: 0.85, f0: 1.35, a1: 0.70, f1: 1.60, lean: 0.10, hipX: 10, hipY: 0, arch: 0.00, hx: 4, hy: 0, l0: [40, 0, 0], l1: [-30, 0, 0] }
+                name: 'punch3', label: 'POWER CROSS!', line: 0, gap: 190, dur: .36, wind: .08, hit: .13, hold: .07, link: .33,
+                reach: 205, dmg: 18, kb: 200, up: 0, lv: 260, pause: .09, shake: 8, fx: 30,
+                kf0: GUARD,
+                kf1: { a0: .1, f0: 3.05, a1: .75, f1: 2.2, lean: -.1, hipX: -6, hipY: 18, arch: -.05, hx: -5, hy: 2, l0: [30, 0, 0], l1: [-48, 0, 0] },
+                kf2: { a0: 1.72, f0: .03, a1: .35, f1: 2.85, lean: .30, hipX: 14, hipY: 4, arch: .1, hx: 8, hy: 1, l0: [48, 0, 0], l1: [-34, 0, 12] },
+                kf3: { a0: 1.74, f0: .02, a1: .35, f1: 2.85, lean: .31, hipX: 15, hipY: 4, arch: .1, hx: 8, hy: 1, l0: [48, 0, 0], l1: [-34, 0, 12] },
+                kf4: GUARD
             },
             // 5. RISING UPPERCUT
             {
@@ -520,7 +519,7 @@
             if (P.grabbed && n >= 2 && n <= 4) {
                 v = 0;
             } else if (best && (best.x - P.x) * P.face > 0) {
-                v = Math.min(v, Math.sqrt(2 * 1400 * Math.max(0, bd - 60 * S)));
+                v = Math.min(v, Math.sqrt(2 * 1400 * Math.max(0, bd - (st.gap || 60) * S)));
             }
             if (!(Math.abs(P.vx) > v && Math.sign(P.vx) === P.face)) P.vx = P.face * v;
         }
@@ -541,9 +540,11 @@
                 if (st.kb >= 350 || st.up < -300) e.tumble = 1;
                 combo.n++; combo.dmg += dmg; combo.t = 1.8; combo.pop = 1.3;
                 const isPunch = st.name.startsWith('punch'), isGrab = st.name === 'grab';
-                const cy = (isPunch || isGrab) ? -168 * S : (-150 * S + Math.min(0, e.z));
-                burst(e.x + (isPunch ? F * 12 * S : 0), cy, st.fx, 200 + st.kb * .25, F);
-                impacts.push({ x: e.x + (isPunch ? F * 12 * S : -F * 10), y: cy, t: 0, life: .2 + st.dmg / 200, s: 75 + st.dmg * 3.5, seed: Math.random() * 50 });
+                const face = isPunch || isGrab;
+                const cy = face ? (e.hdp ? e.hdp[1] * S + 8 * S : -280 * S) : (-150 * S + Math.min(0, e.z));
+                const cx = face ? e.x + (e.hdp ? e.hdp[0] * S : 0) - F * 20 * S : e.x;
+                burst(cx, cy, st.fx, 200 + st.kb * .25, F);
+                impacts.push({ x: face ? cx : e.x - F * 10, y: cy, t: 0, life: .2 + st.dmg / 200, s: 75 + st.dmg * 3.5, seed: Math.random() * 50 });
                 if (e.hp <= 0) { e.hp = 0; e.dying = .5; kill = true; if (P.grabbed === e) P.grabbed = null; }
             }
             if (hits) {
@@ -569,6 +570,8 @@
                 } else if (st.name === 'kick') {
                     banner.t = 0.85; banner.text = 'SPIN KICK!';
                 }
+            } else if (st.label) {
+                banner.t = .7; banner.text = st.label;
             }
         }
         function comboTick(dt) {
@@ -618,30 +621,16 @@
             if (P.cs < STEPS.length && P.abuf > 0 && P.ct >= st.link) { startStep(P.cs + 1); return }
             if (P.ct >= st.dur) {
                 P.clast = P.cs < STEPS.length ? P.cs : 0;
-                P.cgr = P.cs <= 3 ? 0 : (P.cs === 4 ? 1.0 : .24);
+                P.cgr = P.cs <= 3 ? .6 : (P.cs === 4 ? 1.0 : .24);   // was: P.cs <= 3 ? 0 : ...
                 P.cs = 0;
             }
         }
         function comboPose(Q) {
             if (!Q.cs || Q.cs < 1 || Q.cs > STEPS.length) {
-                if (Q === PL && PL.grabbed && PL.clast >= 1 && PL.clast <= 4) {
-                    const st = STEPS[0];
-                    return {
-                        w: 1,
-                        a0: st.kf4.a0, f0: st.kf4.f0,
-                        a1: st.kf4.a1, f1: st.kf4.f1,
-                        lean: st.kf4.lean,
-                        hipX: st.kf4.hipX,
-                        hipY: st.kf4.hipY,
-                        arch: st.kf4.arch,
-                        hx: st.kf4.hx,
-                        hy: st.kf4.hy,
-                        l0: st.kf4.l0,
-                        l1: st.kf4.l1,
-                        st,
-                        sw: 0,
-                        ik: 0
-                    };
+                if (Q === PL && PL.z >= 0 && PL.clast >= 1 && PL.clast <= 4 && PL.cgr > 0) {   // fists stay up while the combo window is open
+                    const g = GUARD, k = sm(Math.min(1, PL.cgr / .25)) * (1 - Math.min(1, Math.abs(PL.vx) / 140));
+                    if (k < .01) return null;
+                    return { w: k, a0: g.a0, f0: g.f0, a1: g.a1, f1: g.f1, lean: g.lean, hipX: g.hipX, hipY: g.hipY, arch: g.arch, hx: g.hx, hy: g.hy, l0: g.l0, l1: g.l1, st: STEPS[0], sw: 0, ik: 0 };
                 }
                 return null;
             }
@@ -663,7 +652,7 @@
             }
             const wIn = Math.min(1, t / 0.025);
             const wOut = t > st.dur - 0.08 ? Math.max(0, (st.dur - t) / 0.08) : 1;
-            const w = wIn * (P.clast > 0 ? 1 : wOut);
+            const w = wIn * ((Q.clast > 0 || Q.cs <= 4) ? 1 : wOut);
             const swWindow = (t >= st.wind * 0.8 && t <= st.hit + st.hold * 0.6);
             const swProg = swWindow ? Math.sin(Math.PI * Math.max(0, Math.min(1, (t - st.wind * 0.8) / (st.hit - st.wind * 0.8 + st.hold * 0.6)))) : 0;
 
@@ -994,7 +983,7 @@
             let hipY = (baseHipY + (cb ? cb.hipY * cb.w : 0) + grabHipY) * (1 - kk) + (-82 + 76 * fk + z) * kk;
             if (fz) hipY = hipY * (1 - fz.foot) + (-150 + z) * fz.foot;   // sink ~19px so both legs can still reach
             // his offset in my local units
-            let hipX = cb ? cb.hipX * cb.w : 0, cbLean = cb ? cb.lean * cb.w : 0;
+            let hipX = cb ? F * cb.hipX * cb.w : 0, cbLean = cb ? cb.lean * cb.w : 0;
 
             if (isGrabbed) hipX = -F * 8;
             hipX += Math.sin(now * 17) * 1.3 * kk;
@@ -1069,7 +1058,7 @@
                     flex = flex * (1 - rw) + (1.35 + .15 * s) * rw;              // about 90° elbows
                 }
                 if (i === 0 && P === PL && P.gunK > .01) {
-                    const w = sm(P.gunK), rlk = P.rl > 0 ? Math.sin(Math.PI * Math.min(1, P.rl / RELOAD_T)) : 0;
+                    const w = sm(P.gunK), rlk = P.rl > 0 ? rlArm(P.rl / RELOAD_T) : 0;
                     const rc = P.recoil, rcE = Math.sin(Math.PI * rc);   // rcE is 0 at the shot, peaks mid-recoil, returns to 0
                     let ga = GUN_AIM + P.aimV - GUN_BEND + RC_SHOULDER * rc - .75 * rlk + Math.sin(now * 2.3) * .012 + Math.sin(P.phase) * .02 * P.amp,
                         gf = .02 + GUN_BEND + RC_ELBOW * rcE + 1.1 * rlk;
@@ -1082,6 +1071,10 @@
                 if (i === 0 && P === PL && P.hol && P.gun) {            // hand travels between the hip and the gun hand
                     const d = P.gs === 2 ? sm((P.gsT - .5) / .3) : P.gdT < .3 ? 1 - sm(P.gdT / .3) : 0;
                     if (d > 0) { const [ha, hf] = ik2(sh, P.hol[0] - F * 22, P.hol[1] - 8, F); ang = ang * (1 - d) + ha * d; flex = flex * (1 - d) + hf * d }
+                }
+                if (i === 1 && P === PL && P.rl > 0 && P.cylP && P.gunK > .5) {
+                    const u = P.rl / RELOAD_T, hp = rot(-F * 10, -16), [tx, ty, rw] = rlHand(u, P.cylP, hp);
+                    if (rw > .001) { const [a, f] = ikTo(sh, tx, ty, F); ang = ang * (1 - rw) + a * rw; flex = flex * (1 - rw) + f * rw }
                 }
                 if (mA) { const o = smokePose(i, sh, F, mA); if (o && o[2] > .001) { ang = ang * (1 - o[2]) + o[0] * o[2]; flex = flex * (1 - o[2]) + o[1] * o[2] } }
                 if (i === 0 && pq > 0) { ang = -.8 + q * 3.6; flex = .2 }
@@ -1127,8 +1120,17 @@
                     ang = ang * (1 - fz.grip) + a * fz.grip; flex = flex * (1 - fz.grip) + f * fz.grip;
                 }
 
-                wristKick = (i === 0 && P === PL && P.gunK > .02) ? RC_WRIST * P.recoil * P.recoil : 0;
+                wristKick = (i === 0 && P === PL && P.gunK > .02) ? RC_WRIST * P.recoil * P.recoil + (P.rl > 0 ? rlTilt(P.rl / RELOAD_T) : 0) : 0;
                 arm(sh, ang, flex, F, i === 0 ? P.kt : 0, Math.max(pq, cb ? cb.w : 0), i === 0 ? P.tt / TOSS_T : 0);
+                if (i === 1 && P === PL && P.rl > 0) {
+                    const u = P.rl / RELOAD_T;
+                    if (u > RL_GRAB - .02 && u < RL_LOADED) {
+                        const a = lastArm, dx = a[1][0] - a[0][0], dy = a[1][1] - a[0][1], dl = Math.hypot(dx, dy) || 1;
+                        const kb = u < .42 ? 1 : 1 - sm((u - .42) / .14);                       // 1 at the belt, 0 at the cylinder
+                        const la = 1.1 + wrapA((P.cylA || 0) + Math.PI - 1.1) * (1 - kb);
+                        drawLoader(a[1][0] + dx / dl * 10, a[1][1] + dy / dl * 10, F, la, true);
+                    }
+                }
                 wristKick = 0;
 
                 if (i === 0 && P === PL && P.gunK > .02 && !(P.fin > 0)) drawGun(F, S, now);
@@ -1153,7 +1155,18 @@
                 ctx.beginPath(); ctx.moveTo(hd[0] + F * 7, hd[1] + 5); ctx.lineTo(hd[0] + F * 13, hd[1] + 5); ctx.stroke()
             }
             if (P === PL && P.sm) drawSmokeProps(F, hd, S, now);
-            if (cb && cb.sw > .02) swoosh(sh[0], sh[1], F, cb.st, cb.sw);
+            if (cb && cb.sw > .02) { if (cb.st.line !== undefined) punchLines(P.fistInfo[cb.st.line], cb.sw); else swoosh(sh[0], sh[1], F, cb.st, cb.sw) }
+            function punchLines(f, alpha) {      // straight dashes trailing the fist, like the sprite sheet
+                if (!f) return;
+                const dx = f.F * Math.cos(f.a), dy = Math.sin(f.a), px = -dy, py = dx;
+                ctx.save(); ctx.strokeStyle = '#111'; ctx.lineCap = 'round';
+                [[-16, 90], [14, 70], [-30, 50]].forEach(([off, len], j) => {
+                    ctx.globalAlpha = alpha * (.8 - j * .18); ctx.lineWidth = 2.8 - j * .6;
+                    ctx.beginPath(); ctx.moveTo(f.x - dx * 18 + px * off, f.y - dy * 18 + py * off);
+                    ctx.lineTo(f.x - dx * (18 + len) + px * off, f.y - dy * (18 + len) + py * off); ctx.stroke();
+                });
+                ctx.restore();
+            }
             if (P.hat) {
                 ctx.save(); ctx.translate(hd[0], hd[1] - 21); ctx.rotate(l * .6); ctx.fillStyle = '#111'; ctx.strokeStyle = '#111';
                 ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(-26, 0); ctx.lineTo(26, 0); ctx.stroke();
@@ -1706,7 +1719,32 @@
         }
         // ================= GUN (revolver) =================
         const GUN_AIM = Math.PI / 2;     // forearm angle for a level shot
-        const MAG = 6, FIRE_CD = .26, RELOAD_T = 1.25;
+        const MAG = 6, FIRE_CD = .26, RELOAD_T = 1.7;
+        // reload timeline, as fractions of RELOAD_T
+        const RL_OPEN = .12, RL_EJECT = .26, RL_GRAB = .40, RL_INSERT = .56, RL_LOADED = .64, RL_FLICK = .68, RL_CLOSED = .78;
+
+        function rlArm(u) { return sm(u / .1) * (1 - sm((u - .82) / .14)) }                       // how far the gun arm is pulled in
+        function cylOpen(u) { return sm((u - RL_OPEN) / .08) * (1 - sm((u - RL_FLICK - .02) / .06)) }
+        function rlTilt(u) {                                                       // + = muzzle up, - = muzzle down
+            if (u < .06) return 0;
+            if (u < RL_FLICK) {
+                let t = u < .28 ? -.85 * sm((u - .06) / .14)                       // muzzle down while the barrel breaks and the shells fall
+                    : -.85 + 1.9 * sm((u - .28) / .14);                // then flip muzzle-up for loading
+                if (u > RL_EJECT - .03 && u < RL_EJECT + .03) t -= .1 * Math.sin(Math.PI * (u - RL_EJECT + .03) / .06);   // extractor jolt
+                return t;
+            }
+            if (u < RL_CLOSED) return 1.05 - 1.4 * sm((u - RL_FLICK) / (RL_CLOSED - RL_FLICK));    // flick down, barrel slams shut
+            return -.35 * (1 - sm((u - RL_CLOSED) / .12));                                           // settle back on target
+        }
+        function rlHand(u, c, h) {      // off-hand target: cylinder (c) <-> belt pouch (h), plus blend weight
+            let k = 0;
+            if (u < .26) k = 0;
+            else if (u < .38) k = sm((u - .26) / .12);
+            else if (u < .42) k = 1;
+            else if (u < .56) k = 1 - sm((u - .42) / .14);
+            const w = sm(u / .08) * (1 - sm((u - .72) / .12));
+            return [c[0] + (h[0] - c[0]) * k, c[1] + (h[1] - c[1]) * k, w];
+        }
         const BULLET_V = 3000, GUN_RANGE = 1600;
         const GUN_BODY_DMG = 16, GUN_HEAD_DMG = 40;
         const GUN_BEND = .1;       // relaxed elbow bend while aiming (0 = dead straight arm)
@@ -1734,7 +1772,7 @@
             if (!P.gun || P.rl > 0 || P.ammo >= MAG || P.fin > 0) return;
             if (P.gs === 2) return;
             if (P.gs === 1) { P.gsEnd = 1; P.gsFast = 1; P.q = 2; P.qT = .5; return }
-            P.rl = .0001; P.rlShell = 0;
+            P.rl = .0001; P.rlShell = 0; P.rlLoad = 0; P.rlSnap = 0;
         }
         function pressFire() {
             if (!P.gun || P.gunK < .8 || P.rl > 0 || P.fin > 0 || P.fireCd > 0) return;
@@ -1785,8 +1823,11 @@
             if (!P.gun) P.rl = 0;
             if (P.rl > 0) {
                 P.rl += dt;
-                if (!P.rlShell && P.rl >= .35) { P.rlShell = 1; dropShells(MAG - P.ammo) }
-                if (P.rl >= RELOAD_T) { P.rl = 0; P.ammo = MAG; banner.t = .5; banner.text = 'LOADED' }
+                const u = P.rl / RELOAD_T;
+                if (!P.rlShell && u >= RL_EJECT) { P.rlShell = 1; dropShells(MAG - P.ammo); shake = Math.max(shake, 2.5) }
+                if (!P.rlLoad && u >= RL_LOADED) { P.rlLoad = 1; P.ammo = MAG; dropLoader() }
+                if (!P.rlSnap && u >= RL_FLICK + .08) { P.rlSnap = 1; shake = Math.max(shake, 4); banner.t = .5; banner.text = 'LOADED' }
+                if (P.rl >= RELOAD_T) P.rl = 0;
             }
             for (let i = bullets.length - 1; i >= 0; i--) {
                 const b = bullets[i]; b.age += dt;
@@ -1810,6 +1851,49 @@
                 } else { s.t += dt; if (s.t > 8) shells.splice(i, 1) }
             }
         }
+        function dropLoader() {
+            const a = P.armPts && P.armPts[1], w = a ? a[1] : [0, -150], S = CSc();
+            shells.push({ x: P.x + w[0] * S, y: w[1] * S, vx: P.face * 40, vy: -60, rot: 0, vr: (Math.random() - .5) * 12, landed: false, t: 0, ld: 1 });
+        }
+        function drawLoader(x, y, F, ang, full) {          // speed loader, axis along +x, bullets at the front
+            ctx.save(); ctx.translate(x, y); ctx.scale(F, 1); ctx.rotate(ang); ctx.lineJoin = 'round'; ctx.lineWidth = 1.6; ctx.strokeStyle = '#111';
+            ctx.fillStyle = '#585c64'; ctx.beginPath(); ctx.rect(-7, -6.5, 13, 13); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = '#9a4a1a'; ctx.beginPath(); ctx.rect(-12, -3, 5, 6); ctx.fill(); ctx.stroke();
+            if (full) { ctx.fillStyle = '#c99a3a'; for (const dy of [-4, 0, 4]) { ctx.beginPath(); ctx.rect(6, dy - 1.8, 11, 3.6); ctx.fill(); ctx.stroke() } }
+            ctx.restore();
+        }
+        // Webley-style top-break: hinge at the bottom-front of the frame, barrel swings down, cylinder stays in the frame (side view)
+        function drawRevolverFront(co, u) {
+            const HX = 23, HY = -4, ROWS = [-13.8, -9.5, -5.2];      // hinge point, and the three chamber rows visible from the side
+            // cylinder, side view with two long flutes
+            ctx.lineWidth = 2.2; ctx.fillStyle = '#585c64'; ctx.beginPath(); ctx.rect(7, -16, 13, 13); ctx.fill(); ctx.stroke();
+            ctx.lineWidth = 1.6; ctx.beginPath(); ctx.moveTo(10, -11.5); ctx.lineTo(17, -11.5); ctx.moveTo(10, -7.5); ctx.lineTo(17, -7.5); ctx.stroke();
+            // barrel assembly, rotating about the hinge
+            ctx.save(); ctx.translate(HX, HY); ctx.rotate(1.0 * co); ctx.translate(-HX, -HY);     // 1.0 = how far the barrel breaks down (rad)
+            ctx.lineWidth = 2.2;
+            ctx.fillStyle = '#6f737a'; ctx.beginPath(); ctx.rect(20.5, -12, 6, 11); ctx.fill(); ctx.stroke();      // barrel lug
+            ctx.fillStyle = '#7c8088'; ctx.beginPath(); ctx.rect(22, -13, 23, 6); ctx.fill(); ctx.stroke();        // barrel
+            ctx.fillStyle = '#111'; ctx.beginPath(); ctx.rect(40, -16, 4, 3); ctx.fill();                           // front sight
+            ctx.strokeStyle = '#d8d6d0'; ctx.globalAlpha *= .6; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(24, -12); ctx.lineTo(43, -12); ctx.stroke();                                // barrel highlight
+            ctx.restore();
+            // hinge pin
+            ctx.lineWidth = 1.6; ctx.fillStyle = '#c99a3a'; ctx.beginPath(); ctx.arc(HX, HY, 2, 0, 7); ctx.fill(); ctx.stroke();
+            // brass rims showing at the cylinder front once the barrel is down
+            if (co > .6) {
+                const filled = 3 * sm((u - RL_INSERT) / .07), pop = 2 + 4 * sm((u - RL_OPEN) / (RL_EJECT - RL_OPEN));
+                ctx.lineWidth = 1.3;
+                ROWS.forEach((y, k) => {
+                    if (u < RL_EJECT || k < filled) {            // empties lifting out, or fresh rounds seated
+                        const out = u < RL_EJECT ? pop : 1.5;
+                        ctx.fillStyle = '#c99a3a'; ctx.beginPath(); ctx.rect(19.5, y - 2, out + .5, 4); ctx.fill(); ctx.stroke();
+                    } else {                                      // empty chamber mouth
+                        ctx.fillStyle = '#111'; ctx.beginPath(); ctx.rect(18.5, y - 2, 1.5, 4); ctx.fill();
+                    }
+                });
+            }
+        }
+
         function drawGun(F, S, now) {
             const A = lastArm; if (!A) return;
             const wr = A[1], a = Math.atan2(wr[1] - A[0][1], (wr[0] - A[0][0]) * F), r = P.recoil;
@@ -1822,7 +1906,11 @@
             const sp = P.gsA, ca = Math.cos(a), sa = Math.sin(a);
             const lx = 16 - 5 * r - 8 * Math.cos(sp) - Math.sin(sp), ly = -4 - 8 * Math.sin(sp) + Math.cos(sp);
             let ox = wr[0] + F * (lx * ca - ly * sa), oy = wr[1] + lx * sa + ly * ca, th = wrapA(a + sp);
-            const wf = RC_WRIST * r * r;
+            const rt = P.rl > 0 ? rlTilt(P.rl / RELOAD_T) : 0, wf = RC_WRIST * r * r + rt;
+            if (Math.abs(wf) > .001) {
+                const dxw = ox - wr[0], dyw = oy - wr[1], d = -F * wf, cd = Math.cos(d), sd = Math.sin(d);
+                ox = wr[0] + dxw * cd - dyw * sd; oy = wr[1] + dxw * sd + dyw * cd; th -= wf;
+            }
             if (wf > .001) {                       // pivot the gun about the wrist so the muzzle flips up
                 const dxw = ox - wr[0], dyw = oy - wr[1], d = -F * wf, cd = Math.cos(d), sd = Math.sin(d);
                 ox = wr[0] + dxw * cd - dyw * sd; oy = wr[1] + dxw * sd + dyw * cd; th -= wf;
@@ -1843,18 +1931,31 @@
                 ctx.restore();
             }
 
+            const uR = P.rl > 0 ? P.rl / RELOAD_T : 0, co = uR > 0 ? cylOpen(uR) : 0;
+            {
+                // target = a point just in front of the cylinder face, on the gun's axis (the loader comes in from there)
+                const fx = 38 - 7 * sm((uR - RL_INSERT) / .07), fy = -9.5, cth = Math.cos(th), sth = Math.sin(th);
+                P.cylP = [ox + F * (fx * cth - fy * sth), oy + fx * sth + fy * cth];
+                P.cylA = th;
+            }
+            if (uR > RL_FLICK - .02 && uR < RL_CLOSED + .08) {
+                const k = sm((uR - RL_FLICK) / (RL_CLOSED - RL_FLICK)), fade = 1 - sm((uR - RL_CLOSED) / .08);
+                ctx.save(); ctx.translate(wr[0], wr[1]); ctx.scale(F, 1); ctx.strokeStyle = '#111'; ctx.lineCap = 'round';
+                for (let j = 0; j < 3; j++) { ctx.globalAlpha = (.5 - j * .13) * fade; ctx.lineWidth = 3 - j * .8; ctx.beginPath(); ctx.arc(0, 0, 62 + j * 9, -1.45, -1.45 + 1.5 * k); ctx.stroke() }
+                ctx.restore();
+            }
+
             ctx.save(); ctx.translate(ox, oy); ctx.scale(F, 1); ctx.rotate(th);
             ctx.globalAlpha = Math.min(1, P.gunK * 1.6); ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.strokeStyle = '#111'; ctx.lineWidth = 2.2;
             ctx.fillStyle = '#9a4a1a'; ctx.beginPath(); ctx.moveTo(-2, -4); ctx.lineTo(9, -4); ctx.lineTo(5, 16); ctx.lineTo(-7, 15); ctx.closePath(); ctx.fill(); ctx.stroke();
             ctx.fillStyle = '#d9a23a'; ctx.beginPath(); ctx.arc(1.5, 8, 1.6, 0, 7); ctx.fill();
             ctx.fillStyle = '#585c64'; ctx.beginPath(); ctx.moveTo(-4, -12); ctx.lineTo(-9, -19); ctx.lineTo(-1, -15); ctx.closePath(); ctx.fill(); ctx.stroke();
             ctx.fillStyle = '#6f737a'; ctx.beginPath(); ctx.rect(-4, -13, 26, 10); ctx.fill(); ctx.stroke();
-            ctx.fillStyle = '#7c8088'; ctx.beginPath(); ctx.rect(22, -13, 23, 6); ctx.fill(); ctx.stroke();
-            ctx.fillStyle = '#111'; ctx.beginPath(); ctx.rect(40, -16, 4, 3); ctx.fill();
-            ctx.fillStyle = '#585c64'; ctx.beginPath(); ctx.rect(7, -16, 13, 13); ctx.fill(); ctx.stroke();
-            ctx.lineWidth = 1.6; ctx.beginPath(); ctx.moveTo(10, -12); ctx.lineTo(17, -12); ctx.moveTo(10, -7); ctx.lineTo(17, -7); ctx.stroke();
+
+
+            drawRevolverFront(co, uR);
             ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(8, -1, 5, .1, Math.PI - .1); ctx.stroke();
-            ctx.strokeStyle = '#d8d6d0'; ctx.globalAlpha *= .6; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(24, -12); ctx.lineTo(43, -12); ctx.stroke();
+
             ctx.globalAlpha = Math.min(1, P.gunK * 1.6);
             if (r > .5) {
                 const f = Math.min(1, (r - .5) / .5), n = Math.floor(now * 30);
@@ -1877,6 +1978,7 @@
             for (const s of shells) {
                 const sx = s.x - P.x + W / 2; if (sx < -20 || sx > W + 20) continue;
                 ctx.globalAlpha = s.landed ? Math.min(1, (8 - s.t) / 2) : 1;
+                if (s.ld) { drawLoader(sx, gy + 4 + s.y - (s.landed ? 6 : 0), 1, s.rot, false); continue }
                 ctx.save(); ctx.translate(sx, gy + 4 + s.y - (s.landed ? 1.5 : 0)); ctx.rotate(s.rot); ctx.beginPath(); ctx.rect(-3.5, -1.8, 7, 3.6); ctx.fill(); ctx.stroke(); ctx.restore();
             }
             ctx.restore();
