@@ -770,6 +770,8 @@
         // ================= REVERSE-GRIP FOOT STAB (J with knife in reverse grip, next to an NPC) =================
         const FS_WIND = .16, FS_HIT = .30, FS_HOLD = .90, FS_DUR = 1.20;
         const FS_STUCK = 6;        // seconds he stays rooted with the knife in his foot
+        const FS_TIP_X = 17;   // extra px the stab lands toward his toes (toward you)
+        const FS_TIP_Y = 14;   // extra px the stab lands lower (toward the ground)
         const FS_RANGE = 230;   // how close an NPC must be to trigger it (unscaled px)
         const FS_DIST = 100;    // distance you step in to (unscaled px)
         const FS_REACH = 190;   // max distance at which the stab still lands
@@ -848,7 +850,7 @@
             const t = P.fs, E = P.fsTgt;
             if (i !== 0 || !E) return null;
             const ox = (E.x - P.x) / S;
-            const [ia, ifl] = ik2(sh, ox - F * 42, -108, F);   // wrist target so the blade tip lands on his foot
+            const [ia, ifl] = ik2(sh, ox - F * (42 + FS_TIP_X), -108 + FS_TIP_Y, F);   // wrist target so the blade tip lands on his foot
             const ra = 2.3, rf = .7;
             let a, f, w = 1;
             if (t < FS_WIND) { a = ra; f = rf; w = sm(t / FS_WIND) }
