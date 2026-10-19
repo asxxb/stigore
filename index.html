@@ -93,6 +93,8 @@
     <div class="btns">
         <div><span class="b" id="bl">◀</span><span class="b" id="br">▶</span></div>
         <div><span class="b" id="bp">J</span><span class="b" id="bk">K</span><span class="b" id="bj">▲</span></div>
+        <span class="b" id="bd"
+            style="position:fixed; right:18px; bottom:calc(env(safe-area-inset-bottom,0px) + 98px)">▼</span>
     </div>
     <script>
         const cv = document.getElementById('c'), ctx = cv.getContext('2d');
@@ -140,6 +142,8 @@
         }
         hold('bl', 'ArrowLeft'); hold('br', 'ArrowRight'); hold('bj', 'Space'); document.getElementById('bk').addEventListener('pointerdown', e => { e.preventDefault(); pressK() });
         document.getElementById('bj').addEventListener('pointerdown', pressJump);
+        hold('bd', 'ArrowDown');
+        document.getElementById('bp').addEventListener('pointerdown', e => { e.preventDefault(); pressAtk() });
 
 
         const P = {
@@ -326,7 +330,7 @@
                 fidgetTick(P, true, dt);
                 return;
             }
-            const dir = (P.fin > 0 || P.sm === 1 || P.fs > 0 || P.yk > 0) ? 0 : (keys.ArrowRight || keys.KeyD ? 1 : 0) - (keys.ArrowLeft || keys.KeyA ? 1 : 0);
+            const dir = (P.fin > 0 || P.sm === 1 || P.fs > 0 || P.yk > 0 || P.gu > 0) ? 0 : (keys.ArrowRight || keys.KeyD ? 1 : 0) - (keys.ArrowLeft || keys.KeyA ? 1 : 0);
             const run = keys.ShiftLeft || keys.ShiftRight;
             const max = run ? 520 : 190;
             const grounded = P.z >= 0;
@@ -355,7 +359,7 @@
             // ---- jump: buffering + coyote time + variable height ----
             if (grounded) P.coy = COYOTE; else P.coy = Math.max(0, P.coy - dt);
             if (P.jbuf > 0) {
-                if ((grounded || P.coy > 0) && !P.cs && !P.fin && !P.pk && !(P.yk > 0)) { P.vz = -JUMP_V; P.jbuf = 0; P.coy = 0; P.grabbed = null; P.clast = 0 }  // jumping breaks the clinch
+                if ((grounded || P.coy > 0) && !P.cs && !P.fin && !P.pk && !(P.yk > 0) && !(P.gu > 0)) { P.vz = -JUMP_V; P.jbuf = 0; P.coy = 0; P.grabbed = null; P.clast = 0 }// jumping breaks the clinch
                 else P.jbuf = Math.max(0, P.jbuf - dt);
             }
             const g = GRAV * (P.vz < 0 && !keys.Space ? CUT_MULT : 1);
@@ -374,6 +378,7 @@
             }
             if (P.fin > 0) finTick(dt);
             fsTick(dt);
+            gutTick(dt);
             ykTick(dt);
             comboTick(dt);
             stabTick(dt);
@@ -397,7 +402,7 @@
                 }
             }
             // ---- idle fidgets ----
-            fidgetTick(P, dir || keys.Space || keys.KeyJ || keys.KeyF || P.sm > 0 || P.cs > 0 || P.skid || !grounded || sp > 8 || P.tt > 0 || P.atk > 0 || P.thw > 0 || P.stbk > 0 || P.fs > 0, dt || P.yk > 0);
+            fidgetTick(P, dir || keys.Space || keys.KeyJ || keys.KeyF || P.sm > 0 || P.cs > 0 || P.skid || !grounded || sp > 8 || P.tt > 0 || P.atk > 0 || P.thw > 0 || P.stbk > 0 || P.fs > 0 || P.yk > 0 || P.gu > 0, dt);
         }
 
         // ================= COMBAT =================
@@ -467,6 +472,7 @@
         const combo = { n: 0, dmg: 0, t: 0, pop: 0 }, banner = { t: 0, text: '' };
         let hitstop = 0, shake = 0;
         function pressAtk() {
+            if (P.kn === 1 && P.kt > .5 && (keys.ArrowDown || keys.KeyS) && !(P.gu > 0) && P.stbk === 0 && P.fs === 0 && !(P.yk > 0) && P.pk === 0 && P.z >= 0 && !P.fin && !P.thw && !P.tt && !P.cs && pressGut()) return;
             if (P.kn === 2 && P.kt > .5 && P.fs === 0 && P.stbk === 0 && P.z >= 0 && !P.fin && !P.thw && !P.tt && !P.cs && pressFootStab()) return;
             // If knife is in hand and fully drawn, do a stomach stab instead of punching
             if (P.kn > 0 && P.kt > 0.5 && P.stbk === 0 && P.z >= 0 && !P.fin && !P.thw && !P.tt) {
@@ -630,7 +636,7 @@
         }
         function respawn(n) {
             const side = Math.random() < .5 ? -1 : 1, x = P.x + side * (W / 2 + 150 + Math.random() * 250);
-            Object.assign(n, { fkSnk: 0, fk: null, fkT: 0, fkK: 0, fkPend: false, stab: 0, kneelK: 0, fst: 0, fallT: 0, fallK: 0, thud: 0, x, home: x, goal: x, vx: 0, z: 0, vz: 0, hp: n.maxhp, hurt: 0, down: 0, rot: 0, dying: 0, dead: 0, bar: 0, tumble: 0, wait: 1.5, face: -side, fid: 0, fidK: 0 });
+            Object.assign(n, { gut: 0, gutDead: false, gutK: 0, gutPop: 0, gutCut: 0, fkSnk: 0, fk: null, fkT: 0, fkK: 0, fkPend: false, stab: 0, kneelK: 0, fst: 0, fallT: 0, fallK: 0, thud: 0, x, home: x, goal: x, vx: 0, z: 0, vz: 0, hp: n.maxhp, hurt: 0, down: 0, rot: 0, dying: 0, dead: 0, bar: 0, tumble: 0, wait: 1.5, face: -side, fid: 0, fidK: 0 });
         }
         function killBurst(n) {
             const S = CSc();
@@ -772,6 +778,110 @@
         const FS_WIND = .16, FS_HIT = .30, FS_HOLD = .90, FS_DUR = 1.20;
         const FS_STUCK = 1e9;      // seconds he stays rooted with the knife in his foot
 
+        // ================= GUT CUT (Down + J with knife out) =================
+        const GU_WIND = .14, GU_IN = .26, GU_EXIT = .85, GU_OUT = 1.10, GU_END = 1.45;
+        const GU_DIST = 92, GU_RANGE = 220, GU_DMG = 30;
+        P.gu = 0; P.guHit = 0; P.guExit = 0; P.guTgt = null;
+
+        function guW() {   // arm / crouch envelope 0..1
+            const t = P.gu;
+            return t < GU_WIND * .6 ? sm(t / (GU_WIND * .6)) : t < GU_OUT ? 1 : 1 - sm((t - GU_OUT) / (GU_END - GU_OUT));
+        }
+        function guTip(t) {   // blade tip height relative to his hip: -38 stomach, +8 groin, +38 below the groin
+            if (t < GU_WIND) return lerp(-70, -108, sm(t / GU_WIND));
+            if (t < GU_IN) return lerp(-108, -38, Math.pow(sm((t - GU_WIND) / (GU_IN - GU_WIND)), 1.6));
+            if (t < GU_EXIT) return lerp(-38, 8, sm((t - GU_IN) / (GU_EXIT - GU_IN)));
+            if (t < GU_OUT) return lerp(8, 38, sm((t - GU_EXIT) / (GU_OUT - GU_EXIT)));
+            return 38;
+        }
+        function guPose(Q) {
+            const d = sm((Q.gu - GU_IN) / (GU_EXIT - GU_IN));
+            return {
+                w: guW(), a0: .35, f0: 2.8, a1: .6, f1: 2.35,
+                lean: .25 + .25 * d, hipX: 10, hipY: 8 + 34 * d, arch: .05, hx: 4, hy: 3,
+                l0: [40, 0, 0], l1: [-38, 0, 0], st: STEPS[0], sw: 0, ik: 0
+            };
+        }
+        function pressGut() {
+            const S = CSc(); let best = null, bd = 1e9;
+            for (const e of ENEMIES) {
+                if (e.dead > 0 || e.dying > 0 || e.stab || e.fst || e.gut) continue;
+                const d = Math.abs(e.x - P.x);
+                if (d < bd) { bd = d; best = e }
+            }
+            if (!best || bd > GU_RANGE * S) return false;
+            if (P.skid) endSkid();
+            P.face = best.x >= P.x ? 1 : -1;
+            P.gu = .0001; P.guHit = 0; P.guExit = 0; P.guTgt = best;
+            P.idle = 0; P.fid = 0; P.abuf = 0;
+            best.gut = 1; best.wait = 1; best.fid = 0; best.vx = 0; best.gutCut = 0;
+            return true;
+        }
+        function guEnter(E) {
+            P.guHit = 1;
+            const S = CSc(), F = P.face;
+            E.hp = Math.max(1, E.hp - GU_DMG); E.bar = 2.5; E.kdir = F; E.face = -F; E.hurt = .9; E.wait = 1;
+            combo.n++; combo.dmg += GU_DMG; combo.t = 2; combo.pop = 1.3;
+            if (E.gutS) {
+                const x = E.x + E.gutS[0] * S, y = E.gutS[1] * S;
+                burst(x, y, 16, 220, F); spray(x, y, 22, 360, -F);
+                impacts.push({ x, y, t: 0, life: .2, s: 65, seed: Math.random() * 50 });
+            }
+            hitstop = Math.max(hitstop, .06); shake = Math.max(shake, 5);
+            banner.t = .8; banner.text = 'STABBED!';
+        }
+        function guExit(E) {
+            P.guExit = 1;
+            const S = CSc(), F = P.face, g = E.gutG || [0, -120];
+            const x = E.x + g[0] * S, y = g[1] * S;
+            E.hp = 0; E.dying = 7; E.gutDead = true; E.gutT = 0; E.gutPop = 1; E.gutCut = 1; E.kdir = F;
+            combo.n++; combo.dmg += 40; combo.t = 2; combo.pop = 1.5;
+            burst(x, y, 30, 380, 0); spray(x, y, 46, 520, F); spray(x, y, 30, 460, -F); spray(x, y, 20, 300, 0);
+            impacts.push({ x, y, t: 0, life: .3, s: 110, seed: Math.random() * 50 });
+            hitstop = Math.max(hitstop, .12); shake = Math.max(shake, 11);
+            banner.t = 1.2; banner.text = 'GUTTED!';
+        }
+        function gutTick(dt) {
+            if (!(P.gu > 0)) return;
+            const E = P.guTgt, S = CSc();
+            P.gu += dt; P.abuf = 0; P.jbuf = 0; P.vx *= Math.max(0, 1 - dt * 14);
+            if (!E || E.dead > 0 || (E.dying > 0 && !E.gutDead)) { if (E) E.gut = 0; P.gu = 0; P.guTgt = null; return }
+            if (P.gu < GU_OUT) {
+                const tx = P.x + P.face * GU_DIST * S;               // he is held in front of you
+                E.x += (tx - E.x) * Math.min(1, dt * 14); E.vx = 0; E.face = -P.face; E.wait = 1;
+            }
+            if (!P.guHit && P.gu >= GU_IN) guEnter(E);
+            if (P.gu >= GU_IN) E.gutCut = Math.max(E.gutCut || 0, sm((P.gu - GU_IN) / (GU_EXIT - GU_IN)));
+            if (P.gu >= GU_IN && P.gu < GU_EXIT && E.gutS && E.gutG) {   // blood along the cut
+                P.guDrip = (P.guDrip || 0) - dt;
+                if (P.guDrip <= 0) {
+                    P.guDrip = .04; const c = E.gutCut;
+                    blood.push({ x: E.x + (E.gutS[0] + (E.gutG[0] - E.gutS[0]) * c) * S, y: (E.gutS[1] + (E.gutG[1] - E.gutS[1]) * c) * S, vx: -P.face * (30 + Math.random() * 60), vy: -20 + Math.random() * 60, r: 1.4 + Math.random() * 1.8, t: 0 });
+                }
+            }
+            if (!P.guExit && P.gu >= GU_EXIT) guExit(E);
+            if (P.gu >= GU_END) { P.gu = 0; P.guTgt = null; P.guHit = 0; P.guExit = 0 }
+        }
+        function drawGutFX(gy) {
+            const S = CSc();
+            for (const e of ENEMIES) {
+                if (e.dead > 0 || !(e.gut || e.gutDead) || !e.gutS || !e.gutG) continue;
+                if (Math.abs(e.x - P.x) > W / 2 + 300) continue;
+                const X = p => e.x + p[0] * S - P.x + W / 2, Y = p => gy + 4 + p[1] * S;
+                const cut = e.gutDead ? 1 : (e.gutCut || 0);
+                if (cut > .01) {                                     // the cut, growing down the torso
+                    const x0 = X(e.gutS), y0 = Y(e.gutS), x1 = x0 + (X(e.gutG) - x0) * cut, y1 = y0 + (Y(e.gutG) - y0) * cut;
+                    ctx.save(); ctx.lineCap = 'round'; ctx.strokeStyle = '#8c0d14'; ctx.lineWidth = 4.5 * S;
+                    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+                    ctx.strokeStyle = '#4a0508'; ctx.lineWidth = 1.6 * S; ctx.stroke(); ctx.restore();
+                }
+                if (e.gutDead) {                                     // pelvis pops open at the exit point
+                    const pop = e.gutPop || 0, gx = X(e.gutG), gyy = Y(e.gutG);
+                    ctx.save(); ctx.fillStyle = '#111'; ctx.beginPath(); ctx.ellipse(gx, gyy, (10 + 16 * pop) * S, (8 + 10 * pop) * S, 0, 0, 7); ctx.fill();
+                    ctx.fillStyle = '#8c0d14'; ctx.beginPath(); ctx.ellipse(gx, gyy + 2 * S, (6 + 12 * pop) * S, (4 + 7 * pop) * S, 0, 0, 7); ctx.fill(); ctx.restore();
+                }
+            }
+        }
         // ---- yank the knife out of his foot (E) ----
         const YK_GRIP = .3, YK_POP = .85, YK_END = 1.25;
         const YK_PULL = 58;      // px (unscaled) the knife slides out along its blade
@@ -1054,6 +1164,7 @@
 
 
         function comboPose(Q) {
+            if (Q === PL && Q.gu > 0) return guPose(Q);
             if (Q === PL && Q.yk > 0) return ykPose(Q);
             if (Q === PL && Q.fs > 0) return footStabPose(Q);
             if (!Q.cs || Q.cs < 1 || Q.cs > STEPS.length) {
@@ -1136,7 +1247,8 @@
             }
 
             if (n.dead > 0) { n.dead -= dt; if (n.dead <= 0) respawn(n); return }
-            if (n.dying > 0) { n.dying -= dt; if (n.dying <= 0) { killBurst(n); return } }
+
+            if (n.dying > 0) { n.dying -= dt; if (n.dying <= 0) { if (n.gutDead) { respawn(n); return } killBurst(n); return } }
             if (n.bar > 0) n.bar -= dt; if (n.hurt > 0) n.hurt -= dt; if (n.down > 0) n.down -= dt;
             const isGrabbed = (P.grabbed === n && (P.cs >= 1 && P.cs <= 4 || (P.cs === 0 && P.clast >= 1 && P.clast <= 4)));
             if (isGrabbed) {
@@ -1158,7 +1270,8 @@
             }
             const grounded = n.z >= 0, stunned = n.hurt > 0 || n.down > 0 || !grounded || n.dying > 0;
             let tgt = 0;
-            if (n.down > 0 || (n.dying > 0 && grounded)) tgt = n.kdir * Math.PI / 2;
+
+            if (n.down > 0 || (n.dying > 0 && grounded && !n.gutDead)) tgt = n.kdir * Math.PI / 2;
             else if (!grounded) tgt = n.kdir * (n.tumble ? Math.PI / 2 : .5);
             n.rot += (tgt - n.rot) * Math.min(1, dt * (n.down > 0 ? 14 : 9));
             // stomach stab: slight forward lean (0.22) while stabbed; full kneel (1.0) once knife is pulled out or for head stab
@@ -1221,7 +1334,7 @@
             }
             let dir = 0; const dx = P.x - n.x, near = Math.abs(dx) < 240;
             if (n.fkT > 0) { n.face = n.fkFace; }
-            else if (!stunned && !n.stab && !n.fst) {
+            else if (!stunned && !n.stab && !n.fst && !n.gut) {
                 if (near) n.face = dx > 0 ? 1 : -1;
                 else {
                     if (n.wait > 0) n.wait -= dt;
@@ -1237,6 +1350,17 @@
             n.x += n.vx * dt;
             if (n.fkT > 0) { n.x = n.fkX; n.vx = 0; }
             n.fkK = (n.fkK || 0) + (((n.fkT > 0 && n.fk) ? 1 : 0) - (n.fkK || 0)) * Math.min(1, dt * 6);
+            n.gutK = (n.gutK || 0) + ((n.gutDead ? 1 : 0) - (n.gutK || 0)) * Math.min(1, dt * 3.2);
+            if (n.gutDead) {
+                n.fallK = n.gutK; n.vx = 0; n.gutT = (n.gutT || 0) + dt; n.gutPop = Math.max(0, (n.gutPop || 0) - dt * 1.8);
+                if (n.gutG && n.gutT < 5) {                                       // keeps bleeding from the groin
+                    n.gutDrip = (n.gutDrip || 0) - dt;
+                    if (n.gutDrip <= 0) {
+                        n.gutDrip = .07 + Math.random() * .1; const S_ = CSc();
+                        blood.push({ x: n.x + n.gutG[0] * S_ + (Math.random() - .5) * 10, y: n.gutG[1] * S_, vx: (Math.random() - .5) * 40, vy: 10 + Math.random() * 30, r: 1.5 + Math.random() * 2, t: 0 });
+                    }
+                }
+            }
             const holding = P.fs > 0 && P.fsTgt === n && P.fs < FS_HOLD;   // your fist is still on the handle
             n.fkSnk = (n.fkSnk || 0) + ((holding ? 0 : 1) - (n.fkSnk || 0)) * Math.min(1, dt * 7);
             if (n.fk && n.fkT > 0) {                      // blood drips from the wound
@@ -1508,7 +1632,12 @@
                 }
                 if (!flying) {
                     ctx.save(); ctx.translate(gx, gy); ctx.scale(F, 1);
-                    { let rr = blade + KNIFE_SPRITE_TILT; if (P.fs > 0) rr += wrapA(1.3 - rr) * fsW(); ctx.rotate(rr); } ctx.scale(sc, sc);
+                    {
+                        let rr = blade + KNIFE_SPRITE_TILT;
+                        if (P.fs > 0) rr += wrapA(1.3 - rr) * fsW();
+                        if (P.gu > 0) rr += wrapA(Math.PI / 2 + KNIFE_SPRITE_TILT - rr) * guW();   // blade pointing straight down
+                        ctx.rotate(rr);
+                    } ctx.scale(sc, sc);
                     ctx.drawImage(KN, -nw * KGX, -nh * KGY); ctx.restore();
                 }
                 if (flying) {
@@ -1565,7 +1694,8 @@
             const grabHipY = isGrabbed ? 20 : 0;
             const kk = P.kneelK || 0, fk = P.fallK || 0;
             const fkk = (P !== PL && P.fk) ? (P.fkK || 0) : 0;
-            let fkPull = 0;                                   // 0..1: straining on the handle, then slipping off
+            const gk = (P !== PL && P.gutDead) ? (P.gutK || 0) : 0;
+            let fkPull = 0;                               // 0..1: straining on the handle, then slipping off
             if (fkk > .01) { const c = (now * .7) % 1; fkPull = c < .5 ? sm(c / .5) : c < .6 ? 1 - sm((c - .5) / .1) : 0 }
             const fz = (P === PL && P.fin > 0) ? finK(P.fin) : null;      // player finisher animation
             let kpull = 0, kux = 0, kuy = 0;
@@ -1578,6 +1708,8 @@
             if (fz && !(P.finE && P.finE.stomachStabbed)) hipY = hipY * (1 - fz.foot) + (-150 + z) * fz.foot;   // sink ~19px so both legs can still reach
 
             hipY += 40 * fkk;
+            hipY += 40 * fkk;
+            hipY += 80 * gk;
             let hipX = cb ? F * cb.hipX * cb.w : 0, cbLean = cb ? cb.lean * cb.w : 0;
 
             if (isGrabbed) hipX = -F * 8;
@@ -1585,7 +1717,7 @@
             const grabLean = isGrabbed ? F * (.16 + Math.sin(now * 21) * .012) : 0;
             const moveLean = (P.pk > 0) ? 0 : (P.lean * (.2 + .8 * R) * BODY_LEAN * (1 - sk));
             const l = moveLean - F * .5 * sk + (z < 0 ? .1 * F : 0) + .3 * pq * F - F * .2 * st + Math.sin(now * 30) * .012 * st + F * cbLean - F * (isGrabbed ? .1 : .4) * hk + grabLean + F * kk * KNEEL_BEND + Math.sin(now * 9) * .035 * kk * (1 - fk) + (fz ? F * fz.lean : 0) + F * fk * 0.47
-                + ((P !== PL && P.fst === 1 && PL.fin > 0 && !P.stomachStabbed) ? F * .1 * finK(PL.fin).foot : 0) - F * .07 * (P === PL ? P.recoil : 0) + F * fkk * (.8 - .2 * fkPull);
+                + ((P !== PL && P.fst === 1 && PL.fin > 0 && !P.stomachStabbed) ? F * .1 * finK(PL.fin).foot : 0) - F * .07 * (P === PL ? P.recoil : 0) + F * fkk * (.8 - .2 * fkPull) + F * gk * .3;
             const rot = (x, y) => [hipX + x * Math.cos(l) - y * Math.sin(l), hipY + x * Math.sin(l) + y * Math.cos(l)];
             ctx.save(); ctx.translate(cx, gy + 4); ctx.scale(S, S); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
             if (P.rot) {
@@ -1595,6 +1727,9 @@
                 ctx.translate(px, py); ctx.rotate(P.rot); ctx.translate(-px, -py);
             }
             const nk = rot(0, -T);
+            P.hipP = [hipX, hipY];
+            P.gutS = rot(F * 5, -38);    // stomach centre (front of torso)
+            P.gutG = rot(F * 5, 8);      // groin / exit point
 
             if (pq > .05) arcs(hipX, nk[1] + 60, F, pq * .85);
             for (let i = 1; i >= 0; i--) {
@@ -1639,8 +1774,10 @@
                         fx = fx * (1 - fz.foot) + (F * -24) * fz.foot; fy *= (1 - fz.foot); lf *= (1 - fz.foot);
                     }
                 }
+                if (gk > .001) { const sx_ = hipX + F * (i ? -1 : 1) * (26 + 88 * gk); fx = fx * (1 - gk) + sx_ * gk; fy *= (1 - gk); lf *= (1 - gk) }
                 leg(hipX, hipY, fx, fy, F, p, lf);
                 footFlat = 0;
+
             }
             const cp = rot(-F * (SPINE_BOW + (cb ? cb.arch * 28 * cb.w : 0)), -T / 2);
             ctx.strokeStyle = '#111'; ctx.lineWidth = 6.5; ctx.beginPath(); ctx.moveTo(hipX, hipY);
@@ -1814,6 +1951,18 @@
                     ang = ang * (1 - w) + a * w; flex = flex * (1 - w) + f * w;
                 }
 
+                if (P === PL && P.gu > 0 && P.guTgt) {
+                    const E = P.guTgt, w = guW(), ex = (E.x - P.x) / S + (E.hipP ? E.hipP[0] : 0);
+                    if (i === 0) {          // knife hand: blade tip follows the cut path
+                        const ty = (E.hipP ? E.hipP[1] : -132) + guTip(P.gu), tr = (P.gu > GU_IN && P.gu < GU_EXIT) ? Math.sin(now * 40) * .9 : 0;
+                        const [a, f] = ik2(sh, ex - F * 5 + tr * .3, ty - 98 + tr, F);
+                        ang = ang * (1 - w) + a * w; flex = flex * (1 - w) + f * w;
+                    } else if (E.hdp) {     // off-hand pins his shoulder
+                        const [a, f] = ikTo(sh, (E.x - P.x) / S + E.hdp[0] + E.face * 8, E.hdp[1] + 28, F);
+                        ang = ang * (1 - w) + a * w; flex = flex * (1 - w) + f * w;
+                    }
+                }
+
                 wristKick = (i === 0 && P === PL && P.gunK > .02) ? RC_WRIST * P.recoil * P.recoil + (P.rl > 0 ? rlTilt(P.rl / RELOAD_T) : 0) : 0;
                 arm(sh, ang, flex, F, (i === 0 && !P.pk) ? P.kt : 0, Math.max(pq, cb ? cb.w : 0), (i === 0 && !P.pk) ? P.tt / TOSS_T : 0);
                 if (i === 1 && P === PL && P.rl > 0) {
@@ -1845,7 +1994,7 @@
             if (P.stomachStabbed) {
                 // y=-38: 38px above hip = lower belly/stomach (below arm elbow level)
                 // x=0: centered on the spine, not shifted toward the arm
-                const sg = rot(0, -38);
+                const sg = rot(0, -38 + (P.stoDrag || 0));
                 P.stbStoP = [sg[0], sg[1]];
             }
             ctx.fillStyle = P.dark ? '#111' : PAPER; ctx.beginPath(); ctx.arc(hd[0], hd[1], 24, 0, 7); ctx.fill();
@@ -2186,7 +2335,27 @@
 
             // phase 1 (before .6): foot lands and hands grip, automatic
             // phase 2 (.6 to FIN_POP): progress only while E is held, in tugging jerks; relaxes when released
-            if (P.finDone || P.fin < .6) P.fin += dt;
+            const downH = !!(keys.ArrowDown || keys.KeyS);
+            const stoNow = !!(e.stomachStabbed && e.stbStoP);
+            if (!P.finDone && stoNow && held && downH && P.fin >= .6) {
+                // E + Down: rip the knife down through the stomach
+                P.finGut = Math.min(46, (P.finGut || 0) + dt * 70);
+                e.stoDrag = P.finGut; P.finIdle = 0;
+                shake = Math.max(shake, 3);
+                P.gutBl = (P.gutBl || 0) - dt;
+                if (P.gutBl <= 0 && e.stbStoP) {
+                    P.gutBl = .04;
+                    blood.push({ x: e.x + e.stbStoP[0] * S, y: e.stbStoP[1] * S, vx: -P.face * (30 + Math.random() * 60), vy: -20 + Math.random() * 60, r: 1.4 + Math.random() * 1.8, t: 0 });
+                }
+                if (P.finGut >= 46) {
+                    for (let i = knives.length - 1; i >= 0; i--) if (knives[i].st === e) knives.splice(i, 1);
+                    e.stab = 0; e.stomachStabbed = false; e.stoDrag = 0; e.fst = 0;
+                    P.kn = 1; P.kt = 0; P.rv = 0; hasKnife = true;
+                    guExit(e);   // existing "GUTTED!" death
+                    P.fin = 0; P.finE = null; P.finDone = 0; P.finW = 0; P.finIdle = 0; P.finGut = 0;
+                    return;
+                }
+            } else if (P.finDone || P.fin < .6) P.fin += dt;
             else if (held) {
                 P.finW = (P.finW || 0) + dt * 11;
                 P.fin = Math.max(.6, P.fin + dt * (.42 + .5 * Math.sin(P.finW)));   // surge, slip back, surge...
@@ -2862,6 +3031,7 @@
             drawButts(gy);
             drawGhosts(gy);
             drawEnemies(gy);
+            drawGutFX(gy);
             drawFootKnives(gy);
             drawKnives(gy);
             drawShots(gy);
