@@ -162,7 +162,7 @@
         const TOSS_T = .95;
         function pressK() {
             if (P.thw > 0 || P.fin > 0) return;
-            if (P.gun) { banner.t = .6; banner.text = 'HOLSTER GUN FIRST (G)'; return }
+            if (P.gun || P.gs === 2) { banner.t = .6; banner.text = 'HOLSTER GUN FIRST (G)'; return }
             P.idle = 0; P.fid = 0;
             if (P.tt > 0) return;
             if (P.kn === 0) {
@@ -248,7 +248,7 @@
                     ctx.beginPath(); ctx.arc(ax, ay, 4, 0, 7); ctx.fill();
                 }
                 ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(hipX, hipY); ctx.quadraticCurveTo(cp[0], cp[1], nk[0], nk[1]); ctx.stroke();
-                if (P === PL) { const hp = rot(F * 8, -14); P.hol = [hp[0], hp[1], l]; drawHolster(P.hol, F, P.gunK < .3 && P.gs !== 2) }
+                if (P === PL) { const hp = rot(F * 8, -14); drawHolster([hp[0], hp[1], l], F, (!P.gun && P.gs !== 2) || (P.gs === 2 && P.gsT >= 0.75)) }
                 const sh = rot(0, -T + 10);
                 for (let i = 0; i < 2; i++) {
                     const ang = i ? pose.a1 : pose.a0, flex = i ? pose.f1 : pose.f0, d1 = [Math.sin(ang) * F, Math.cos(ang)], el = [sh[0] + d1[0] * 58, sh[1] + d1[1] * 58];
@@ -1155,15 +1155,7 @@
             ctx.save(); ctx.translate(cx, gy + 4); ctx.scale(S, S); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
             if (P.rot) { const pk = Math.min(1, -z / 60), py = -40 * (1 - pk) + (hipY - 30) * pk; ctx.translate(0, py); ctx.rotate(P.rot); ctx.translate(0, -py) }
             const nk = rot(0, -T);
-            if (R > .15) {
-                ctx.strokeStyle = '#111'; ctx.globalAlpha = R * .8;
-                for (let k = 0; k < 7; k++) {
-                    const y = nk[1] - 10 + k * 18, x = -F * (55 + k * 9), len = 100 + hash(k) * 70;
-                    ctx.lineWidth = 2;
-                    ctx.beginPath(); ctx.moveTo(x, y); ctx.quadraticCurveTo(x - F * len * .6, y + 5, x - F * len, y + 12 + k * 2); ctx.stroke()
-                }
-                ctx.globalAlpha = 1
-            }
+
             if (pq > .05) arcs(hipX, nk[1] + 60, F, pq * .85);
             for (let i = 1; i >= 0; i--) {
                 const p = P.phase + i * Math.PI, u = ((p / (2 * Math.PI)) % 1 + 1) % 1; let lift = Math.max(0, -Math.sin(p)) * (14 + 44 * R) * P.amp;
@@ -1213,6 +1205,12 @@
             const cp = rot(-F * (SPINE_BOW + (cb ? cb.arch * 28 * cb.w : 0)), -T / 2);
             ctx.strokeStyle = '#111'; ctx.lineWidth = 6.5; ctx.beginPath(); ctx.moveTo(hipX, hipY);
             ctx.quadraticCurveTo(cp[0], cp[1], nk[0], nk[1]); ctx.stroke();
+            if (P === PL) {
+                const hp = rot(F * 8, -14);
+                P.hol = [hp[0], hp[1], l];
+                const holGrip = (!P.gun && P.gs !== 2) || (P.gs === 2 && P.gsT >= 0.75);
+                drawHolster(P.hol, F, holGrip);
+            }
             const sh = rot(0, -T + 10), swing = (.015 + .9 * R) * P.amp * ARM_SWING, up = z < 0 ? -.9 : 0;
             const sTilt = (P === PL) ? smokeTilt() : [0, 0];
             const mA = (P === PL && P.sm) ? (() => { const h = rot(-F * 7 + F * sTilt[0], -T - 24 + sTilt[1]); return [h[0] + F * 19, h[1] + 8] })() : null;
@@ -1236,8 +1234,15 @@
                     }
                     ang = ang * (1 - w) + ga * w; flex = flex * (1 - w) + gf * w;
                 }
-                if (i === 0 && P === PL && P.hol && P.gun) {            // hand travels between the hip and the gun hand
-                    const d = P.gs === 2 ? sm((P.gsT - .5) / .3) : P.gdT < .3 ? 1 - sm(P.gdT / .3) : 0;
+                if (i === 0 && P === PL && P.hol && (P.gun || P.gs === 2)) {            // hand travels between the hip and the gun hand
+                    let d = 0;
+                    if (P.gs === 2) {
+                        if (P.gsT < 0.35) d = 0;
+                        else if (P.gsT < 0.75) d = sm((P.gsT - 0.35) / 0.4);
+                        else if (P.gsT < 1.05) d = 1 - sm((P.gsT - 0.75) / 0.3);
+                    } else if (P.gdT < 0.3) {
+                        d = 1 - sm(P.gdT / 0.3);
+                    }
                     if (d > 0) { const [ha, hf] = ik2(sh, P.hol[0] - F * 22, P.hol[1] - 8, F); ang = ang * (1 - d) + ha * d; flex = flex * (1 - d) + hf * d }
                 }
                 if (i === 1 && P === PL && P.rl > 0 && P.cylP && P.gunK > .5) {
@@ -1691,7 +1696,7 @@
         }
         function pressFinish() {
             if (P.fin > 0 || P.cs > 0 || P.tt > 0 || P.thw > 0 || P.z < 0) return;
-            if (P.gun) { banner.t = .6; banner.text = 'HOLSTER GUN FIRST (G)'; return }
+            if (P.gun || P.gs === 2) { banner.t = .6; banner.text = 'HOLSTER GUN FIRST (G)'; return }
             const S = CSc(); let best = null, bd = 1e9;
             for (const e of ENEMIES) {
                 const minK = e.stomachStabbed ? 0.15 : 0.6;
@@ -2071,7 +2076,7 @@
         function pressG() {
             if (P.sm === 1 || P.sm === 3 || P.gs === 2) return;
             if (P.gun) {                                         // spin-to-holster
-                if (P.rl > 0 || P.fin > 0 || P.gunK < .8) { P.gun = 0; P.rl = 0; P.gs = 0; return }
+                if (P.rl > 0 || P.fin > 0 || P.gunK < .6) { P.gun = 0; P.rl = 0; P.gs = 0; return }
                 P.idle = 0; P.fid = 0; P.q = 0;
                 const a0 = P.gs === 1 ? P.gsA % TAU : 0;
                 P.gs = 2; P.gsT = 0; P.gsFrom = a0; P.gsTo = TAU * Math.ceil((a0 + TAU) / TAU - 1e-6);
@@ -2208,6 +2213,7 @@
 
         function drawGun(F, S, now) {
             const A = lastArm; if (!A) return;
+            if (P.gs === 2 && P.gsT >= 0.75) return;
             const wr = A[1], a = Math.atan2(wr[1] - A[0][1], (wr[0] - A[0][0]) * F), r = P.recoil;
             P.gunA = a;
             const mx = 55 - 5 * r, my = -13;
@@ -2230,7 +2236,7 @@
             const pvx = wr[0] + F * (16 * ca + 4 * sa), pvy = wr[1] + 16 * sa - 4 * ca;
 
             // slide between the hand and the holster (quick-draw / spin-to-holster)
-            const dk = P.gs === 2 ? sm((P.gsT - .6) / .3) : P.gdT < .25 ? 1 - sm(P.gdT / .25) : 0, hol = P.hol;
+            const dk = P.gs === 2 ? sm((P.gsT - .45) / .3) : P.gdT < .25 ? 1 - sm(P.gdT / .25) : 0, hol = P.hol;
             if (dk > 0 && hol) {
                 const c = Math.cos(1.9), s = Math.sin(1.9);
                 ox += (hol[0] - F * (22 * c + 8 * s) - ox) * dk; oy += (hol[1] - (22 * s - 8 * c) - oy) * dk; th += (1.9 + F * hol[2] - th) * dk;
@@ -2315,14 +2321,19 @@
         function spinTick(dt) {
             P.gdT = Math.min(1, P.gdT + dt);
             if (P.q) { P.qT -= dt; if (P.qT <= 0) P.q = 0 }
-            if (!P.gun) { P.gs = 0; P.gsA = 0; P.gsIdle = 0; P.q = 0; P.gsK += (0 - P.gsK) * Math.min(1, dt * 14); return }
+            if (!P.gun && P.gs !== 2) { P.gs = 0; P.gsA = 0; P.gsIdle = 0; P.q = 0; P.gsK += (0 - P.gsK) * Math.min(1, dt * 14); return }
 
             if (P.gs === 2) {                                   // spin-to-holster
                 P.gsT += dt;
-                const u = Math.min(1, P.gsT / .6);
+                const u = Math.min(1, P.gsT / .45);
                 P.gsA = P.gsFrom + (P.gsTo - P.gsFrom) * (1 - (1 - u) * (1 - u));
-                P.gsK += (1 - P.gsK) * Math.min(1, dt * 12);
-                if (P.gsT >= .95) { P.gs = 0; P.gsA = 0; P.gsK = 0; P.gun = 0; P.gunK = 0; P.rl = 0 }
+                if (P.gsT < 0.75) {
+                    P.gsK += (1 - P.gsK) * Math.min(1, dt * 12);
+                } else {
+                    P.gsK += (0 - P.gsK) * Math.min(1, dt * 10);
+                    if (P.gun) { P.gun = 0; P.gunK = 0; P.rl = 0; }
+                }
+                if (P.gsT >= 1.05) { P.gs = 0; P.gsA = 0; P.gsK = 0; P.gun = 0; P.gunK = 0; P.rl = 0 }
                 return;
             }
 
