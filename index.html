@@ -1439,13 +1439,29 @@
                     // if (k.st.dead > 0) { knives.splice(i, 1); continue }
                     if (k.st.dead > 0) { dropKnife(k.st.x, -60 * S, k.F, 0); knives.splice(i, 1); continue }
                     const e = k.st;
-                    if (e.stab && e.hdp) {
+                    if (e.stab) {
                         k.drip = (k.drip || 0) - dt;
                         if (k.drip <= 0) {
                             k.drip = .06 + Math.random() * .1;
                             const ux = k.F * Math.cos(k.th), uy = Math.sin(k.th);
-                            const ex = e.x + e.hdp[0] * S - ux * 22 * S, ey = e.hdp[1] * S - uy * 22 * S;
-                            blood.push({ x: ex, y: ey, vx: (Math.random() - .5) * 40, vy: 0, r: 1.4 + Math.random() * 1.8, t: 0 });
+                            let ex, ey;
+                            if (k.stomachStab) {
+                                const stoP = e.stbStoP || [k.F * 10, -215];
+                                ex = e.x + stoP[0] * S - ux * 2 * S;
+                                ey = stoP[1] * S - uy * 2 * S;
+                            } else if (e.hdp) {
+                                ex = e.x + e.hdp[0] * S - ux * 22 * S;
+                                ey = e.hdp[1] * S - uy * 22 * S;
+                            }
+                            if (ex !== undefined) {
+                                blood.push({
+                                    x: ex, y: ey,
+                                    vx: (Math.random() - .5) * 26 + (k.stomachStab ? k.F * 6 : 0),
+                                    vy: 8 + Math.random() * 20,
+                                    r: 1.4 + Math.random() * 1.8,
+                                    t: 0
+                                });
+                            }
                         }
                     }
                     continue;
@@ -1557,10 +1573,11 @@
 
                 // wound + blood: stomach drip runs downward
                 if (k.st && k.st.stab) {
-                    if (k.stomachStab && k.st.stbStoP) {
+                    if (k.stomachStab) {
                         const e = k.st;
-                        const wx = e.x + e.stbStoP[0] * S - P.x + W / 2 - ux * 1 * S;
-                        const wy = gy + 4 + e.stbStoP[1] * S - uy * 18 * S;
+                        const stoP = e.stbStoP || [k.F * 10, -215];
+                        const wx = e.x + stoP[0] * S - P.x + W / 2 - ux * 1 * S;
+                        const wy = gy + 4 + stoP[1] * S - uy * 4 * S;
                         ctx.save(); ctx.fillStyle = '#8c0d14'; ctx.strokeStyle = '#8c0d14'; ctx.lineCap = 'round';
                         ctx.beginPath(); ctx.arc(wx, wy, 6 * S, 0, 7); ctx.fill();
                         ctx.lineWidth = 3.5 * S;
