@@ -1363,20 +1363,46 @@
             const S = CSc(), nw = KN.naturalWidth, nh = KN.naturalHeight, sc = KNIFE_LEN / nw * S, now = performance.now() / 1000;
             for (const e of ENEMIES) {
                 if (!e.fk || e.dead > 0) continue;
-                const sx = e.x + e.fk.dx - P.x + W / 2, sy = gy + 4 + fkY(e);
+                const k = e.fk, kF = k.F;
+                const sx = e.x + k.dx - P.x + W / 2, sy = gy + 4 + fkY(e);
                 if (sx < -150 || sx > W + 150) continue;
                 const w = footWound(e), wx = w[0] - P.x + W / 2, wy = gy + 4 + w[1];
-                // same tug cycle as drawChar: he strains, the handle shakes, then he slips
                 const c = (now * .7) % 1, pull = c < .5 ? sm(c / .5) : c < .6 ? 1 - sm((c - .5) / .1) : 0;
                 const wob = (Math.sin(now * 38) * .07 * pull + Math.sin(now * 9) * .01) * (e.fkK || 0);
+
+                // knife, pivoting at the wound, hidden below the foot line
                 ctx.save();
-                ctx.beginPath(); ctx.rect(0, 0, W, wy); ctx.clip();               // part below the foot line stays hidden
-                ctx.translate(wx, wy); ctx.rotate(wob); ctx.translate(-wx, -wy);  // pivot at the wound, not the handle
-                ctx.translate(sx, sy); ctx.scale(e.fk.F, 1); ctx.rotate(1.3); ctx.scale(sc, sc);
-                ctx.drawImage(KN, -nw * KGX, -nh * KGY);
-                ctx.restore();
+                ctx.beginPath(); ctx.rect(0, 0, W, wy); ctx.clip();
+                ctx.translate(wx, wy); ctx.rotate(wob); ctx.translate(-wx, -wy);
+                ctx.translate(sx, sy); ctx.scale(kF, 1); ctx.rotate(1.3); ctx.scale(sc, sc);
+                ctx.drawImage(KN, -nw * KGX, -nh * KGY); ctx.restore();
                 ctx.save(); ctx.fillStyle = '#8c0d14';
                 ctx.beginPath(); ctx.ellipse(wx, wy, 7 * S, 3.5 * S, 0, 0, 7); ctx.fill(); ctx.restore();
+
+                // both fists wrapped over the handle, forearms reaching to them
+                // one fist per hand, wrapped over the handle, joined to his real wrist
+                if ((e.fkK || 0) > .3 && e.armFullPts && e.fistInfo && FIST.complete) {
+                    const ux = kF * Math.cos(1.3), uy = Math.sin(1.3), cw = Math.cos(wob), sw = Math.sin(wob);
+                    const ox = e.x - P.x + W / 2, oy = gy + 4;
+                    ctx.save(); ctx.translate(ox, oy); ctx.scale(S, S);
+                    for (let i = 0; i < 2; i++) {
+                        const A = e.armFullPts[i], f = e.fistInfo[i]; if (!A || !f) continue;
+                        const al = i ? 24 : 9;                                   // distance down the handle (px, unscaled)
+                        let hx = sx + S * al * ux, hy = sy + S * al * uy;
+                        const dxw = hx - wx, dyw = hy - wy;
+                        hx = wx + dxw * cw - dyw * sw; hy = wy + dxw * sw + dyw * cw;
+                        let tx = (hx - ox) / S, ty = (hy - oy) / S;              // handle point, enemy space
+                        const el = A[1], wr = A[2];
+                        let dx = tx - el[0], dy = ty - el[1]; const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
+                        tx -= dx * 14; ty -= dy * 14;                            // wrist sits behind the fist so the fingers cover the handle
+                        ctx.strokeStyle = '#111'; ctx.lineCap = 'round'; ctx.lineWidth = 6;   // short link, wrist to fist
+                        ctx.beginPath(); ctx.moveTo(wr[0], wr[1]); ctx.lineTo(tx, ty); ctx.stroke();
+                        ctx.save(); ctx.translate(tx, ty); ctx.scale(f.F, 1);
+                        ctx.rotate(Math.atan2(dy, dx * f.F) - Math.PI / 2);
+                        ctx.drawImage(FIST, -FIST.naturalWidth / 2, -4); ctx.restore();
+                    }
+                    ctx.restore();
+                }
             }
         }
 
@@ -1455,6 +1481,7 @@
                     if (u < .1 || u > .9) fly(); else knifeFlight = fly
                 }
             }
+            if (CUR !== PL && CUR.fk && (CUR.fkK || 0) > .3) return;
             if (!FIST.complete) return;
             ctx.save(); ctx.translate(wr[0], wr[1]); ctx.scale(F, 1);
             ctx.rotate(hand - Math.PI / 2 - wristKick);
@@ -1725,12 +1752,12 @@
                         ang = ang * (1 - fz.grip) + a * fz.grip; flex = flex * (1 - fz.grip) + f * fz.grip;
                     }
                 }
-                if (fkk > .01 && P.fk) {            // both hands on the handle, trying to pull it out
-                    const G = P.fk, o = i ? 7 : -2;
-                    const px = G.dx / S + G.F * .267 * o, py = fkY(P) / S + .964 * o - 6 * fkPull;
+                if (fkk > .01 && P.fk) {
+                    const G = P.fk, o = i ? 24 : 9;
+                    const px = G.dx / S + G.F * .267 * o, py = fkY(P) / S + .964 * o;
                     const ddx = px - sh[0], ddy = py - sh[1], dl = Math.hypot(ddx, ddy) || 1;
                     const tr = Math.sin(now * 34 + i * 2) * 1.2 * fkPull;
-                    const [a, f] = ik2(sh, px - ddx / dl * 11 + tr, py - ddy / dl * 11 + tr * .6, F);
+                    const [a, f] = ik2(sh, px - ddx / dl * 12 + tr, py - ddy / dl * 12 + tr * .6, F);
                     ang = ang * (1 - fkk) + a * fkk; flex = flex * (1 - fkk) + f * fkk;
                 }
 
