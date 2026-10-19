@@ -326,7 +326,7 @@
                 fidgetTick(P, true, dt);
                 return;
             }
-            const dir = (P.fin > 0 || P.sm === 1 || P.fs > 0) ? 0 : (keys.ArrowRight || keys.KeyD ? 1 : 0) - (keys.ArrowLeft || keys.KeyA ? 1 : 0);
+            const dir = (P.fin > 0 || P.sm === 1 || P.fs > 0 || P.yk > 0) ? 0 : (keys.ArrowRight || keys.KeyD ? 1 : 0) - (keys.ArrowLeft || keys.KeyA ? 1 : 0);
             const run = keys.ShiftLeft || keys.ShiftRight;
             const max = run ? 520 : 190;
             const grounded = P.z >= 0;
@@ -355,7 +355,7 @@
             // ---- jump: buffering + coyote time + variable height ----
             if (grounded) P.coy = COYOTE; else P.coy = Math.max(0, P.coy - dt);
             if (P.jbuf > 0) {
-                if ((grounded || P.coy > 0) && !P.cs && !P.fin && !P.pk) { P.vz = -JUMP_V; P.jbuf = 0; P.coy = 0; P.grabbed = null; P.clast = 0 }  // jumping breaks the clinch
+                if ((grounded || P.coy > 0) && !P.cs && !P.fin && !P.pk && !(P.yk > 0)) { P.vz = -JUMP_V; P.jbuf = 0; P.coy = 0; P.grabbed = null; P.clast = 0 }  // jumping breaks the clinch
                 else P.jbuf = Math.max(0, P.jbuf - dt);
             }
             const g = GRAV * (P.vz < 0 && !keys.Space ? CUT_MULT : 1);
@@ -374,6 +374,7 @@
             }
             if (P.fin > 0) finTick(dt);
             fsTick(dt);
+            ykTick(dt);
             comboTick(dt);
             stabTick(dt);
             const target = Math.min(1, sp / 200) * (run && sp > 220 ? 1.25 : 1);
@@ -396,7 +397,7 @@
                 }
             }
             // ---- idle fidgets ----
-            fidgetTick(P, dir || keys.Space || keys.KeyJ || keys.KeyF || P.sm > 0 || P.cs > 0 || P.skid || !grounded || sp > 8 || P.tt > 0 || P.atk > 0 || P.thw > 0 || P.stbk > 0 || P.fs > 0, dt);
+            fidgetTick(P, dir || keys.Space || keys.KeyJ || keys.KeyF || P.sm > 0 || P.cs > 0 || P.skid || !grounded || sp > 8 || P.tt > 0 || P.atk > 0 || P.thw > 0 || P.stbk > 0 || P.fs > 0, dt || P.yk > 0);
         }
 
         // ================= COMBAT =================
@@ -769,7 +770,52 @@
 
         // ================= REVERSE-GRIP FOOT STAB (J with knife in reverse grip, next to an NPC) =================
         const FS_WIND = .16, FS_HIT = .30, FS_HOLD = .90, FS_DUR = 1.20;
-        const FS_STUCK = 6;        // seconds he stays rooted with the knife in his foot
+        const FS_STUCK = 1e9;      // seconds he stays rooted with the knife in his foot
+
+        // ---- yank the knife out of his foot (E) ----
+        const YK_GRIP = .3, YK_POP = .85, YK_END = 1.25;
+        const YK_PULL = 58;      // px (unscaled) the knife slides out along its blade
+        P.yk = 0; P.ykE = null; P.ykDone = 0; P.ykP = 0;
+
+        function startYank(e) {
+            if (P.skid) endSkid();
+            P.face = e.x >= P.x ? 1 : -1;
+            P.yk = .0001; P.ykE = e; P.ykDone = 0; P.ykP = 0;
+            P.idle = 0; P.fid = 0; P.abuf = 0; P.vx = 0;
+        }
+        function ykW() {   // crouch / arm envelope 0..1
+            const t = P.yk;
+            return t < YK_GRIP ? sm(t / YK_GRIP) : t < YK_POP ? 1 : 1 - sm((t - YK_POP) / (YK_END - YK_POP));
+        }
+        function ykPull(t) {   // resists, jerks, then pops free
+            if (t < YK_GRIP) return 0;
+            const u = Math.min(1, (t - YK_GRIP) / (YK_POP - YK_GRIP));
+            const base = u < .55 ? .25 * sm(u / .55) : .25 + .75 * sm((u - .55) / .45);
+            return YK_PULL * base + (u < 1 ? Math.sin(t * 45) * 1.6 * Math.sin(Math.PI * u) : 0);
+        }
+        function ykPose(Q) {   // same crouch as the foot stab, rising a little as he pulls
+            const pf = Math.min(1, (P.ykP || 0) / YK_PULL);
+            return {
+                w: ykW(), a0: 2.3, f0: .7, a1: -.6, f1: .3,
+                lean: .8 - .25 * pf, hipX: 12, hipY: 55 - 28 * pf, arch: .06, hx: 6, hy: 4,
+                l0: [40, 0, 0], l1: [-34, 0, 0], st: STEPS[0], sw: 0, ik: 0
+            };
+        }
+        function ykTick(dt) {
+            if (P.yk <= 0) return;
+            const E = P.ykE, S = CSc();
+            P.yk += dt; P.abuf = 0; P.jbuf = 0; P.vx *= Math.max(0, 1 - dt * 14);
+            if (!P.ykDone) {
+                if (!E || !E.fk) { P.yk = 0; P.ykE = null; return }          // he died / knife already dropped
+                const tx = E.x - P.face * FS_DIST * S;                        // step in to his foot
+                P.x += (tx - P.x) * Math.min(1, dt * 8);
+                const np = ykPull(P.yk), dp = np - P.ykP; P.ykP = np;         // slide the knife out along its blade
+                E.fk.dx -= E.fk.F * .267 * dp * S; E.fk.y -= .964 * dp * S;
+                if (P.yk >= YK_POP) { P.ykDone = 1; yankFootKnife(E) }
+            }
+            if (P.yk >= YK_END) { P.yk = 0; P.ykE = null; P.ykDone = 0; P.ykP = 0 }
+        }
+
         const FS_TIP_X = 17;   // extra px the stab lands toward his toes (toward you)
         const FS_TIP_Y = 14;   // extra px the stab lands lower (toward the ground)
         const FS_RANGE = 230;   // how close an NPC must be to trigger it (unscaled px)
@@ -1008,6 +1054,7 @@
 
 
         function comboPose(Q) {
+            if (Q === PL && Q.yk > 0) return ykPose(Q);
             if (Q === PL && Q.fs > 0) return footStabPose(Q);
             if (!Q.cs || Q.cs < 1 || Q.cs > STEPS.length) {
                 if (Q === PL && PL.z >= 0 && PL.clast >= 1 && PL.clast <= 4 && PL.cgr > 0) {   // fists stay up while the combo window is open
@@ -1085,7 +1132,7 @@
         // ---- enemies ----
         function updateEnemy(n, dt) {
             if (n.fk || n.fkPend) {
-                if (n.dead > 0 || n.dying > 0 || (n.fkT -= dt) <= 0) freeFootKnife(n);
+                if (n.dead > 0 || n.dying > 0) freeFootKnife(n);   // only death frees it now; no timer
             }
 
             if (n.dead > 0) { n.dead -= dt; if (n.dead <= 0) respawn(n); return }
@@ -1346,7 +1393,7 @@
             e.fk = null; e.fkT = 0; e.fkPend = false;
             P.face = e.x >= P.x ? 1 : -1; if (P.skid) endSkid();
             P.idle = 0; P.fid = 0; P.abuf = 0;
-            P.kn = 1; P.kt = 0; P.rv = 0; hasKnife = true;
+            P.kn = 1; P.kt = .7; P.rv = 0; hasKnife = true;   // already half-drawn, so there's no blink
             const dmg = 8;
             e.hp -= dmg; e.bar = 2.5; e.kdir = F; e.hurt = Math.max(e.hurt, .5); e.wait = 1;
             combo.n++; combo.dmg += dmg; combo.t = 1.8; combo.pop = 1.3;
@@ -1760,6 +1807,12 @@
                     const [a, f] = ik2(sh, px - ddx / dl * 12 + tr, py - ddy / dl * 12 + tr * .6, F);
                     ang = ang * (1 - fkk) + a * fkk; flex = flex * (1 - fkk) + f * fkk;
                 }
+                if (P === PL && P.yk > 0 && P.ykE && P.ykE.fk) {      // both hands on the knife handle while pulling
+                    const E = P.ykE, w = ykW(), o = i ? 12 : 0;
+                    const gx = (E.x + E.fk.dx - P.x) / S + E.fk.F * .267 * o, gy = fkY(E) / S + .964 * o;
+                    const [a, f] = ikTo(sh, gx, gy, F);
+                    ang = ang * (1 - w) + a * w; flex = flex * (1 - w) + f * w;
+                }
 
                 wristKick = (i === 0 && P === PL && P.gunK > .02) ? RC_WRIST * P.recoil * P.recoil + (P.rl > 0 ? rlTilt(P.rl / RELOAD_T) : 0) : 0;
                 arm(sh, ang, flex, F, (i === 0 && !P.pk) ? P.kt : 0, Math.max(pq, cb ? cb.w : 0), (i === 0 && !P.pk) ? P.tt / TOSS_T : 0);
@@ -2100,7 +2153,7 @@
         }
 
         function pressFinish() {
-            if (P.fin > 0 || P.cs > 0 || P.tt > 0 || P.thw > 0 || P.z < 0) return;
+            if (P.yk > 0 || P.fin > 0 || P.cs > 0 || P.tt > 0 || P.thw > 0 || P.z < 0) return;
             if (P.gun || P.gs === 2) { banner.t = .6; banner.text = 'HOLSTER GUN FIRST (G)'; return }
             if (P.fs === 0 && P.stbk === 0 && P.pk === 0) {
                 const S0 = CSc(); let fe = null, fd = 1e9;
@@ -2109,7 +2162,7 @@
                     const d = Math.abs(e.x - P.x);
                     if (d < 190 * S0 && d < fd) { fd = d; fe = e }
                 }
-                if (fe) { yankFootKnife(fe); return }
+                if (fe) { startYank(fe); return }
             }
             const S = CSc(); let best = null, bd = 1e9;
             for (const e of ENEMIES) {
