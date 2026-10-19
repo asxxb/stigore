@@ -1228,7 +1228,7 @@
 
 
                 const gripK = P.stomachStabbed ? Math.min(1, (P.kneelK || 0) / 0.12) : kk;
-                if (gripK > .01 && P.stab && !isGrabbed && !P.fst) {
+                if (gripK > .01 && P.stab && !isGrabbed && (!P.fst || (P.fst === 1 && P.stomachStabbed))) {
                     // stuckGrip now handles both head and stomach anchors
                     const anchor = P.stbStoP || P.hdp;
                     if (anchor) {
@@ -1242,15 +1242,38 @@
                     }
                 }
                 if (fk > .01) { ang = ang * (1 - fk) + 1.35 * fk; flex = flex * (1 - fk) + .2 * fk }   // arms flop forward when he falls
-                if (fz && fz.grip > .01 && P.finE && (P.finE.hdp || P.finE.stbStoP)) {                                    // player: both hands on the handle
-                    const E = P.finE, G = stuckGrip(E, fz.pull * FIN_PULL), ox = (E.x - P.x) / S;
-                    const off = i ? 10 : -6;
-                    const px = ox + G.gx + G.ux * off, py = G.gy + G.uy * off;
-                    const ddx = px - sh[0], ddy = py - sh[1], dl = Math.hypot(ddx, ddy) || 1;
+                if (fz && fz.grip > .01 && P.finE && (P.finE.hdp || P.finE.stbStoP)) {
+                    const E = P.finE, ox = (E.x - P.x) / S;
                     const hv = (keys.KeyE && !P.finDone) ? 1 : 0;
-                    const tr = fz.pull < 1 ? Math.sin(now * 40 + i * 2) * (1.2 * fz.pull + 2.4 * hv) : 0;
-                    const [a, f] = ik2(sh, px - ddx / dl * 11 + tr, py - ddy / dl * 11 + tr * .6, F);
-                    ang = ang * (1 - fz.grip) + a * fz.grip; flex = flex * (1 - fz.grip) + f * fz.grip;
+                    if (E.stomachStabbed) {
+                        // stomach stab: one hand pulls knife, other hand grips opponent's neck
+                        if (i === 0) {
+                            // dominant hand pulls the knife handle
+                            const G = stuckGrip(E, fz.pull * FIN_PULL);
+                            const px = ox + G.gx - G.ux * 2, py = G.gy - G.uy * 2;
+                            const ddx = px - sh[0], ddy = py - sh[1], dl = Math.hypot(ddx, ddy) || 1;
+                            const tr = fz.pull < 1 ? Math.sin(now * 40) * (1.2 * fz.pull + 2.4 * hv) : 0;
+                            const [a, f] = ik2(sh, px - ddx / dl * 11 + tr, py - ddy / dl * 11 + tr * .6, F);
+                            ang = ang * (1 - fz.grip) + a * fz.grip; flex = flex * (1 - fz.grip) + f * fz.grip;
+                        } else {
+                            // off-hand grips and pins opponent's neck
+                            const nx = ox + (E.hdp ? E.hdp[0] + E.face * 8 : F * 45);
+                            const ny = (E.hdp ? E.hdp[1] + 28 : -255);
+                            const ndx = nx - sh[0], ndy = ny - sh[1], ndl = Math.hypot(ndx, ndy) || 1;
+                            const chokeTrem = fz.pull < 1 ? Math.sin(now * 30) * (0.4 + 0.6 * hv) : 0;
+                            const [na, nf] = ik2(sh, nx - ndx / ndl * 12 + chokeTrem, ny - ndy / ndl * 12, F);
+                            ang = ang * (1 - fz.grip) + na * fz.grip; flex = flex * (1 - fz.grip) + nf * fz.grip;
+                        }
+                    } else {
+                        // head stab: both hands grip the handle
+                        const G = stuckGrip(E, fz.pull * FIN_PULL);
+                        const off = i ? 10 : -6;
+                        const px = ox + G.gx + G.ux * off, py = G.gy + G.uy * off;
+                        const ddx = px - sh[0], ddy = py - sh[1], dl = Math.hypot(ddx, ddy) || 1;
+                        const tr = fz.pull < 1 ? Math.sin(now * 40 + i * 2) * (1.2 * fz.pull + 2.4 * hv) : 0;
+                        const [a, f] = ik2(sh, px - ddx / dl * 11 + tr, py - ddy / dl * 11 + tr * .6, F);
+                        ang = ang * (1 - fz.grip) + a * fz.grip; flex = flex * (1 - fz.grip) + f * fz.grip;
+                    }
                 }
 
                 wristKick = (i === 0 && P === PL && P.gunK > .02) ? RC_WRIST * P.recoil * P.recoil + (P.rl > 0 ? rlTilt(P.rl / RELOAD_T) : 0) : 0;
@@ -1531,7 +1554,7 @@
                     }
                 }
                 // redraw fists and forearm on top of the knife handle so they grip OVER the knife
-                const canRedrawFists = k.st && k.st.fistInfo && !k.st.fst && FIST.complete &&
+                const canRedrawFists = k.st && k.st.fistInfo && (!k.st.fst || (k.st.fst === 1 && k.stomachStab)) && FIST.complete &&
                     (k.stomachStab ? ((k.st.kneelK || 0) > .02 || k.st.stab) : ((k.st.kneelK || 0) > .4));
                 if (canRedrawFists) {
                     const e = k.st;
