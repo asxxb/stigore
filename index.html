@@ -839,19 +839,63 @@
             if (n.down > 0 || (n.dying > 0 && grounded)) tgt = n.kdir * Math.PI / 2;
             else if (!grounded) tgt = n.kdir * (n.tumble ? Math.PI / 2 : .5);
             n.rot += (tgt - n.rot) * Math.min(1, dt * (n.down > 0 ? 14 : 9));
-            // stomach stab: slight forward lean (0.22), full kneel only for head stab
+            // stomach stab: slight forward lean (0.22) while stabbed; full kneel (1.0) once knife is pulled out or for head stab
             const kneelTarget = (n.stab || n.fst) && grounded && n.down <= 0 && n.dying <= 0
-                ? (n.stomachStabbed ? 0.22 : 1) : 0;
-            n.kneelK += (kneelTarget - n.kneelK) * Math.min(1, dt * (n.stab ? 7 : 12));
-            if (n.fst === 2) {                                   // knife is out: upper body falls forward
+                ? ((n.stomachStabbed && n.fst !== 2) ? 0.22 : 1) : 0;
+            n.kneelK += (kneelTarget - n.kneelK) * Math.min(1, dt * (n.stab ? 7 : (n.fst === 2 ? 8 : 12)));
+            if (n.fst === 2) {
                 const Sf = CSc();
-                n.fallT += dt; n.fallK = Math.min(1, n.fallT / .4); n.fallK *= n.fallK;
-                if (n.fallT > .4 && !n.thud) {
-                    n.thud = 1; shake = Math.max(shake, 9);
-                    burst(n.x + n.face * 70 * Sf, -6, 16, 300, n.face);
-                    impacts.push({ x: n.x + n.face * 70 * Sf, y: -6, t: 0, life: .25, s: 100, seed: Math.random() * 50 });
+                n.fallT += dt;
+                n.vx = 0;
+
+                if (n.stomachStabbed) {
+                    // Drip blood from stomach wound onto the floor while on knees
+                    if (n.fallT < 3.8) {
+                        n.drip = (n.drip || 0) - dt;
+                        if (n.drip <= 0) {
+                            n.drip = 0.12 + Math.random() * 0.16;
+                            const sto = n.stbStoP || [0, -215];
+                            const bx = n.x + sto[0] * Sf + n.face * 6 * Sf;
+                            const by = sto[1] * Sf;
+                            blood.push({
+                                x: bx, y: by,
+                                vx: (Math.random() - .5) * 20,
+                                vy: 8 + Math.random() * 16,
+                                r: 1.4 + Math.random() * 1.5,
+                                t: 0
+                            });
+                        }
+                    }
+
+                    // Stage 1: Fall onto knees on the ground and remain for 3.5 seconds
+                    if (n.fallT < 3.5) {
+                        n.fallK = 0;
+                    } else {
+                        // Stage 2: After 3.5s, collapse and lay completely flat on the ground as dead
+                        const progress = Math.min(1, (n.fallT - 3.5) / 0.65);
+                        n.fallK = sm(progress);
+                        if (n.fallT > 4.1 && !n.thud) {
+                            n.thud = 1; shake = Math.max(shake, 6);
+                            burst(n.x + n.face * 70 * Sf, -6, 14, 220, n.face);
+                            impacts.push({ x: n.x + n.face * 70 * Sf, y: -6, t: 0, life: .25, s: 80, seed: Math.random() * 50 });
+                        }
+                    }
+
+                    // Lay completely dead on the ground for several seconds before clean respawn
+                    if (n.fallT > 8.0) {
+                        respawn(n);
+                        return;
+                    }
+                } else {
+                    // Head stab legacy collapse
+                    n.fallK = Math.min(1, n.fallT / .4); n.fallK *= n.fallK;
+                    if (n.fallT > .4 && !n.thud) {
+                        n.thud = 1; shake = Math.max(shake, 9);
+                        burst(n.x + n.face * 70 * Sf, -6, 16, 300, n.face);
+                        impacts.push({ x: n.x + n.face * 70 * Sf, y: -6, t: 0, life: .25, s: 100, seed: Math.random() * 50 });
+                    }
+                    if (n.fallT > 2.5) { killBurst(n); return; }
                 }
-                if (n.fallT > 1.5) { banner.t = 1.1; banner.text = 'FINISHED!'; killBurst(n); return }
             }
             let dir = 0; const dx = P.x - n.x, near = Math.abs(dx) < 240;
             if (!stunned && !n.stab && !n.fst) {
@@ -882,7 +926,7 @@
                 const sx = n.x - P.x + W / 2;
                 if (Math.abs(sx - W / 2) > W / 2 + 300) continue;
                 drawChar(sx, gy, n);
-                if (n.bar > 0 && n.dying <= 0) {
+                if (n.bar > 0 && n.dying <= 0 && n.fst !== 2) {
                     ctx.save(); ctx.globalAlpha = Math.min(1, n.bar); ctx.strokeStyle = '#111'; ctx.fillStyle = '#111'; ctx.lineWidth = 2;
                     const bx = sx - 40, by = gy - ((n.hat ? 400 : 360) - 90 * n.kneelK) * S + Math.min(0, n.z);
                     ctx.strokeRect(bx, by, 80, 9); ctx.fillRect(bx + 2, by + 2, 76 * Math.max(0, n.hp / n.maxhp), 5); ctx.restore();
@@ -1105,7 +1149,7 @@
             if (isGrabbed) hipX = -F * 8;
             hipX += Math.sin(now * 17) * 1.3 * kk;
             const grabLean = isGrabbed ? F * (.16 + Math.sin(now * 21) * .012) : 0;
-            const l = P.lean * (.2 + .8 * R) * BODY_LEAN * (1 - sk) - F * .5 * sk + (z < 0 ? .1 * F : 0) + .3 * pq * F - F * .2 * st + Math.sin(now * 30) * .012 * st + F * cbLean - F * (isGrabbed ? .1 : .4) * hk + grabLean + F * kk * KNEEL_BEND + Math.sin(now * 9) * .035 * kk + (fz ? F * fz.lean : 0) + F * fk * .4
+            const l = P.lean * (.2 + .8 * R) * BODY_LEAN * (1 - sk) - F * .5 * sk + (z < 0 ? .1 * F : 0) + .3 * pq * F - F * .2 * st + Math.sin(now * 30) * .012 * st + F * cbLean - F * (isGrabbed ? .1 : .4) * hk + grabLean + F * kk * KNEEL_BEND + Math.sin(now * 9) * .035 * kk * (1 - fk) + (fz ? F * fz.lean : 0) + F * fk * 0.47
                 + ((P !== PL && P.fst === 1 && PL.fin > 0 && !P.stomachStabbed) ? F * .1 * finK(PL.fin).foot : 0) - F * .07 * (P === PL ? P.recoil : 0);
             const rot = (x, y) => [hipX + x * Math.cos(l) - y * Math.sin(l), hipY + x * Math.sin(l) + y * Math.cos(l)];
             ctx.save(); ctx.translate(cx, gy + 4); ctx.scale(S, S); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
@@ -1263,6 +1307,17 @@
                         const [a, f] = ik2(sh, px - ddx / dl * 11 + trem, py - ddy / dl * 11 + trem, F);
                         ang = ang * (1 - gripK) + a * gripK; flex = flex * (1 - gripK) + f * gripK;
                     }
+                }
+                // After knife is pulled: while kneeling on ground, clutch stomach wound
+                if (P.fst === 2 && P.stomachStabbed && fk < .95) {
+                    const sto = P.stbStoP || rot(0, -38);
+                    const off = i ? 8 : -6;
+                    const px = sto[0] + F * off, py = sto[1];
+                    const ddx = px - sh[0], ddy = py - sh[1], dl = Math.hypot(ddx, ddy) || 1;
+                    const trem = Math.sin(now * 26 + i * 2) * 1.5;
+                    const [a, f] = ik2(sh, px - ddx / dl * 10 + trem, py - ddy / dl * 10 + trem * .5, F);
+                    const clutchW = (1 - fk);
+                    ang = ang * (1 - clutchW) + a * clutchW; flex = flex * (1 - clutchW) + f * clutchW;
                 }
                 if (fk > .01) { ang = ang * (1 - fk) + 1.35 * fk; flex = flex * (1 - fk) + .2 * fk }   // arms flop forward when he falls
                 if (fz && fz.grip > .01 && P.finE && (P.finE.hdp || P.finE.stbStoP)) {
