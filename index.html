@@ -88,7 +88,7 @@
 <body>
     <canvas id="c"></canvas>
     <div id="hud">A / D or ← → to walk · Shift to run · Space to jump · Shift+Space (running): parkour tumble · K: knife
-        · J: stab · L: throw
+        · J: stab · L: throw · V: man / woman
     </div>
     <div class="btns">
         <div><span class="b" id="bl">◀</span><span class="b" id="br">▶</span></div>
@@ -97,6 +97,8 @@
             style="position:fixed; right:18px; bottom:calc(env(safe-area-inset-bottom,0px) + 98px)">▼</span>
         <span class="b" id="bh"
             style="position:fixed; right:18px; bottom:calc(env(safe-area-inset-bottom,0px) + 178px)">H</span>
+        <span class="b" id="bv"
+            style="position:fixed; left:18px; bottom:calc(env(safe-area-inset-bottom,0px) + 98px)">♀</span>
     </div>
     <script>
         const cv = document.getElementById('c'), ctx = cv.getContext('2d');
@@ -125,6 +127,7 @@
             keys[e.code] = 1;
             if (e.code === 'Space') e.preventDefault();
             if (e.repeat) return;
+            if (e.code === 'KeyV') { P.female = !P.female; banner.t = .8; banner.text = P.female ? 'WOMAN' : 'MAN'; }
             if (e.code === 'KeyC') pressSmoke();
             if (P.sm === 1) return;                 // no actions while lighting up
             if (P.sgp > 0) return;    // no actions mid-stomp
@@ -151,6 +154,7 @@
         hold('bd', 'ArrowDown');
         document.getElementById('bp').addEventListener('pointerdown', e => { e.preventDefault(); pressAtk() });
         document.getElementById('bh').addEventListener('pointerdown', e => { e.preventDefault(); pressHorse() });
+        document.getElementById('bv').addEventListener('pointerdown', e => { e.preventDefault(); P.female = !P.female });
 
 
         const P = {
@@ -163,6 +167,7 @@
         // knife states: kn 0 = away, 1 = forward grip, 2 = reverse grip (blade to the back)
         let CUR = P; const PL = P;   // CUR = character being drawn/animated (player or NPC)
         P.thw = 0; P.thr = 0;           // throw timer / released flag
+        P.female = false;
         P.stbk = 0; P.stbHit = false;  // knife stab timer / hit flag
         P.fin = 0; P.finE = null; P.finDone = 0;
         const THR_T = .32;              // throw animation length
@@ -1884,6 +1889,46 @@
             }
             ctx.restore();
         }
+
+        // ---- woman: ponytail (drawn BEHIND the head) ----
+        function femaleHairBack(hd, F, vx, now) {
+            const run = Math.min(1, Math.abs(vx) / 520);
+            const root = [hd[0] - F * 25, hd[1] - 9];
+            const sway = Math.sin(now * 3) * 3 + Math.sin(now * 13) * 3 * run;
+            const tip = [root[0] - F * (14 + 34 * run), root[1] + 44 - 26 * run + sway];
+            const mid = [root[0] - F * (20 + 14 * run), root[1] + 12 - 8 * run + sway * .4];
+            ctx.save();
+            ctx.fillStyle = '#111'; ctx.strokeStyle = '#111'; ctx.lineWidth = 2;
+            ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(root[0], root[1] - 7);
+            ctx.quadraticCurveTo(mid[0], mid[1] - 10, tip[0], tip[1]);
+            ctx.quadraticCurveTo(mid[0] + F * 6, mid[1] + 10, root[0] + F * 2, root[1] + 7);
+            ctx.closePath(); ctx.fill(); ctx.stroke();
+            ctx.strokeStyle = '#b3261e'; ctx.lineWidth = 3.2;                 // hair tie
+            ctx.beginPath(); ctx.moveTo(root[0] - F, root[1] - 6); ctx.lineTo(root[0] + F, root[1] + 6); ctx.stroke();
+            ctx.strokeStyle = PAPER; ctx.globalAlpha = .45; ctx.lineWidth = 1;   // strand highlight
+            ctx.beginPath(); ctx.moveTo(root[0] - F * 4, root[1]);
+            ctx.quadraticCurveTo(mid[0], mid[1], tip[0] + F * 3, tip[1] - 4); ctx.stroke();
+            ctx.restore();
+        }
+
+        // ---- woman: hair cap, fringe, eye, lashes, lips (drawn ON TOP of the head) ----
+        function femaleHairFront(hd, F) {
+            ctx.save(); ctx.translate(hd[0], hd[1]); ctx.scale(F, 1);
+            ctx.fillStyle = '#111'; ctx.strokeStyle = '#111'; ctx.lineWidth = 2.5; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.arc(0, 0, 24.5, Math.PI * .72, Math.PI * 1.9);
+            ctx.quadraticCurveTo(10, -16, -2, -5);          // sweeping fringe
+            ctx.quadraticCurveTo(-12, 2, -15.7, 18.9);
+            ctx.closePath(); ctx.fill(); ctx.stroke();
+            ctx.lineWidth = 2;                               // eye + lashes
+            ctx.beginPath(); ctx.arc(13, -1, 1.7, 0, 7); ctx.fill();
+            ctx.beginPath(); ctx.moveTo(10, -3); ctx.lineTo(17, -6); ctx.moveTo(11, -4); ctx.lineTo(14, -8); ctx.stroke();
+            ctx.fillStyle = '#b3261e'; ctx.beginPath(); ctx.ellipse(18, 10, 3.2, 1.6, 0, 0, 7); ctx.fill();   // lips
+            ctx.restore();
+        }
+
         function drawChar(cx, gy, P) {
             CUR = P;
             const F = P.face, S = CSc(), z = P.z / S, sp = Math.abs(P.vx), R = Rf();
@@ -2176,6 +2221,26 @@
                 }
             } else {
                 ctx.moveTo(hipX, hipY); ctx.quadraticCurveTo(cp[0], cp[1], nk[0], nk[1]); ctx.stroke();
+            }
+            if (P.female && !P.gutDead) {
+                const spd = Math.min(1, sp / 520);
+                const fl = 6 + 14 * spd + Math.sin(now * 4) * 1.5 + Math.sin(now * 17) * 2 * spd;   // trailing flutter
+                const hemY = 46 + (z < 0 ? -10 : 0);
+                const wF = rot(F * 6, -22), wB = rot(-F * 6, -22);
+                const hF = rot(F * (30 - fl * .35), hemY), hB = rot(-F * (30 + fl), hemY);
+                const hm = rot(0, hemY + 9 + Math.sin(now * 5) * 1.5);
+                ctx.save();
+                ctx.fillStyle = '#7a2f3b'; ctx.strokeStyle = '#111'; ctx.lineWidth = 3; ctx.lineJoin = 'round';
+                ctx.beginPath();
+                ctx.moveTo(wF[0], wF[1]);
+                ctx.lineTo(hF[0], hF[1]);
+                ctx.quadraticCurveTo(hm[0], hm[1], hB[0], hB[1]);
+                ctx.lineTo(wB[0], wB[1]);
+                ctx.closePath(); ctx.fill(); ctx.stroke();
+                const f0 = rot(0, -20);                                    // centre fold line
+                ctx.globalAlpha = .35; ctx.lineWidth = 1.5;
+                ctx.beginPath(); ctx.moveTo(f0[0], f0[1]); ctx.lineTo(hm[0], hm[1]); ctx.stroke();
+                ctx.restore();
             }
             if (P === PL) {
                 const hp = rot(F * 8, -14);
@@ -2489,6 +2554,7 @@
                 ctx.fillStyle = '#e9786c'; ctx.beginPath(); ctx.ellipse(nk[0], nk[1] - 2, 5, 3, l, 0, 7); ctx.fill();
                 ctx.fillStyle = '#f1e9da'; ctx.beginPath(); ctx.arc(nk[0], nk[1] - 2, 2.4, 0, 7); ctx.fill();   // spine bone
             } else {
+                if (P.female) femaleHairBack(hd, F, P.vx, now);
                 ctx.fillStyle = P.dark ? '#111' : PAPER; ctx.beginPath(); ctx.arc(hd[0], hd[1], 24, 0, 7); ctx.fill();
                 ctx.strokeStyle = '#111'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(hd[0], hd[1], 24, 0, 7); ctx.stroke();
                 ctx.lineWidth = 2.2; ctx.beginPath(); ctx.arc(hd[0] + F * 2.5 + L * 6, hd[1] - 1, 23.5, .2 + L * .7, 5.6 + L * .7); ctx.stroke();
@@ -2497,6 +2563,7 @@
                     ctx.beginPath(); ctx.moveTo(hd[0] + F * 4, hd[1] - 5); ctx.lineTo(hd[0] + F * 15, hd[1] + 1); ctx.stroke();
                     ctx.beginPath(); ctx.moveTo(hd[0] + F * 7, hd[1] + 5); ctx.lineTo(hd[0] + F * 13, hd[1] + 5); ctx.stroke()
                 }
+                if (P.female) femaleHairFront(hd, F);
             }
             if (P === PL && P.sm) drawSmokeProps(F, hd, S, now);
             if (cb && cb.sw > .02) { if (cb.st.line !== undefined) punchLines(P.fistInfo[cb.st.line], cb.sw); else swoosh(sh[0], sh[1], F, cb.st, cb.sw) }
@@ -3825,6 +3892,7 @@
                     if (h && h.d < bd) { bd = h.d; best = { e, h } }
                 }
                 if (best) { gunHit(b, best.e, best.h, S); bullets.splice(i, 1); continue }
+                if (birdsHit(px, py, b.x, b.y, b.F, 20)) { bullets.splice(i, 1); continue }
                 if (b.y > 0) { burst(b.x, -2, 6, 180, b.F); bullets.splice(i, 1); continue }
                 if (Math.abs(b.x - b.x0) > GUN_RANGE || b.age > 1.2) bullets.splice(i, 1);
             }
@@ -4065,6 +4133,7 @@
                     if (h && h.d < bd) { bd = h.d; best = { e, h } }
                 }
                 if (best) { pelletHit(p, best.e, best.h); pellets.splice(i, 1); continue }
+                if (birdsHit(px, py, p.x, p.y, p.F, 22)) { pellets.splice(i, 1); continue }
                 if (p.y > 0) { burst(p.x, -2, 2, 140, p.F); pellets.splice(i, 1); continue }
                 if (Math.abs(p.x - p.x0) > SG_RANGE || p.age > .6) pellets.splice(i, 1);
             }
@@ -6148,6 +6217,139 @@
         }
 
 
+
+
+
+        // ================= BIRDS (flying, shootable) =================
+        const BIRD_MAX = 6;                 // max birds flying at once
+        const birds = [], feathers = [];
+        let birdT = 1.5, birdKills = 0;
+
+        function spawnBird(x, y, vx) {
+            birds.push({
+                x, y, by: y, vx, F: Math.sign(vx) || 1, s: .8 + Math.random() * .4,
+                ph: Math.random() * 6, seed: Math.random() * 100,
+                st: 0,                       // 0 flying, 1 falling, 2 dead on the ground
+                vy: 0, rot: 0, vr: 0, t: 0
+            });
+        }
+        function spawnBirdGroup() {
+            const side = Math.random() < .5 ? -1 : 1;
+            const x0 = P.x + side * (W / 2 + 140 + Math.random() * 160);
+            const y0 = -(.44 + Math.random() * .2) * H;           // high enough to need aiming up
+            const vx = -side * (90 + Math.random() * 120);
+            const n = Math.random() < .45 ? 1 : 2 + (Math.random() * 2 | 0);
+            for (let i = 0; i < n; i++) {
+                spawnBird(x0 + side * i * (50 + Math.random() * 40),
+                    Math.max(-.7 * H, Math.min(-.4 * H, y0 + (Math.random() - .5) * 70)),
+                    vx * (.9 + Math.random() * .2));
+            }
+        }
+        function puffFeathers(x, y, n, F) {
+            for (let i = 0; i < n && feathers.length < 150; i++) feathers.push({
+                x, y, vx: F * (40 + Math.random() * 160) + (Math.random() - .5) * 180, vy: -(30 + Math.random() * 200),
+                rot: Math.random() * 6, vr: (Math.random() - .5) * 10, s: 3 + Math.random() * 3,
+                t: 0, life: 2.2 + Math.random() * 1.5, seed: Math.random() * 6, dark: Math.random() < .65
+            });
+        }
+        function killBird(b, F) {
+            b.st = 1; b.t = 0; b.vy = -120;
+            b.vx = F * 220 + b.vx * .3;
+            b.vr = (Math.random() < .5 ? -1 : 1) * (7 + Math.random() * 6);
+            puffFeathers(b.x, b.y, 14, F);
+            burst(b.x, b.y, 6, 180, F); spray(b.x, b.y, 8, 220, F);
+            birdKills++; shake = Math.max(shake, 2);
+            banner.t = .7; banner.text = 'BIRD DOWN!';
+        }
+        // segment (previous -> current bullet position) vs. bird circle, so fast bullets can't tunnel through
+        function birdsHit(x0, y0, x1, y1, F, rad) {
+            const S = CSc();
+            for (const b of birds) {
+                if (b.st !== 0) continue;
+                const r = rad * S * b.s, dx = x1 - x0, dy = y1 - y0, l2 = dx * dx + dy * dy || 1;
+                let t = ((b.x - x0) * dx + (b.y - y0) * dy) / l2; t = Math.max(0, Math.min(1, t));
+                const cx = x0 + dx * t, cy = y0 + dy * t;
+                if ((cx - b.x) ** 2 + (cy - b.y) ** 2 < r * r) { killBird(b, F); return true; }
+            }
+            return false;
+        }
+        function birdTick(dt) {
+            const S = CSc();
+            let flying = 0; for (const b of birds) if (b.st === 0) flying++;
+            if (flying < BIRD_MAX) { birdT -= dt; if (birdT <= 0) { spawnBirdGroup(); birdT = 3 + Math.random() * 5; } }
+            for (let i = birds.length - 1; i >= 0; i--) {
+                const b = birds[i]; b.t += dt;
+                if (b.st === 0) {
+                    b.x += b.vx * dt; b.ph += dt * (10 + 2 * Math.sin(b.seed));
+                    b.y = b.by + Math.sin(b.t * 1.7 + b.seed) * 16;
+                    if (Math.abs(b.x - P.x) > W / 2 + 550) birds.splice(i, 1);
+                } else if (b.st === 1) {
+                    b.vy += 1500 * dt; b.vx *= Math.max(0, 1 - 1.2 * dt);
+                    b.x += b.vx * dt; b.y += b.vy * dt; b.rot += b.vr * dt;
+                    if (b.y >= -7 * S * b.s) {
+                        b.y = -7 * S * b.s; b.st = 2; b.t = 0; b.vx = 0;
+                        b.rot = Math.PI + (b.F > 0 ? .15 : -.15);        // lies belly up
+                        burst(b.x, -3, 6, 160, b.F); shake = Math.max(shake, 1.5);
+                        puffFeathers(b.x, -8, 6, b.F);
+                        if (splats.length < 160) splats.push({ x: b.x, w: 12 * S, h: 3 * S, t: 0 });
+                    }
+                } else if (b.t > 12) birds.splice(i, 1);
+            }
+            for (let i = feathers.length - 1; i >= 0; i--) {
+                const f = feathers[i]; f.t += dt;
+                f.vy = Math.min(70, f.vy + 300 * dt);                      // floats down slowly
+                f.vx += Math.sin(f.t * 6 + f.seed) * 120 * dt; f.vx *= Math.max(0, 1 - 1.2 * dt);
+                f.x += f.vx * dt; f.y += f.vy * dt; f.rot += f.vr * dt;
+                if (f.y >= -2) { f.y = -2; f.vx = 0; f.vy = 0; f.vr = 0; }
+                if (f.t > f.life) feathers.splice(i, 1);
+            }
+        }
+        function drawBirds(gy) {
+            const S = CSc();
+            ctx.save(); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+            for (const f of feathers) {
+                const sx = f.x - P.x + W / 2; if (sx < -20 || sx > W + 20) continue;
+                ctx.globalAlpha = Math.min(1, (f.life - f.t) / .8);
+                ctx.save(); ctx.translate(sx, gy + 4 + f.y); ctx.rotate(f.rot);
+                ctx.fillStyle = f.dark ? '#111' : PAPER; ctx.strokeStyle = '#111'; ctx.lineWidth = 1;
+                ctx.beginPath(); ctx.ellipse(0, 0, f.s * 2.4, f.s * .8, 0, 0, 7); ctx.fill(); ctx.stroke();
+                ctx.restore();
+            }
+            ctx.globalAlpha = 1;
+            for (const b of birds) {
+                const sx = b.x - P.x + W / 2; if (sx < -80 || sx > W + 80) continue;
+                const dead = b.st !== 0;
+                const flap = dead ? (b.st === 2 ? 1.6 : 1.2 + Math.sin(b.t * 25) * .6 * Math.exp(-b.t * 3)) : null;
+                const wing = (ph, far) => {
+                    const phi = dead ? flap : .8 + 1.2 * Math.sin(ph);
+                    ctx.save(); ctx.translate(2, -4); ctx.rotate(phi); if (far) ctx.scale(.85, .85);
+                    ctx.globalAlpha = far ? .7 : 1;
+                    ctx.beginPath(); ctx.moveTo(5, 0); ctx.quadraticCurveTo(2, -20, -16, -32);
+                    ctx.quadraticCurveTo(-8, -16, -12, 0); ctx.closePath(); ctx.fill(); ctx.stroke();
+                    ctx.restore();
+                };
+                ctx.save(); ctx.translate(sx, gy + 4 + b.y); ctx.scale(S * b.s * b.F, S * b.s); ctx.rotate(b.rot);
+                ctx.fillStyle = '#111'; ctx.strokeStyle = '#111'; ctx.lineWidth = 2;
+                wing(b.ph + .5, true);
+                ctx.beginPath(); ctx.ellipse(0, 0, 13, 6.5, 0, 0, 7); ctx.fill(); ctx.stroke();           // body
+                ctx.beginPath(); ctx.moveTo(-11, -2); ctx.lineTo(-27, -6); ctx.lineTo(-26, 3); ctx.lineTo(-11, 3); ctx.closePath(); ctx.fill(); ctx.stroke();   // tail
+                ctx.beginPath(); ctx.arc(13, -3, 5, 0, 7); ctx.fill(); ctx.stroke();                      // head
+                ctx.fillStyle = '#c99a3a'; ctx.beginPath(); ctx.moveTo(17, -4.5); ctx.lineTo(25, -2); ctx.lineTo(17, -.5); ctx.closePath(); ctx.fill();   // beak
+                ctx.fillStyle = PAPER; ctx.globalAlpha = .55; ctx.beginPath(); ctx.ellipse(1, 2.5, 8, 2.8, 0, 0, 7); ctx.fill(); ctx.globalAlpha = 1;   // pale belly
+                if (dead) { ctx.strokeStyle = PAPER; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(13, -6); ctx.lineTo(16, -3); ctx.moveTo(16, -6); ctx.lineTo(13, -3); ctx.stroke(); }
+                else { ctx.fillStyle = PAPER; ctx.beginPath(); ctx.arc(14.5, -4.3, 1.2, 0, 7); ctx.fill(); }
+                ctx.fillStyle = '#111'; ctx.strokeStyle = '#111';
+                wing(b.ph, false);
+                ctx.restore();
+            }
+            ctx.restore();
+        }
+        function drawBirdsHUD() {
+            if (!birdKills) return;
+            ctx.save(); ctx.textAlign = 'right'; ctx.fillStyle = '#111'; ctx.globalAlpha = .8;
+            ctx.font = 'italic 20px Georgia,serif'; ctx.fillText('birds: ' + birdKills, W - 24, 30); ctx.restore();
+        }
+
         function frame(now) {
 
 
@@ -6155,7 +6357,7 @@
             let dt = dt0;
             if (hitstop > 0) { hitstop -= dt0; dt = 0 }
 
-            update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); sgTick(dt); sgGroundTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); brainTick(dt); gibTick(dt); weatherTick(dt); horseTick(dt);
+            update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); sgTick(dt); sgGroundTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); brainTick(dt); gibTick(dt); weatherTick(dt); horseTick(dt); birdTick(dt);
             shake = Math.max(0, shake - dt0 * 60);
             ctx.save();
             if (shake > .3) ctx.translate((Math.random() - .5) * shake * 1.6, (Math.random() - .5) * shake * 1.6);
@@ -6179,6 +6381,7 @@
             drawKnives(gy);
             drawShots(gy);
             drawPellets(gy);
+            drawBirds(gy);
             drawHorse(gy);
             drawChar(W / 2, gy, P);
             drawSgProp(gy, true);
@@ -6190,6 +6393,7 @@
             drawHUD();
             drawGunHUD();
             drawShotgunHUD();
+            drawBirdsHUD();
             requestAnimationFrame(frame);
         }
         requestAnimationFrame(frame);
