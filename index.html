@@ -650,7 +650,7 @@
         }
         function respawn(n) {
             const side = Math.random() < .5 ? -1 : 1, x = P.x + side * (W / 2 + 150 + Math.random() * 250);
-            Object.assign(n, { int: null, gut: 0, headThud: 0, gutDead: false, gutK: 0, gutPop: 0, gutCut: 0, fkSnk: 0, fk: null, fkT: 0, fkK: 0, fkPend: false, stab: 0, kneelK: 0, fst: 0, fallT: 0, fallK: 0, thud: 0, x, home: x, goal: x, vx: 0, z: 0, vz: 0, hp: n.maxhp, hurt: 0, down: 0, rot: 0, dying: 0, dead: 0, bar: 0, tumble: 0, wait: 1.5, face: -side, fid: 0, fidK: 0, headCut: 0, headK: 0, cord: null, brainOut: 0 });
+            Object.assign(n, { hsDead: 0, hsT: 0, veins: null, int: null, gut: 0, headThud: 0, gutDead: false, gutK: 0, gutPop: 0, gutCut: 0, fkSnk: 0, fk: null, fkT: 0, fkK: 0, fkPend: false, stab: 0, kneelK: 0, fst: 0, fallT: 0, fallK: 0, thud: 0, x, home: x, goal: x, vx: 0, z: 0, vz: 0, hp: n.maxhp, hurt: 0, down: 0, rot: 0, dying: 0, dead: 0, bar: 0, tumble: 0, wait: 1.5, face: -side, fid: 0, fidK: 0, headCut: 0, headK: 0, cord: null, brainOut: 0 });
         }
         function killBurst(n) {
             const S = CSc();
@@ -1425,8 +1425,9 @@
             }
 
             if (n.dead > 0) { n.dead -= dt; if (n.dead <= 0) respawn(n); return }
+            if (n.hsDead) n.hsT = (n.hsT || 0) + dt;
 
-            if (n.dying > 0) { n.dying -= dt; if (n.dying <= 0) { if (n.gutDead) { respawn(n); return } killBurst(n); return } }
+            if (n.dying > 0) { n.dying -= dt; if (n.dying <= 0) { if (n.gutDead || n.hsDead) { respawn(n); return } killBurst(n); return } }
             if (n.bar > 0) n.bar -= dt; if (n.hurt > 0) n.hurt -= dt; if (n.down > 0) n.down -= dt;
             const isGrabbed = (P.grabbed === n && (P.cs >= 1 && P.cs <= 4 || (P.cs === 0 && P.clast >= 1 && P.clast <= 4)));
             if (isGrabbed) {
@@ -1449,7 +1450,8 @@
             const grounded = n.z >= 0, stunned = n.hurt > 0 || n.down > 0 || !grounded || n.dying > 0;
             let tgt = 0;
 
-            if (n.down > 0 || (n.dying > 0 && grounded && !n.gutDead)) tgt = n.kdir * Math.PI / 2;
+            if (n.down > 0 || (n.dying > 0 && grounded && !n.gutDead && !n.hsDead)) tgt = n.kdir * Math.PI / 2;
+            else if (n.hsDead && grounded) tgt = n.kdir * Math.PI / 2 * sm((n.hsT - .45) / .55);
             else if (n.gutDead && grounded) tgt = n.kdir * Math.PI / 2 * Math.min(1, (n.gutK || 0) * 1.25);   // topples flat after the split
             else if (!grounded) tgt = n.kdir * (n.tumble ? Math.PI / 2 : .5);
             n.rot += (tgt - n.rot) * Math.min(1, dt * (n.down > 0 ? 14 : 9));
@@ -1533,6 +1535,7 @@
             n.gutK = (n.gutK || 0) + ((n.gutDead ? 1 : 0) - (n.gutK || 0)) * Math.min(1, dt * 3.2);
             n.headK = (n.headK || 0) + ((n.headCut ? 1 : 0) - (n.headK || 0)) * Math.min(1, dt * 6);
             if (n.cord && dt > 0) stepCord(n, dt);
+            if (n.veins && dt > 0) stepVeins(n, dt);
             if (n.gutDead) {
                 n.fallK = n.gutK; n.vx = 0; n.gutT = (n.gutT || 0) + dt;
                 if (n.int && dt > 0) stepInt(n, dt);
@@ -1907,6 +1910,7 @@
                 pain = Math.min(1, .35 + gt * 2) * (1 - sm((gt - 3.5) / 3));
                 spasm = Math.pow(Math.max(0, Math.sin(now * 6.2) * Math.sin(now * 2.3 + 1)), 2) * 1.6 * pain;
             }
+            if (P !== PL && P.hsDead) { const ht = P.hsT || 0; pain = Math.max(0, 1 - ht / 4.5) * .8; spasm = Math.pow(Math.max(0, Math.sin(now * 6.2) * Math.sin(now * 2.3 + 1)), 2) * 1.6 * pain }
             let fkPull = 0;                               // 0..1: straining on the handle, then slipping off
             if (fkk > .01) { const c = (now * .7) % 1; fkPull = c < .5 ? sm(c / .5) : c < .6 ? 1 - sm((c - .5) / .1) : 0 }
             const fz = (P === PL && P.fin > 0) ? finK(P.fin) : null;      // player finisher animation
@@ -2130,6 +2134,7 @@
                 }
                 if (sk > .01 && !pq && P.tt <= 0) { ang = ang * (1 - sk) + ((i ? .55 : 1.3) + Math.sin(now * 18 + i) * .08) * sk; flex = flex * (1 - sk) + .25 * sk }
                 if (st > .01) { ang = ang * (1 - st) + (i ? 3.5 : 2.75) * st + Math.sin(now * 28 + i) * .03 * st; flex = flex * (1 - st) + .15 * st }
+                if (P.hsDead && pain > 0) { ang += (Math.sin(now * 13 + i * 2.1) * .5 + .5) * pain * (i ? 1 : -1) * .9; flex += Math.abs(Math.sin(now * 17 + i)) * .5 * pain }
                 // attacker: lead hand locks onto his neck, punching hand lands on his actual face
 
 
@@ -2262,6 +2267,7 @@
                 ctx.strokeStyle = '#111'; ctx.lineWidth = 6.5; ctx.beginPath(); ctx.moveTo(nk[0], nk[1]); ctx.lineTo(hd[0], hd[1]); ctx.stroke();   // neck
             }
             P.hdp = hd;
+            P.nkP = [nk[0], nk[1]];
             // stomach stab anchor: update every frame so the knife tracks the bent body
             if (P.stomachStabbed) {
                 // y=-38: 38px above hip = lower belly/stomach (below arm elbow level)
@@ -2324,6 +2330,11 @@
                     ctx.restore();
                 }
                 ctx.restore();
+            } else if (P.hsDead) {
+                ctx.fillStyle = '#7a0b11'; ctx.strokeStyle = '#111'; ctx.lineWidth = 3;
+                ctx.beginPath(); ctx.ellipse(nk[0], nk[1] - 1, 8, 5, l, 0, 7); ctx.fill(); ctx.stroke();
+                ctx.fillStyle = '#e9786c'; ctx.beginPath(); ctx.ellipse(nk[0], nk[1] - 2, 5, 3, l, 0, 7); ctx.fill();
+                ctx.fillStyle = '#f1e9da'; ctx.beginPath(); ctx.arc(nk[0], nk[1] - 2, 2.4, 0, 7); ctx.fill();   // spine bone
             } else {
                 ctx.fillStyle = P.dark ? '#111' : PAPER; ctx.beginPath(); ctx.arc(hd[0], hd[1], 24, 0, 7); ctx.fill();
                 ctx.strokeStyle = '#111'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(hd[0], hd[1], 24, 0, 7); ctx.stroke();
@@ -2347,7 +2358,7 @@
                 });
                 ctx.restore();
             }
-            if (P.hat) {
+            if (P.hat && !P.hsDead) {
                 ctx.save(); ctx.translate(hd[0], hd[1] - 21); ctx.rotate(l * .6); ctx.fillStyle = '#111'; ctx.strokeStyle = '#111';
                 ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(-26, 0); ctx.lineTo(26, 0); ctx.stroke();
                 ctx.beginPath(); ctx.moveTo(-15, 0); ctx.lineTo(-13, -38); ctx.lineTo(13, -38); ctx.lineTo(15, 0); ctx.closePath(); ctx.fill();
@@ -3359,6 +3370,7 @@
             for (let i = 0; i < n; i++) shells.push({ x: w[0], y: w[1], vx: -F * (40 + Math.random() * 90) + (Math.random() - .5) * 60, vy: -(120 + Math.random() * 140), rot: Math.random() * 6, vr: (Math.random() - .5) * 16, landed: false, t: 0, sg: 1 });
         }
         function pelletHit(p, e, h) {
+            if (h.head && !(e.dying > 0) && !(e.dead > 0)) { headShatter(e, p.F, Math.abs(h.x - p.x0)); return }
             const F = p.F, d = Math.abs(h.x - p.x0), fall = Math.max(.3, 1 - d / 700);
             const dmg = Math.max(1, Math.round((h.head ? SG_HEAD : SG_BODY) * fall));
             e.hp -= dmg; e.bar = 2.5; e.kdir = F; e.face = -F; e.wait = 1; e.fid = 0; e.hurt = Math.max(e.hurt, .35);
@@ -3701,6 +3713,147 @@
             ctx.save(); ctx.translate(sx, sy); ctx.scale(S * g.F, S); ctx.rotate(g.th); sgPropBody(); ctx.restore();
         }
 
+        // ================= HEAD SHATTER (shotgun headshot) =================
+        const gibs = [];
+
+        function neckAttach(e, lx) {          // neck-stump point (world), follows the body's lean + rotation
+            const S = CSc(), h = e.nkP || [0, -97], th = e.rot || 0, py = -22, c = Math.cos(th), s = Math.sin(th), dx = h[0] + lx, dy = h[1] - py;
+            return [e.x + S * (dx * c - dy * s), S * (py + dx * s + dy * c)];
+        }
+
+        function headShatter(e, F, d) {
+            const S = CSc(), hw = headWorld(e);
+            e.hp = 0; e.dying = 9; e.hsDead = 1; e.hsT = 0; e.bar = 0; e.hurt = 0; e.kdir = F; e.face = -F; e.wait = 1; e.fid = 0;
+            e.vx = F * (d < 260 ? 400 : 230); e.stab = 0; e.kneelK = 0; e.brainOut = 1;
+            for (let i = knives.length - 1; i >= 0; i--) if (knives[i].st === e) knives.splice(i, 1);
+            if (P.grabbed === e) P.grabbed = null;
+            combo.n++; combo.dmg += 70; combo.t = 2; combo.pop = 1.4;
+
+            // skull shards, tumbling like ragdoll bits
+            for (let i = 0; i < 8 && gibs.length < 60; i++) gibs.push({
+                k: 0, x: hw[0] + (Math.random() - .5) * 26 * S, y: Math.min(-8, hw[1] + (Math.random() - .5) * 26 * S),
+                vx: F * (260 + Math.random() * 620) + (Math.random() - .5) * 320, vy: -(120 + Math.random() * 520),
+                rot: Math.random() * 6, vr: (Math.random() - .5) * 28, s: (9 + Math.random() * 10) * S, seed: Math.random() * 100, bn: 0, landed: false, t: 0, bl: 0
+            });
+            gibs.push({ k: 1, x: hw[0], y: hw[1] + 10 * S, vx: F * (120 + Math.random() * 200), vy: -(80 + Math.random() * 200), rot: 0, vr: (Math.random() - .5) * 14, s: 17 * S, seed: 1, bn: 0, landed: false, t: 0, bl: 0 });   // jaw
+            if (e.hat) gibs.push({ k: 2, x: hw[0], y: hw[1] - 22 * S, vx: -F * 80 + (Math.random() - .5) * 200, vy: -(500 + Math.random() * 200), rot: 0, vr: (Math.random() - .5) * 14, s: 20 * S, seed: 2, bn: 0, landed: false, t: 0, bl: 0 });   // top hat
+
+            // brain chunks (reuses brainBits)
+            for (let i = 0; i < 24 && brainBits.length < 120; i++) brainBits.push({
+                x: hw[0] + (Math.random() - .5) * 34 * S, y: Math.min(-6, hw[1]) - Math.random() * 14 * S,
+                vx: F * (80 + Math.random() * 520) + (Math.random() - .5) * 360, vy: -(100 + Math.random() * 460),
+                r: (3.5 + Math.random() * 6) * S, rot: Math.random() * 6, vr: (Math.random() - .5) * 18,
+                k: Math.random() < .45 ? 0 : Math.random() < .6 ? 1 : 2, landed: false, bounced: 0, t: 0
+            });
+
+            // veins / cord hanging from the neck
+            e.veins = [];
+            const nv = 6;
+            for (let i = 0; i < nv; i++) {
+                const lx = (i - (nv - 1) / 2) * 2.6 + (Math.random() - .5) * 2, N = 7 + (Math.random() * 6 | 0), A = neckAttach(e, lx);
+                const vx = F * (30 + Math.random() * 140) * (Math.random() < .3 ? -1 : 1), vy = 20 + Math.random() * 120, spine = i === 2;
+                e.veins.push({
+                    lx, rest: (5.5 + Math.random() * 3.5) * S, w: spine ? 6.5 : 2.2 + Math.random() * 1.6,
+                    col: spine ? '#eadfcf' : (i % 2 ? '#b3141c' : '#8c0d14'),
+                    p: Array.from({ length: spine ? 6 : N }, (_, j) => ({ x: A[0] + F * j * 1.5, y: A[1] - j, ox: A[0] - vx / 60, oy: A[1] - vy / 60 }))
+                });
+            }
+
+            spray(hw[0], hw[1], 80, 760, F); spray(hw[0], hw[1], 36, 520, -F); spray(hw[0], hw[1], 30, 340, 0);
+            burst(hw[0], hw[1], 50, 520, F); burst(hw[0], hw[1], 20, 300, -F);
+            impacts.push({ x: hw[0], y: hw[1], t: 0, life: .35, s: 190, seed: Math.random() * 50 });
+            streaks.push({ x0: e.x + F * 20, x1: e.x + F * 220, off: 0, dy: 9, w: 14, live: false, t: .5, seed: Math.random() * 100 });
+            hitstop = Math.max(hitstop, .12); shake = Math.max(shake, 15);
+            banner.t = 1.2; banner.text = 'HEAD SHATTERED!';
+        }
+
+        function stepVeins(e, dt) {
+            const S = CSc(), sub = 3, h = dt / sub, floor = -4 * S;
+            if ((e.hsT || 0) < 4) {                                   // arterial spurts from the stump, fading out
+                e.spurt = (e.spurt || 0) - dt;
+                if (e.spurt <= 0) {
+                    e.spurt = .05; const A = neckAttach(e, 0), k = 1 - e.hsT / 4, pulse = Math.max(0, Math.sin(e.hsT * 9));
+                    spray(A[0], A[1], 2, 140 + 330 * k * (.3 + pulse), (Math.random() - .5) * 2);
+                }
+            }
+            for (const v of e.veins) {
+                const Q = v.p, N = Q.length, rest = v.rest;
+                for (let s = 0; s < sub; s++) {
+                    for (let i = 1; i < N; i++) { const p = Q[i], vx = (p.x - p.ox) * .98, vy = (p.y - p.oy) * .98; p.ox = p.x; p.oy = p.y; p.x += vx; p.y += vy + 1800 * h * h }
+                    for (let it = 0; it < 6; it++) {
+                        const A = neckAttach(e, v.lx); Q[0].x = A[0]; Q[0].y = A[1]; Q[0].ox = A[0]; Q[0].oy = A[1];
+                        for (let i = 0; i < N - 1; i++) {
+                            const a = Q[i], b = Q[i + 1], dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || .0001, k = (d - rest) / d * .5;
+                            if (i === 0) { b.x -= dx * k * 2; b.y -= dy * k * 2 } else { a.x += dx * k; a.y += dy * k; b.x -= dx * k; b.y -= dy * k }
+                        }
+                        for (let i = 1; i < N; i++) { const p = Q[i]; if (p.y > floor) { p.y = floor; p.ox += (p.x - p.ox) * .5 } }
+                    }
+                }
+                if (e.hsT < 6 && Math.random() < dt * 5) {             // drip from the dangling tips
+                    const t = Q[N - 1]; blood.push({ x: t.x, y: t.y, vx: (Math.random() - .5) * 14, vy: 10 + Math.random() * 20, r: 1.3 + Math.random() * 1.4, t: 0 });
+                }
+            }
+        }
+
+        function drawVeins(gy) {
+            const S = CSc();
+            for (const e of ENEMIES) {
+                if (!e.veins || e.dead > 0) continue;
+                for (const v of e.veins) {
+                    const p = v.p; if (Math.abs(p[0].x - P.x) > W / 2 + 300) continue;
+                    const X = q => q.x - P.x + W / 2, Y = q => gy + 4 + q.y;
+                    ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+                    const pass = (w, col, a) => { ctx.globalAlpha = a; ctx.strokeStyle = col; ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(X(p[0]), Y(p[0])); for (let i = 1; i < p.length; i++) ctx.lineTo(X(p[i]), Y(p[i])); ctx.stroke() };
+                    pass((v.w + 3) * S, '#111', 1); pass(v.w * S, v.col, 1); pass(v.w * .35 * S, '#fbd5cc', .6);
+                    const t = p[p.length - 1]; ctx.globalAlpha = 1; ctx.fillStyle = '#8c0d14'; ctx.beginPath(); ctx.arc(X(t), Y(t), (v.w * .6 + 1) * S, 0, 7); ctx.fill();
+                    ctx.restore();
+                }
+            }
+        }
+
+        function gibTick(dt) {
+            for (let i = gibs.length - 1; i >= 0; i--) {
+                const g = gibs[i];
+                if (!g.landed) {
+                    g.t += dt; g.vy += 1500 * dt; g.x += g.vx * dt; g.y += g.vy * dt; g.rot += g.vr * dt;
+                    g.bl -= dt; if (g.bl <= 0 && g.t < 1.4) { g.bl = .04; blood.push({ x: g.x, y: g.y, vx: g.vx * .1 + (Math.random() - .5) * 30, vy: 10 + Math.random() * 30, r: 1.2 + Math.random() * 1.5, t: 0 }) }
+                    if (g.y >= -g.s * .3) {
+                        g.y = -g.s * .3;
+                        if (Math.abs(g.vy) > 180 && g.bn < 3) {
+                            g.vy *= -.38; g.vx *= .62; g.vr *= .6; g.bn++;
+                            burst(g.x, -2, 4, 140, Math.sign(g.vx) || 1);
+                            if (splats.length < 160) splats.push({ x: g.x, w: g.s * .8, h: g.s * .22, t: 0 });
+                        } else { g.landed = true; g.t = 0; g.vx = 0; g.rot = Math.round(g.rot / Math.PI) * Math.PI }
+                    }
+                } else { g.t += dt; if (g.t > 16) gibs.splice(i, 1) }
+            }
+        }
+
+        function drawGibs(gy) {
+            ctx.save(); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+            for (const g of gibs) {
+                const sx = g.x - P.x + W / 2; if (sx < -60 || sx > W + 60) continue;
+                ctx.globalAlpha = g.landed ? Math.min(1, (16 - g.t) / 3) : 1;
+                ctx.save(); ctx.translate(sx, gy + 4 + g.y); ctx.rotate(g.rot);
+                const r = g.s;
+                if (g.k === 0) {                                          // skull shard: bone outside, bloody flesh inside
+                    const poly = sc => { ctx.beginPath(); for (let j = 0; j < 5; j++) { const a = j / 5 * Math.PI * 2, rr = r * sc * (.55 + .6 * hash(g.seed + j * 3)); const x = Math.cos(a) * rr * 1.2, y = Math.sin(a) * rr * .8; j ? ctx.lineTo(x, y) : ctx.moveTo(x, y) } ctx.closePath() };
+                    poly(1); ctx.fillStyle = '#ebe5d6'; ctx.fill(); ctx.strokeStyle = '#111'; ctx.lineWidth = 2.4; ctx.stroke();
+                    poly(.6); ctx.fillStyle = '#a8261f'; ctx.fill(); ctx.strokeStyle = '#5a0a10'; ctx.lineWidth = 1.2; ctx.stroke();
+                } else if (g.k === 1) {                                   // jawbone with teeth
+                    ctx.strokeStyle = '#111'; ctx.lineWidth = 7; ctx.beginPath(); ctx.arc(0, 0, r, .15, Math.PI - .15); ctx.stroke();
+                    ctx.strokeStyle = '#ebe5d6'; ctx.lineWidth = 3.4; ctx.stroke();
+                    ctx.fillStyle = '#fff'; ctx.strokeStyle = '#111'; ctx.lineWidth = 1;
+                    for (let j = 0; j < 6; j++) { const a = .5 + j * .45; ctx.beginPath(); ctx.rect(Math.cos(a) * (r - 4) - 1.5, Math.sin(a) * (r - 4) - 3, 3, 4); ctx.fill(); ctx.stroke() }
+                } else {                                                  // top hat
+                    ctx.fillStyle = '#111'; ctx.strokeStyle = '#111'; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(-26, 0); ctx.lineTo(26, 0); ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(-15, 0); ctx.lineTo(-13, -38); ctx.lineTo(13, -38); ctx.lineTo(15, 0); ctx.closePath(); ctx.fill();
+                }
+                ctx.restore();
+            }
+            ctx.restore();
+        }
+
         // ================= FINGER SPIN / HOLSTER =================
         const TAU = Math.PI * 2;
         P.gs = 0;        // 0 none, 1 idle spin, 2 spin-to-holster
@@ -3775,7 +3928,7 @@
             let dt = dt0;
             if (hitstop > 0) { hitstop -= dt0; dt = 0 }
 
-            update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); sgTick(dt); sgGroundTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); brainTick(dt);
+            update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); sgTick(dt); sgGroundTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); brainTick(dt); gibTick(dt);
             shake = Math.max(0, shake - dt0 * 60);
             ctx.save();
             if (shake > .3) ctx.translate((Math.random() - .5) * shake * 1.6, (Math.random() - .5) * shake * 1.6);
@@ -3791,7 +3944,9 @@
             drawGutFX(gy);
             drawIntestines(gy);
             drawCords(gy);
+            drawVeins(gy);
             drawBrainBits(gy);
+            drawGibs(gy);
             drawFootKnives(gy);
             drawKnives(gy);
             drawShots(gy);
