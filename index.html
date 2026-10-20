@@ -2371,7 +2371,82 @@
             }
             ctx.restore(); CUR = PL;
         }
+        // ================= BACKDROP (ink sketch, parallax) =================
+        function drawBackdrop(gy) {
+            const cam = P.x;
+            ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#111';
 
+            // sun: wobbly double ring, nearly fixed to the screen
+            {
+                const sx = W * .78 - cam * .02, sy = H * .2, r = Math.min(W, H) * .07;
+                ctx.globalAlpha = .28; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(sx, sy, r, 0, 7); ctx.stroke();
+                ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(sx + 3, sy - 2, r * .94, .3, 6.0); ctx.stroke();
+            }
+
+            // far hills: one ridge line with sparse hatching underneath
+            {
+                const pf = .12, ridge = wx => gy - 120 + Math.sin(wx * .004) * 30 + Math.sin(wx * .011 + 2) * 14;
+                ctx.globalAlpha = .2; ctx.lineWidth = 2.5; ctx.beginPath();
+                for (let sx = -20; sx <= W + 20; sx += 10) { const y = ridge(sx + cam * pf); sx === -20 ? ctx.moveTo(sx, y) : ctx.lineTo(sx, y) }
+                ctx.stroke();
+                ctx.globalAlpha = .1; ctx.lineWidth = 1.5;
+                const h0 = Math.floor((cam * pf - 20) / 16);
+                for (let i = h0; i < h0 + Math.ceil((W + 40) / 16) + 1; i++) {
+                    const wx = i * 16, sx = wx - cam * pf, y = ridge(wx), len = 8 + hash(i) * 22;
+                    ctx.beginPath(); ctx.moveTo(sx, y + 6); ctx.lineTo(sx - 3, y + 6 + len); ctx.stroke();
+                }
+            }
+
+            // mid layer: dead trees and ruined shacks
+            {
+                const pf = .4, span = 460, start = Math.floor((cam * pf - W / 2) / span) - 1;
+                const br = (x, y, a, l, d, s) => {
+                    if (d <= 0) return;
+                    const x2 = x + Math.cos(a) * l, y2 = y + Math.sin(a) * l;
+                    ctx.lineWidth = d * 1.5; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x2, y2); ctx.stroke();
+                    br(x2, y2, a - .45 - hash(s + d) * .45, l * .72, d - 1, s * 1.7 + 1);
+                    br(x2, y2, a + .45 + hash(s + d + 9) * .45, l * .72, d - 1, s * 1.3 + 2);
+                };
+                ctx.globalAlpha = .38;
+                for (let i = start; i < start + Math.ceil(W / span) + 3; i++) {
+                    if (hash(i + 31) < .25) continue;
+                    const x = W / 2 + i * span - cam * pf + hash(i * 7) * 200, g = gy - 2, t = hash(i + 77);
+                    if (t < .6) {                                              // dead tree
+                        br(x, g, -Math.PI / 2 + (hash(i + 5) - .5) * .25, 80 + hash(i + 2) * 50, 4, i + 1);
+                    } else {                                                   // broken shack
+                        const w = 110 + hash(i + 4) * 60, h = 70 + hash(i + 8) * 30;
+                        ctx.lineWidth = 3; ctx.beginPath();
+                        ctx.moveTo(x, g); ctx.lineTo(x, g - h); ctx.lineTo(x + w * .5, g - h - 32); ctx.lineTo(x + w * .78, g - h - 10);
+                        ctx.moveTo(x + w, g); ctx.lineTo(x + w, g - h * .55); ctx.stroke();
+                        ctx.lineWidth = 2; ctx.beginPath(); ctx.rect(x + w * .35, g - h * .6, w * .22, h * .6); ctx.stroke();   // doorway
+                        ctx.lineWidth = 1.2; ctx.beginPath();
+                        for (let k = 1; k < 5; k++) { const px = x + w * k / 5; ctx.moveTo(px, g); ctx.lineTo(px, g - h * (.35 + hash(i + k) * .5)) }
+                        ctx.stroke();
+                    }
+                }
+            }
+
+            // near layer: broken fence runs
+            {
+                const pf = .75, span = 620, start = Math.floor((cam * pf - W / 2) / span) - 1;
+                ctx.globalAlpha = .5; ctx.lineWidth = 3;
+                for (let i = start; i < start + Math.ceil(W / span) + 3; i++) {
+                    if (hash(i + 123) < .4) continue;
+                    const x0 = W / 2 + i * span - cam * pf + hash(i * 5) * 150, n = 3 + (hash(i + 6) * 5 | 0), g = gy + 2;
+                    for (let k = 0; k < n; k++) {
+                        const px = x0 + k * 42, lean = (hash(i * 3 + k) - .5) * 8, hgt = 34 + hash(i + k * 2) * 10;
+                        ctx.beginPath(); ctx.moveTo(px, g); ctx.lineTo(px + lean, g - hgt); ctx.stroke();
+                        if (k < n - 1 && hash(i + k + 40) > .2) {
+                            ctx.lineWidth = 2; ctx.beginPath();
+                            ctx.moveTo(px + lean, g - hgt + 6); ctx.lineTo(px + 42, g - hgt + 6 + (hash(i + k) - .5) * 6);
+                            ctx.moveTo(px + lean * .6, g - hgt * .5); ctx.lineTo(px + 42, g - hgt * .5 + (hash(i + k + 9) - .5) * 6);
+                            ctx.stroke(); ctx.lineWidth = 3;
+                        }
+                    }
+                }
+            }
+            ctx.restore();
+        }
 
 
         function drawWorld(gy) {
@@ -2649,10 +2724,12 @@
             hitstop = Math.max(hitstop, .12); shake = Math.max(shake, 12);
             banner.t = 1.2; banner.text = 'HEAD SPLIT!';
             const A = headAttach(e);
-            e.cord = { p: Array.from({ length: 8 }, () => {
-                const vx = F * (30 + Math.random() * 90), vy = 40 + Math.random() * 80;
-                return { x: A[0], y: A[1], ox: A[0] - vx / 60, oy: A[1] - vy / 60 };
-            }) };
+            e.cord = {
+                p: Array.from({ length: 8 }, () => {
+                    const vx = F * (30 + Math.random() * 90), vy = 40 + Math.random() * 80;
+                    return { x: A[0], y: A[1], ox: A[0] - vx / 60, oy: A[1] - vy / 60 };
+                })
+            };
         }
         function finK(t) {
             const foot = t < .35 ? sm(t / .35) : t < FIN_POP ? 1 : 1 - sm((t - FIN_POP) / .3);
@@ -3934,6 +4011,7 @@
             if (shake > .3) ctx.translate((Math.random() - .5) * shake * 1.6, (Math.random() - .5) * shake * 1.6);
             ctx.fillStyle = paper; ctx.fillRect(-60, -60, W + 120, H + 120);
             const gy = groundY();
+            drawBackdrop(gy);
             drawWorld(gy);
             drawSkid(gy);
             drawSplats(gy);
