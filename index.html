@@ -2449,6 +2449,70 @@
         }
 
 
+        // ================= WEATHER: wind, ink dots, paper scraps =================
+        const wind = { v: 90, g: 0, gt: 4, t: 0 };        // v = current wind (px/s, + = right), g = gust part of it
+        const WX_DROPS = 70, WX_SCRAPS = 9;
+        const inkDrops = [], scraps = [];
+
+        function newScrap(x, y) {
+            return { x, y, vy: 0, z: .55 + Math.random() * .45, rot: Math.random() * 6, vr: (Math.random() - .5) * 4, fl: Math.random() * 6, ph: Math.random() * 6, s: 6 + Math.random() * 6, seed: Math.random() * 100 };
+        }
+        function wxInit() {
+            for (let i = 0; i < WX_DROPS; i++) inkDrops.push({ x: Math.random() * W, y: Math.random() * H, z: .4 + Math.random() * .6, r: 1.2 + Math.random() * 1.6 });
+            for (let i = 0; i < WX_SCRAPS; i++) scraps.push(newScrap(Math.random() * W, H * (.15 + Math.random() * .55)));
+        }
+
+        function weatherTick(dt) {
+            if (!inkDrops.length) wxInit();
+            wind.t += dt; wind.gt -= dt;
+            if (wind.gt <= 0) { wind.gt = 5 + Math.random() * 7; wind.g = (Math.random() < .8 ? 1 : -1) * (180 + Math.random() * 260) }   // random gust
+            wind.g *= Math.exp(-dt * .55);
+            wind.v = 90 + Math.sin(wind.t * .23) * 60 + Math.sin(wind.t * .71) * 30 + wind.g;
+            const gy = groundY();
+
+            for (const d of inkDrops) {
+                d.y += (420 + 300 * d.z) * dt;
+                d.x += (wind.v * .35 * d.z - P.vx * .3 * d.z) * dt;          // parallax: the world slides past as you run
+                if (d.y > gy + 10 * d.z) {
+                    if (Math.random() < .5 && flecks.length < 500) flecks.push({ x: P.x + d.x - W / 2, y: -1, vx: (Math.random() - .5) * 60 + wind.v * .1, vy: -(30 + Math.random() * 60), r: 1 + Math.random(), t: 0, life: .25 });   // tiny ink splash
+                    d.y = -10; d.x = Math.random() * (W + 200) - 100;
+                }
+                if (d.x > W + 40) d.x -= W + 80; else if (d.x < -40) d.x += W + 80;
+            }
+
+            for (const s of scraps) {
+                const lift = Math.abs(wind.g) * .9 + 40 * Math.sin(wind.t * 2.2 + s.ph);
+                s.vy += (70 - lift) * dt; s.vy *= Math.max(0, 1 - .9 * dt); s.y += s.vy * dt;
+                s.x += (wind.v * (.7 + .5 * s.z) - P.vx * .7 * s.z + Math.sin(wind.t * 3 + s.ph) * 30) * dt;
+                s.rot += (wind.v * .012 + s.vr) * dt; s.fl += (3 + Math.abs(wind.v) * .01) * dt;
+                if (s.y > gy - 3) { s.y = gy - 3; s.vy = -(60 + Math.random() * 120) * (.5 + Math.abs(wind.v) / 300) }   // hops along the ground
+                if (s.y < H * .05) { s.y = H * .05; s.vy = Math.abs(s.vy) * .3 }
+                if (s.x > W + 60) { s.x = -60; s.y = H * (.15 + Math.random() * .55); s.vy = 0 }
+                else if (s.x < -60) { s.x = W + 60; s.y = H * (.15 + Math.random() * .55); s.vy = 0 }
+            }
+        }
+
+        function drawWeather(gy) {
+            ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#111'; ctx.fillStyle = '#111';
+            for (const d of inkDrops) {                                          // slanted ink dots with short tails
+                const vx = wind.v * .35 * d.z - P.vx * .3 * d.z, vy = 420 + 300 * d.z;
+                ctx.globalAlpha = .22 + .4 * d.z; ctx.lineWidth = d.r * (.6 + .5 * d.z);
+                ctx.beginPath(); ctx.moveTo(d.x, d.y); ctx.lineTo(d.x - vx * .03, d.y - vy * .03); ctx.stroke();
+                ctx.beginPath(); ctx.arc(d.x, d.y, ctx.lineWidth * .7, 0, 7); ctx.fill();
+            }
+            for (const s of scraps) {                                            // flipping paper scraps
+                const f = Math.cos(s.fl);
+                ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(s.rot); ctx.scale(s.z, s.z * (Math.abs(f) < .12 ? .12 * Math.sign(f || 1) : f));
+                ctx.globalAlpha = .92; ctx.fillStyle = '#efede8'; ctx.lineWidth = 1.6;
+                ctx.beginPath();
+                for (let j = 0; j < 5; j++) { const a = j / 5 * Math.PI * 2, r = s.s * (.7 + .5 * hash(s.seed + j * 3)); const x = Math.cos(a) * r * 1.2, y = Math.sin(a) * r * .9; j ? ctx.lineTo(x, y) : ctx.moveTo(x, y) }
+                ctx.closePath(); ctx.fill(); ctx.stroke();
+                ctx.globalAlpha = .5; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(-s.s * .5, -s.s * .15); ctx.lineTo(s.s * .5, -s.s * .1); ctx.moveTo(-s.s * .5, s.s * .2); ctx.lineTo(s.s * .3, s.s * .25); ctx.stroke();   // scribbled lines
+                ctx.restore();
+            }
+            ctx.restore();
+        }
+
         function drawWorld(gy) {
             const cam = P.x;
             ctx.save(); ink(2); ctx.globalAlpha = .35;
@@ -2472,7 +2536,16 @@
             for (let i = g0; i < g0 + Math.ceil(W / gs) + 3; i++) {
                 const wx = i * gs + hash(i * 3) * 60, sx = wx - cam + W / 2, t = hash(i + 50);
                 ctx.globalAlpha = .8;
-                if (t < .55) { ink(2.5); for (let k = -1; k <= 1; k++) { ctx.beginPath(); ctx.moveTo(sx + k * 5, gy + 8); ctx.quadraticCurveTo(sx + k * 8, gy - 6, sx + k * 14, gy - 12 - hash(i + k) * 8); ctx.stroke() } }
+                if (t < .55) {
+                    ink(2.5);
+                    const nowG = performance.now() / 1000, wk = wind.v / 300;
+                    const pd = wx - cam, push = Math.abs(pd) < 90 ? Math.sign(pd || 1) * (1 - Math.abs(pd) / 90) * 18 : 0;   // blades bend away from the player
+                    for (let k = -1; k <= 1; k++) {
+                        const h = 12 + hash(i + k) * 8, sw = wk * 14 + Math.sin(nowG * 2.6 + wx * .02 + k) * 3 * (.4 + Math.abs(wk)) + push;
+                        ctx.beginPath(); ctx.moveTo(sx + k * 5, gy + 8);
+                        ctx.quadraticCurveTo(sx + k * 8 + sw * .35, gy - 6, sx + k * 14 + sw, gy - h); ctx.stroke();
+                    }
+                }
                 else if (t < .75) { ink(3); ctx.beginPath(); ctx.ellipse(sx, gy + 2, 14 + hash(i) * 12, 9, 0, Math.PI, 0, true); ctx.stroke() }
                 else if (t < .85) {
                     ink(3); ctx.beginPath(); ctx.moveTo(sx, gy + 6); ctx.lineTo(sx + 3, gy - 70); ctx.stroke();
@@ -3439,7 +3512,9 @@
             burst(m[0], m[1], n === 2 ? 26 : 14, 380, F);
             puff(m[0], m[1], n === 2 ? 14 : 8, F * 120, -10, 4, 14, 2.4, .32);
             const imp = n === 2 ? 270 : 200, v = P.vx * F; P.vx = F * Math.max(v - imp, -270);
-            shake = Math.max(shake, n === 2 ? 15 : 9); hitstop = Math.max(hitstop, n === 2 ? .05 : .03);
+            shake = Math.max(shake, n === 2 ? 15 : 9);
+            wind.g += F * (n === 2 ? 380 : 220);
+            hitstop = Math.max(hitstop, n === 2 ? .05 : .03);
         }
 
         function dropSgShells(n) {
@@ -4005,7 +4080,7 @@
             let dt = dt0;
             if (hitstop > 0) { hitstop -= dt0; dt = 0 }
 
-            update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); sgTick(dt); sgGroundTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); brainTick(dt); gibTick(dt);
+            update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); sgTick(dt); sgGroundTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); brainTick(dt); gibTick(dt); weatherTick(dt);
             shake = Math.max(0, shake - dt0 * 60);
             ctx.save();
             if (shake > .3) ctx.translate((Math.random() - .5) * shake * 1.6, (Math.random() - .5) * shake * 1.6);
@@ -4033,6 +4108,7 @@
             drawSgProp(gy, true);
             drawSmoke(gy);
             drawBlood(gy);
+            drawWeather(gy);
             ctx.restore();
             ctx.fillStyle = vig; ctx.fillRect(0, 0, W, H);
             drawHUD();
