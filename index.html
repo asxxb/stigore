@@ -127,6 +127,8 @@
             if (P.sm === 1) return;                 // no actions while lighting up
             if (e.code === 'KeyG') pressG();
             if (e.code === 'KeyF') pressFire();
+            if (e.code === 'KeyZ') pressSgDraw();
+            if (e.code === 'KeyB') pressSgFire(true);
             if (e.code === 'KeyR') pressReload();
             if (e.code === 'KeyK') pressK();
             if (e.code === 'KeyL') pressThrow();
@@ -167,7 +169,7 @@
         const TOSS_T = .95;
         function pressK() {
             if (P.thw > 0 || P.fin > 0 || P.pk > 0) return;
-            if (P.gun || P.gs === 2) { banner.t = .6; banner.text = 'HOLSTER GUN FIRST (G)'; return }
+            if (P.gun || P.gs === 2 || P.sg) { banner.t = .6; banner.text = 'HOLSTER GUN FIRST (G)'; return }
             P.idle = 0; P.fid = 0;
             if (P.tt > 0) return;
             if (P.kn === 0) {
@@ -351,7 +353,7 @@
 
             // ---- parkour tumbling pass: Sprint + Jump at speed ----
             const isSprinting = run && Math.abs(P.vx) > 220;
-            if (P.jbuf > 0 && isSprinting && grounded && !P.pk && !P.cs && !P.fin && !P.stbk) {
+            if (P.jbuf > 0 && isSprinting && grounded && !P.pk && !P.cs && !P.fin && !P.stbk && !P.sg) {
                 startParkour(vs || P.face || 1);
                 P.jbuf = 0;
             }
@@ -402,7 +404,7 @@
                 }
             }
             // ---- idle fidgets ----
-            fidgetTick(P, dir || keys.Space || keys.KeyJ || keys.KeyF || P.sm > 0 || P.cs > 0 || P.skid || !grounded || sp > 8 || P.tt > 0 || P.atk > 0 || P.thw > 0 || P.stbk > 0 || P.fs > 0 || P.yk > 0 || P.gu > 0, dt);
+            fidgetTick(P, dir || keys.Space || keys.KeyJ || keys.KeyF || P.sm > 0 || P.cs > 0 || P.skid || !grounded || sp > 8 || P.tt > 0 || P.atk > 0 || P.thw > 0 || P.stbk > 0 || P.fs > 0 || P.yk > 0 || P.gu > 0 || P.sg, dt);
         }
 
         // ================= COMBAT =================
@@ -472,6 +474,7 @@
         const combo = { n: 0, dmg: 0, t: 0, pop: 0 }, banner = { t: 0, text: '' };
         let hitstop = 0, shake = 0;
         function pressAtk() {
+            if (P.sg) { banner.t = .6; banner.text = 'SLING SHOTGUN FIRST (Z)'; return }
             if (P.kn === 1 && P.kt > .5 && (keys.ArrowDown || keys.KeyS) && !(P.gu > 0) && P.stbk === 0 && P.fs === 0 && !(P.yk > 0) && P.pk === 0 && P.z >= 0 && !P.fin && !P.thw && !P.tt && !P.cs && pressGut()) return;
             if (P.kn === 2 && P.kt > .5 && P.fs === 0 && P.stbk === 0 && P.z >= 0 && !P.fin && !P.thw && !P.tt && !P.cs && pressFootStab()) return;
             // If knife is in hand and fully drawn, do a stomach stab instead of punching
@@ -1885,6 +1888,7 @@
             // ---- clinch: held enemy hunches with bent knees; attacker steps in and leans ----
             const grabHipY = isGrabbed ? 20 : 0;
             const kk = P.kneelK || 0, fk = P.fallK || 0;
+            const sgW = (P === PL && P.sgK > .01 && z >= 0) ? sm(P.sgK) * (1 - Math.min(1, sp / 120)) : 0;   // shotgun stance weight
             const fkk = (P !== PL && P.fk) ? (P.fkK || 0) : 0;
             const gk = (P !== PL && P.gutDead) ? (P.gutK || 0) : 0;
             const gkv = gk * (1 - Math.min(1, Math.abs(P.rot || 0) / (Math.PI / 2)));   // split amount shrinks as he lies flat
@@ -1915,15 +1919,18 @@
             hipY += 40 * fkk;
             hipY += 40 * fkk;
             hipY += 80 * gkv;
+            if (P === PL) hipY += 10 * Math.min(1.2, P.sgRec) + 4 * sm(P.sgK);
+            hipY += 13 * sgW;   // sink a little so the wide legs still reach the floor
             let hipX = cb ? F * cb.hipX * cb.w : 0, cbLean = cb ? cb.lean * cb.w : 0;
 
             if (isGrabbed) hipX = -F * 8;
             hipX += Math.sin(now * 17) * 1.3 * kk;
+            if (P === PL) hipX -= F * 7 * P.sgRec;
             hipX -= 24 * F * (gk - gkv);   // slides the hips down to ground level when lying flat
             const grabLean = isGrabbed ? F * (.16 + Math.sin(now * 21) * .012) : 0;
             const moveLean = (P.pk > 0) ? 0 : (P.lean * (.2 + .8 * R) * BODY_LEAN * (1 - sk));
             const l = moveLean - F * .5 * sk + (z < 0 ? .1 * F : 0) + .3 * pq * F - F * .2 * st + Math.sin(now * 30) * .012 * st + F * cbLean - F * (isGrabbed ? .1 : .4) * hk + grabLean + F * kk * KNEEL_BEND + Math.sin(now * 9) * .035 * kk * (1 - fk) + (fz ? F * fz.lean : 0) + F * fk * 0.47 * (1 - gk)
-                + ((P !== PL && P.fst === 1 && PL.fin > 0 && !P.stomachStabbed) ? F * .1 * finK(PL.fin).foot : 0) - F * .07 * (P === PL ? P.recoil : 0) + F * fkk * (.8 - .2 * fkPull) + F * gkv * .3 + F * .25 * (gk - gkv);   // lies flat: head on the floor, hips on the floor
+                + ((P !== PL && P.fst === 1 && PL.fin > 0 && !P.stomachStabbed) ? F * .1 * finK(PL.fin).foot : 0) - F * .07 * (P === PL ? P.recoil : 0) - F * (P === PL ? .12 * P.sgRec - .06 * sm(P.sgK) : 0) + F * fkk * (.8 - .2 * fkPull) + F * gkv * .3 + F * .25 * (gk - gkv);   // lies flat: head on the floor, hips on the floor
             const rot = (x, y) => [hipX + x * Math.cos(l) - y * Math.sin(l), hipY + x * Math.sin(l) + y * Math.cos(l)];
             ctx.save(); ctx.translate(cx, gy + 4); ctx.scale(S, S); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
             if (pain > 0) ctx.translate((Math.sin(now * 47) * 1.6 + Math.sin(now * 83)) * pain, Math.sin(now * 61) * 1.2 * pain - spasm * 3);
@@ -1954,6 +1961,7 @@
 
                 // held enemy: wide braced stance, leaning into the pull, feet scuffing
                 if (isGrabbed) { fx = F * (i ? -46 : 20) + Math.sin(now * 13 + i * 2.4) * 1.5; fy = 0; lf = 0 }
+                if (sgW > .001) { const tx = hipX + F * (i ? -62 : 32); fx = fx * (1 - sgW) + tx * sgW; fy *= (1 - sgW); lf *= (1 - sgW) }
                 if (kk > .001) { const kx = hipX + F * (i ? -86 : -70); fx = fx * (1 - kk) + kx * kk; fy = fy * (1 - kk); lf = lf * (1 - kk) }
                 // Dynamic martial arts leg placement & chambering/kicking
                 if (cb && cb.w > 0.005) {
@@ -2016,6 +2024,15 @@
                 const holGrip = (!P.gun && P.gs !== 2) || (P.gs === 2 && P.gsT >= 0.75);
                 drawHolster(P.hol, F, holGrip);
             }
+            if (P === PL) P.sgBelt = rot(F * 6, -16);
+            if (P === PL && P.sgK < .98) {                  // shotgun slung across the back
+                const b = rot(-F * 9, -T + 30);
+                ctx.save(); ctx.translate(b[0], b[1]); ctx.rotate(l); ctx.scale(-F, 1); ctx.rotate(-.95);
+                ctx.globalAlpha = 1 - P.sgK; ctx.lineJoin = 'round'; ctx.lineWidth = 1.8; ctx.strokeStyle = '#111';
+                ctx.fillStyle = '#3b3e45'; ctx.beginPath(); ctx.rect(-4, -9, 64, 12); ctx.fill(); ctx.stroke();
+                ctx.fillStyle = '#9a4a1a'; ctx.beginPath(); ctx.moveTo(-4, -5); ctx.lineTo(-14, -2); ctx.lineTo(-20, 13); ctx.lineTo(-11, 13); ctx.lineTo(-6, 2); ctx.closePath(); ctx.fill(); ctx.stroke();
+                ctx.restore();
+            }
             const sh = rot(0, -T + 10), swing = (.015 + .9 * R) * P.amp * ARM_SWING, up = z < 0 ? -.9 : 0;
             const sTilt = (P === PL) ? smokeTilt() : [0, 0];
             const mA = (P === PL && P.sm) ? (() => { const h = rot(-F * 7 + F * sTilt[0], -T - 24 + sTilt[1]); return [h[0] + F * 19, h[1] + 8] })() : null;
@@ -2053,6 +2070,18 @@
                 if (i === 1 && P === PL && P.rl > 0 && P.cylP && P.gunK > .5) {
                     const u = P.rl / RELOAD_T, hp = rot(-F * 10, -16), [tx, ty, rw] = rlHand(u, P.cylP, hp);
                     if (rw > .001) { const [a, f] = ikTo(sh, tx, ty, F); ang = ang * (1 - rw) + a * rw; flex = flex * (1 - rw) + f * rw }
+                }
+                if (P === PL && P.sgK > .01) {
+                    const w = sm(P.sgK);
+                    if (i === 0) {
+                        const rc = Math.min(1.5, P.sgRec), u = P.srl > 0 ? P.srl / SG_RELOAD_T : 0, rlw = u > 0 ? sm(u / .12) * (1 - sm((u - .86) / .12)) : 0;
+                        const tx = sh[0] + F * (46 - 9 * rc - 12 * rlw), ty = sh[1] + 11 - P.aimV * 22 - 5 * rc + 14 * rlw + Math.sin(P.phase * 2) * 1.4 * P.amp;
+                        const [a, f] = ikTo(sh, tx, ty, F);
+                        ang = ang * (1 - w) + a * w; flex = flex * (1 - w) + f * w;
+                    } else if (P.sgHandT) {
+                        const [a, f] = ikTo(sh, P.sgHandT[0], P.sgHandT[1], F);
+                        ang = ang * (1 - w) + a * w; flex = flex * (1 - w) + f * w;
+                    }
                 }
                 if (mA) { const o = smokePose(i, sh, F, mA); if (o && o[2] > .001) { ang = ang * (1 - o[2]) + o[0] * o[2]; flex = flex * (1 - o[2]) + o[1] * o[2] } }
                 if (i === 0 && pq > 0) { ang = -.8 + q * 3.6; flex = .2 }
@@ -2216,6 +2245,7 @@
                 wristKick = 0;
 
                 if (i === 0 && P === PL && P.gunK > .02 && !(P.fin > 0) && !P.pk) drawGun(F, S, now);
+                if (i === 0 && P === PL && P.sgK > .02 && !(P.fin > 0) && !P.pk) drawShotgun(F, S, now);
 
                 (P.armPts || (P.armPts = []))[i] = lastArm;
                 (P.armFullPts || (P.armFullPts = []))[i] = [sh, lastArm[0], lastArm[1]];
@@ -2626,7 +2656,7 @@
 
         function pressFinish() {
             if (P.yk > 0 || P.fin > 0 || P.cs > 0 || P.tt > 0 || P.thw > 0 || P.z < 0) return;
-            if (P.gun || P.gs === 2) { banner.t = .6; banner.text = 'HOLSTER GUN FIRST (G)'; return }
+            if (P.gun || P.gs === 2 || P.sg) { banner.t = .6; banner.text = 'HOLSTER GUN FIRST (G)'; return }
             if (P.fs === 0 && P.stbk === 0 && P.pk === 0) {
                 const S0 = CSc(); let fe = null, fd = 1e9;
                 for (const e of ENEMIES) {
@@ -2836,7 +2866,7 @@
         function pressSmoke() {
             if (P.sm === 1 || P.sm === 3) return;
             if (P.sm === 2) { flickCig(); return }
-            if (!smStill() || P.kn !== 0) return;
+            if (!smStill() || P.kn !== 0 || P.sg) return;
             P.idle = 0; P.fid = 0;
             P.sm = 1; P.smT = 0; P.cig = 1; P.cigLit = 0; P.cigHand = 1; P.hs = 0; P.hT = 0; P.dragT = 1.2; P.wisp = 0;
         }
@@ -3055,6 +3085,7 @@
         P.muzzle = null; P.gunA = 0; P.gunW = null;
 
         function pressG() {
+            if (P.sg) { banner.t = .6; banner.text = 'SLING SHOTGUN FIRST (Z)'; return }
             if (P.sm === 1 || P.sm === 3 || P.gs === 2 || P.pk > 0) return;
             if (P.gun) {                                         // spin-to-holster
                 if (P.rl > 0 || P.fin > 0 || P.gunK < .6) { P.gun = 0; P.rl = 0; P.gs = 0; return }
@@ -3067,12 +3098,14 @@
             P.idle = 0; P.fid = 0; P.rl = 0; P.gun = 1; P.gdT = 0; P.gsIdle = 0;   // quick-draw from the holster
         }
         function pressReload() {
+            if (P.sg) { pressSgReload(); return }
             if (!P.gun || P.rl > 0 || P.ammo >= MAG || P.fin > 0) return;
             if (P.gs === 2) return;
             if (P.gs === 1) { P.gsEnd = 1; P.gsFast = 1; P.q = 2; P.qT = .5; return }
             P.rl = .0001; P.rlShell = 0; P.rlLoad = 0; P.rlSnap = 0;
         }
         function pressFire() {
+            if (P.sg) { pressSgFire(false); return }
             if (!P.gun || P.gunK < .8 || P.rl > 0 || P.fin > 0 || P.fireCd > 0 || P.pk > 0) return;
             if (P.gs === 2) return;
             if (P.gs === 1) { P.gsEnd = 1; P.gsFast = 1; P.q = 1; P.qT = .5; return }
@@ -3117,7 +3150,7 @@
             P.recoil = Math.max(0, P.recoil - dt * 5);
             P.fireCd = Math.max(0, P.fireCd - dt);
             const av = (keys.ArrowUp || keys.KeyW ? 1 : 0) - (keys.ArrowDown || keys.KeyS ? 1 : 0);
-            if (P.gun) P.aimV = Math.max(-.5, Math.min(.5, P.aimV + av * 1.5 * dt)); else P.aimV *= Math.max(0, 1 - 8 * dt);
+            if (P.gun || P.sg) P.aimV = Math.max(-.5, Math.min(.5, P.aimV + av * 1.5 * dt)); else P.aimV *= Math.max(0, 1 - 8 * dt);
             if (!P.gun) P.rl = 0;
             if (P.rl > 0) {
                 P.rl += dt;
@@ -3278,7 +3311,12 @@
                 const sx = s.x - P.x + W / 2; if (sx < -20 || sx > W + 20) continue;
                 ctx.globalAlpha = s.landed ? Math.min(1, (8 - s.t) / 2) : 1;
                 if (s.ld) { drawLoader(sx, gy + 4 + s.y - (s.landed ? 6 : 0), 1, s.rot, false); continue }
-                ctx.save(); ctx.translate(sx, gy + 4 + s.y - (s.landed ? 1.5 : 0)); ctx.rotate(s.rot); ctx.beginPath(); ctx.rect(-3.5, -1.8, 7, 3.6); ctx.fill(); ctx.stroke(); ctx.restore();
+                ctx.save(); ctx.translate(sx, gy + 4 + s.y - (s.landed ? 1.5 : 0)); ctx.rotate(s.rot);
+                if (s.sg) {
+                    ctx.fillStyle = '#b3261e'; ctx.beginPath(); ctx.rect(-6, -2.8, 9, 5.6); ctx.fill(); ctx.stroke();
+                    ctx.fillStyle = '#c99a3a'; ctx.beginPath(); ctx.rect(3, -2.8, 3.5, 5.6); ctx.fill(); ctx.stroke();
+                } else { ctx.fillStyle = '#c99a3a'; ctx.beginPath(); ctx.rect(-3.5, -1.8, 7, 3.6); ctx.fill(); ctx.stroke() }
+                ctx.restore();
             }
             ctx.restore();
         }
@@ -3287,6 +3325,241 @@
             ctx.save(); ctx.globalAlpha = Math.min(1, P.gunK); ctx.lineWidth = 2.5; ctx.strokeStyle = '#111';
             for (let i = 0; i < MAG; i++) { ctx.beginPath(); ctx.arc(30 + i * 22, calcTop() + 24, 8, 0, 7); ctx.fillStyle = i < P.ammo ? '#c99a3a' : 'rgba(0,0,0,0)'; ctx.fill(); ctx.stroke() }
             if (P.rl > 0) { ctx.fillStyle = '#111'; ctx.font = 'italic 18px Georgia,serif'; ctx.fillText('reloading…', 22, calcTop() + 56) }
+            ctx.restore();
+        }
+
+        // ================= SHOTGUN (sawed-off double barrel) =================
+        const SG_RELOAD_T = 2.1, SG_KICK = .32, SG_BODY = 8, SG_HEAD = 15, SG_RANGE = 720;
+        const pellets = []; let sgId = 0;
+        P.sg = 0; P.sgK = 0; P.sAmmo = 2; P.sgRec = 0; P.sgCd = 0; P.sgFlash = 0; P.sgBig = 1; P.sgSmoke = 0; P.sgWisp = 0;
+        P.srl = 0; P.srlE = 0; P.srlI1 = 0; P.srlI2 = 0; P.srlSnap = 0;
+        P.sgA = 0; P.sgMuz = null; P.sgBreechW = null; P.sgHandT = null; P.sgBelt = null;
+
+        function pressSgDraw() {
+            if (P.sg) { P.sg = 0; P.srl = 0; return }
+            if (P.gun || P.gs === 2) { banner.t = .7; banner.text = 'HOLSTER REVOLVER FIRST (G)'; return }
+            if (P.kn !== 0 || P.kt > .2) { banner.t = .7; banner.text = 'PUT THE KNIFE AWAY (K)'; return }
+            if (P.fin > 0 || P.cs > 0 || P.thw > 0 || P.tt > 0 || P.sm > 0 || P.pk > 0 || P.fs > 0 || P.gu > 0 || P.yk > 0 || P.stbk > 0 || P.z < 0) return;
+            P.sg = 1; P.idle = 0; P.fid = 0; P.abuf = 0; P.clast = 0; P.cgr = 0; P.grabbed = null;
+            if (P.skid) endSkid();
+        }
+        function pressSgReload() {
+            if (!P.sg || P.srl > 0 || P.sAmmo >= 2 || P.fin > 0 || P.pk > 0) return;
+            P.srl = .0001; P.srlE = 0; P.srlI1 = 0; P.srlI2 = 0; P.srlSnap = 0; P.idle = 0; P.fid = 0;
+        }
+        function pressSgFire(both) {
+            if (!P.sg || P.sgK < .85 || P.srl > 0 || P.fin > 0 || P.pk > 0 || P.sgCd > 0) return;
+            if (P.sAmmo <= 0) { banner.t = .6; banner.text = 'CLICK! (R)'; P.sgCd = .3; return }
+            const S = CSc(), F = P.face, before = P.sAmmo, n = both ? Math.min(2, before) : 1;
+            const mm = P.sgMuz || [[P.x + F * 80 * S, -250 * S], [P.x + F * 80 * S, -244 * S]];
+            const m = n === 2 ? [(mm[0][0] + mm[1][0]) / 2, (mm[0][1] + mm[1][1]) / 2] : mm[before === 2 ? 0 : 1];
+            P.sAmmo -= n; P.sgCd = n === 2 ? .55 : .24; P.sgFlash = 1; P.sgBig = n === 2 ? 1.5 : 1; P.sgSmoke = 2.4; P.idle = 0; P.fid = 0;
+            P.sgRec = Math.min(1.6, P.sgRec + (n === 2 ? 1.25 : .85));
+            const per = n === 2 ? 15 : 8, spread = n === 2 ? .2 : .13, id = ++sgId;
+            for (let i = 0; i < per; i++) pellets.push({ x: m[0], y: m[1], x0: m[0], F, th: P.sgA + (Math.random() + Math.random() - 1) * spread, v: 2300 + Math.random() * 700, age: 0, id });
+            burst(m[0], m[1], n === 2 ? 26 : 14, 380, F);
+            puff(m[0], m[1], n === 2 ? 14 : 8, F * 120, -10, 4, 14, 2.4, .32);
+            const imp = n === 2 ? 270 : 200, v = P.vx * F; P.vx = F * Math.max(v - imp, -270);
+            shake = Math.max(shake, n === 2 ? 15 : 9); hitstop = Math.max(hitstop, n === 2 ? .05 : .03);
+        }
+
+        function dropSgShells(n) {
+            const w = P.sgBreechW || [P.x, -150], F = P.face;
+            for (let i = 0; i < n; i++) shells.push({ x: w[0], y: w[1], vx: -F * (40 + Math.random() * 90) + (Math.random() - .5) * 60, vy: -(120 + Math.random() * 140), rot: Math.random() * 6, vr: (Math.random() - .5) * 16, landed: false, t: 0, sg: 1 });
+        }
+        function pelletHit(p, e, h) {
+            const F = p.F, d = Math.abs(h.x - p.x0), fall = Math.max(.3, 1 - d / 700);
+            const dmg = Math.max(1, Math.round((h.head ? SG_HEAD : SG_BODY) * fall));
+            e.hp -= dmg; e.bar = 2.5; e.kdir = F; e.face = -F; e.wait = 1; e.fid = 0; e.hurt = Math.max(e.hurt, .35);
+            combo.dmg += dmg;
+            if (e.lastBlast !== p.id) {
+                e.lastBlast = p.id; combo.n++; combo.t = 1.8; combo.pop = 1.3;
+                e.vx = F * (d < 260 ? 560 : 320);
+                if (d < 320) { if (e.z >= 0) e.z = -1; e.vz = -250; e.tumble = 1 }
+                impacts.push({ x: h.x, y: h.y, t: 0, life: .2, s: 80, seed: Math.random() * 50 });
+                hitstop = Math.max(hitstop, .04); shake = Math.max(shake, 5);
+            }
+            burst(h.x, h.y, 3, 160, F); spray(h.x + F * 6, h.y, 5, 300, F);
+            if (e.hp <= 0 && !(e.dying > 0)) {
+                e.hp = 0; e.dying = .5; if (P.grabbed === e) P.grabbed = null;
+                banner.t = 1.1; banner.text = d < 220 ? 'POINT BLANK!' : 'K.O.!';
+            }
+        }
+        function sgTick(dt) {
+            const S = CSc();
+            P.sgK += ((P.sg ? 1 : 0) - P.sgK) * Math.min(1, dt * 9);
+            if (!P.sg && P.sgK < .01) P.sgK = 0;
+            P.sgRec = Math.max(0, P.sgRec - dt * (1.1 + 2.6 * Math.min(1, P.sgRec)));
+            P.sgCd = Math.max(0, P.sgCd - dt); P.sgFlash = Math.max(0, P.sgFlash - dt * 12);
+            if (!P.sg) P.srl = 0;
+            if (P.srl > 0) {
+                P.srl += dt; const u = P.srl / SG_RELOAD_T;
+                if (!P.srlE && u >= .26) { P.srlE = 1; dropSgShells(2 - P.sAmmo); shake = Math.max(shake, 2.5) }
+                if (!P.srlI1 && u >= .44) { P.srlI1 = 1; if (P.sAmmo < 2) P.sAmmo++ }
+                if (!P.srlI2 && u >= .66) { P.srlI2 = 1; if (P.sAmmo < 2) P.sAmmo++ }
+                if (!P.srlSnap && u >= .86) { P.srlSnap = 1; shake = Math.max(shake, 5); banner.t = .5; banner.text = 'LOADED' }
+                if (P.srl >= SG_RELOAD_T) P.srl = 0;
+            }
+            if (P.sgSmoke > 0 && P.sgMuz) {
+                P.sgSmoke -= dt; P.sgWisp -= dt;
+                if (P.sgWisp <= 0) { P.sgWisp = .07; const m = P.sgMuz[Math.random() < .5 ? 0 : 1]; puff(m[0], m[1], 1, P.face * 14, -38, 2.5, 7, 2.2, .22) }
+            }
+            for (let i = pellets.length - 1; i >= 0; i--) {
+                const p = pellets[i]; p.age += dt;
+                const px = p.x, py = p.y, step = p.v * dt;
+                p.x += p.F * Math.cos(p.th) * step; p.y += Math.sin(p.th) * step;
+                let best = null, bd = 1e9;
+                for (const e of ENEMIES) {
+                    if (e.dead > 0 || e.dying > 0) continue;
+                    const h = bulletHit(p, px, py, e, S);
+                    if (h && h.d < bd) { bd = h.d; best = { e, h } }
+                }
+                if (best) { pelletHit(p, best.e, best.h); pellets.splice(i, 1); continue }
+                if (p.y > 0) { burst(p.x, -2, 2, 140, p.F); pellets.splice(i, 1); continue }
+                if (Math.abs(p.x - p.x0) > SG_RANGE || p.age > .6) pellets.splice(i, 1);
+            }
+        }
+
+        function sgTilt(u) {
+            if (u < .10) return .6 * sm(u / .10);
+            if (u < .22) return .6 + .45 * sm((u - .10) / .12);
+            if (u < .46) return 1.05 - .3 * sm((u - .22) / .24);
+            if (u < .86) return .75;
+            if (u < .92) return .75 - 1.05 * sm((u - .86) / .06);
+            return -.3 * (1 - sm((u - .92) / .08));
+        }
+        function sgOpen(u) { return sm((u - .18) / .07) * (1 - sm((u - .84) / .05)) }
+        function sgHandAt(u, F0, B, C) {
+            const K = [[0, F0], [.20, F0], [.30, B], [.42, C], [.52, B], [.64, C], [.74, F0], [1, F0]];
+            for (let i = 1; i < K.length; i++) if (u <= K[i][0]) {
+                const a = K[i - 1], b = K[i], k = sm((u - a[0]) / (b[0] - a[0]));
+                return [lerp(a[1][0], b[1][0], k), lerp(a[1][1], b[1][1], k)];
+            }
+            return F0;
+        }
+
+        function drawShotgun(F, S, now) {
+            const A = lastArm; if (!A) return;
+            const wr = A[1], rc = Math.min(1.5, P.sgRec), u = P.srl > 0 ? P.srl / SG_RELOAD_T : 0;
+            const open = u > 0 ? sgOpen(u) : 0, tilt = u > 0 ? sgTilt(u) : 0;
+            const aim = -P.aimV - SG_KICK * Math.min(1, rc) - .12 * Math.max(0, rc - 1) + Math.sin(now * 1.7) * .01 * (1 - Math.min(1, rc));
+            const th = aim + tilt; P.sgA = aim;
+            const ca = Math.cos(th), sa = Math.sin(th);
+            const G = (lx, ly) => [wr[0] + F * (lx * ca - ly * sa), wr[1] + lx * sa + ly * ca];
+            const WOOD = '#a0501c', WOOD_D = '#7e3b12', STEEL = '#80848c', DARK = '#3b3e45', BRASS = '#c99a3a';
+            const MZ = 106, HX = 22, HY = -3, BRK = .6;          // muzzle x, hinge point, how far the barrels break open (rad)
+            const m0 = G(MZ, -16.5), m1 = G(MZ, -7.5), br = G(18, -10);
+            P.sgMuz = [[P.x + m0[0] * S, m0[1] * S], [P.x + m1[0] * S, m1[1] * S]];
+            P.sgBreechW = [P.x + br[0] * S, br[1] * S];
+
+            // checkered wood panel (hexagon with cross-hatching)
+            const panel = pts => {
+                ctx.save(); ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath();
+                ctx.fillStyle = WOOD_D; ctx.fill(); ctx.lineWidth = 1.2; ctx.strokeStyle = '#4a2008'; ctx.stroke(); ctx.clip();
+                ctx.globalAlpha *= .5; ctx.lineWidth = .8; ctx.strokeStyle = '#2e1204';
+                for (let k = -60; k < 100; k += 3.5) {
+                    ctx.beginPath(); ctx.moveTo(k, -20); ctx.lineTo(k + 25, 10); ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(k, 10); ctx.lineTo(k + 25, -20); ctx.stroke();
+                }
+                ctx.restore();
+            };
+
+            ctx.save(); ctx.translate(wr[0], wr[1]); ctx.scale(F, 1); ctx.rotate(th);
+            ctx.globalAlpha = Math.min(1, P.sgK * 1.6); ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.strokeStyle = '#111'; ctx.lineWidth = 2.2;
+
+            // ---- long stock, butt tucked into the shoulder ----
+            ctx.fillStyle = WOOD; ctx.beginPath();
+            ctx.moveTo(2, -13); ctx.lineTo(-34, -9); ctx.lineTo(-39, -8); ctx.lineTo(-36, 6); ctx.lineTo(-30, 7); ctx.lineTo(-13, 12);
+            ctx.quadraticCurveTo(-9, 18, -3, 16); ctx.quadraticCurveTo(3, 12, 5, -2); ctx.closePath(); ctx.fill(); ctx.stroke();
+            panel([[-33, -3], [-27, -8], [-14, -9], [-9, -4], [-15, 3], [-28, 4]]);
+            ctx.fillStyle = '#2a2c30'; ctx.beginPath(); ctx.moveTo(-39, -8); ctx.lineTo(-36, 6); ctx.lineTo(-38.5, 6.5); ctx.lineTo(-41.5, -8); ctx.closePath(); ctx.fill(); ctx.stroke();
+
+            // ---- steel receiver with screws ----
+            ctx.fillStyle = STEEL; ctx.beginPath(); ctx.rect(0, -19, 24, 16.5); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = '#2a2c30';
+            for (const [sx, sy] of [[6, -8], [13, -6], [19, -13]]) { ctx.beginPath(); ctx.arc(sx, sy, 1.3, 0, 7); ctx.fill() }
+
+            // ---- exposed hammers on top ----
+            [[3, P.sAmmo >= 2], [9, P.sAmmo >= 1]].forEach(([hx, cocked]) => {
+                ctx.fillStyle = '#585c64'; ctx.beginPath(); ctx.moveTo(hx - 2, -19);
+                if (cocked) { ctx.lineTo(hx - 5, -27); ctx.lineTo(hx - 1, -26); ctx.lineTo(hx + 3, -19) }
+                else { ctx.lineTo(hx + 1, -24); ctx.lineTo(hx + 4, -22); ctx.lineTo(hx + 3, -19) }
+                ctx.closePath(); ctx.fill(); ctx.stroke();
+            });
+
+            // ---- trigger guard + trigger ----
+            ctx.lineWidth = 2.4; ctx.beginPath(); ctx.arc(10, -2.5, 7, .05, Math.PI - .05); ctx.stroke();
+            ctx.lineWidth = 1.8; ctx.beginPath(); ctx.moveTo(10, -3); ctx.lineTo(8, 3); ctx.stroke(); ctx.lineWidth = 2.2;
+
+            // ---- barrel group (hinged at the bottom front of the receiver) ----
+            ctx.save(); ctx.translate(HX, HY); ctx.rotate(open * BRK); ctx.translate(-HX, -HY);
+            ctx.fillStyle = DARK;
+            ctx.beginPath(); ctx.rect(20, -21, MZ - 20, 9); ctx.fill(); ctx.stroke();      // top barrel
+            ctx.beginPath(); ctx.rect(20, -12, MZ - 20, 9); ctx.fill(); ctx.stroke();      // bottom barrel
+            ctx.save(); ctx.globalAlpha *= .5; ctx.strokeStyle = '#9a9ea6'; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(26, -19.5); ctx.lineTo(MZ - 4, -19.5); ctx.moveTo(26, -10.5); ctx.lineTo(MZ - 4, -10.5); ctx.stroke(); ctx.restore();
+            ctx.fillStyle = '#585c64'; ctx.beginPath(); ctx.rect(MZ - 3, -21, 3, 18); ctx.fill(); ctx.stroke();    // muzzle collar
+            ctx.fillStyle = '#111'; ctx.beginPath(); ctx.rect(MZ - 8, -24.5, 2.5, 3.5); ctx.fill();               // front sight
+            ctx.fillStyle = STEEL; ctx.beginPath(); ctx.rect(20, -22, 9, 20); ctx.fill(); ctx.stroke();            // steel collar at the breech
+            // wooden forend over the lower barrel, with checkered panel and screw
+            ctx.fillStyle = WOOD; ctx.beginPath();
+            ctx.moveTo(30, -14); ctx.lineTo(72, -14); ctx.quadraticCurveTo(77, -14, 76, -7); ctx.quadraticCurveTo(75, 0, 70, 0);
+            ctx.lineTo(32, 0); ctx.quadraticCurveTo(28, 0, 29, -7); ctx.quadraticCurveTo(29, -14, 30, -14); ctx.closePath(); ctx.fill(); ctx.stroke();
+            panel([[34, -7], [39, -12], [64, -12], [69, -7], [64, -2], [39, -2]]);
+            ctx.fillStyle = '#9a9ea6'; ctx.beginPath(); ctx.arc(72, -7, 1.5, 0, 7); ctx.fill(); ctx.lineWidth = 1; ctx.stroke(); ctx.lineWidth = 2.2;
+            // shells visible when broken open
+            if (open > .3) {
+                for (let k = 0; k < 2; k++) {
+                    const y = k ? -7.5 : -16.5; ctx.lineWidth = 1.2;
+                    if (k < P.sAmmo) { ctx.fillStyle = BRASS; ctx.beginPath(); ctx.rect(15, y - 3, 4, 6); ctx.fill(); ctx.stroke() }
+                    else if (u < .30) { ctx.fillStyle = '#8a6a22'; ctx.beginPath(); ctx.rect(14 - 3 * sm((u - .18) / .1), y - 3, 5, 6); ctx.fill(); ctx.stroke() }
+                    else { ctx.fillStyle = '#111'; ctx.beginPath(); ctx.rect(17, y - 3, 2, 6); ctx.fill() }
+                }
+            }
+            ctx.restore();
+
+            // ---- rear fist wrapped around the pistol grip ----
+            ctx.fillStyle = '#111'; ctx.beginPath(); ctx.ellipse(-4, 4, 9.5, 8, 0, 0, 7); ctx.fill();
+            ctx.save(); ctx.strokeStyle = PAPER; ctx.globalAlpha *= .45; ctx.lineWidth = 1.2;
+            for (const y of [1, 4.5, 8]) { ctx.beginPath(); ctx.moveTo(1, y); ctx.lineTo(5, y); ctx.stroke() }
+            ctx.restore();
+
+            // ---- muzzle flash ----
+            if (P.sgFlash > .15) {
+                const f = P.sgFlash, big = P.sgBig, n = Math.floor(now * 30);
+                ctx.save(); ctx.translate(MZ + 2, -12); ctx.globalAlpha = Math.min(1, f * 1.4); ctx.fillStyle = '#ffb02e'; ctx.strokeStyle = '#111'; ctx.lineWidth = 1.8; ctx.beginPath();
+                for (let i = 0; i < 14; i++) { const rr = i % 2 ? 8 * big : (28 + 14 * hash(i + n)) * big * (.6 + .4 * f), t = i / 14 * Math.PI * 2, x = Math.cos(t) * rr * 1.5, y = Math.sin(t) * rr; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y) }
+                ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.fillStyle = '#fff3c4'; ctx.beginPath(); ctx.arc(0, 0, 8 * big, 0, 7); ctx.fill(); ctx.restore();
+            }
+            ctx.restore();
+
+            // ---- front hand target = middle of the forend ----
+            const ro = open * BRK, cr = Math.cos(ro), sr = Math.sin(ro);
+            const Fo = [HX + 26 * cr, HY + 26 * sr];
+            const Fp = G(Fo[0], Fo[1]), Cp = G(20, -9), Bp = P.sgBelt || G(20, 30);
+            const hp = u > 0 ? sgHandAt(u, Fp, Bp, Cp) : Fp;
+            P.sgHandT = hp;
+            if (u > 0 && P.sAmmo < 2 && ((u > .30 && u < .44) || (u > .52 && u < .66))) {
+                ctx.save(); ctx.translate(hp[0] + F * 4, hp[1] - 3); ctx.scale(F, 1); ctx.rotate(-.5); ctx.lineWidth = 1.4; ctx.strokeStyle = '#111';
+                ctx.fillStyle = '#b3261e'; ctx.beginPath(); ctx.rect(-6, -2.6, 9, 5.2); ctx.fill(); ctx.stroke();
+                ctx.fillStyle = BRASS; ctx.beginPath(); ctx.rect(3, -2.6, 3.5, 5.2); ctx.fill(); ctx.stroke(); ctx.restore();
+            }
+        }
+        function drawPellets(gy) {
+            ctx.save(); ctx.lineCap = 'round'; ctx.strokeStyle = '#111';
+            for (const p of pellets) {
+                const sx = p.x - P.x + W / 2, sy = gy + 4 + p.y, ux = p.F * Math.cos(p.th), uy = Math.sin(p.th);
+                ctx.globalAlpha = .85; ctx.lineWidth = 2.2; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx - ux * 16, sy - uy * 16); ctx.stroke();
+                ctx.globalAlpha = .25; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(sx - ux * 18, sy - uy * 18); ctx.lineTo(sx - ux * 46, sy - uy * 46); ctx.stroke();
+            }
+            ctx.restore();
+        }
+        function drawShotgunHUD() {
+            if (P.sgFlash > .02) { ctx.save(); ctx.fillStyle = 'rgba(255,240,200,' + (.14 * P.sgFlash) + ')'; ctx.fillRect(0, 0, W, H); ctx.restore() }
+            if (P.sgK < .05) return;
+            ctx.save(); ctx.globalAlpha = Math.min(1, P.sgK); ctx.lineWidth = 2.5; ctx.strokeStyle = '#111';
+            for (let i = 0; i < 2; i++) { ctx.fillStyle = i < P.sAmmo ? '#b3261e' : 'rgba(0,0,0,0)'; ctx.beginPath(); ctx.rect(24 + i * 22, calcTop() + 8, 14, 28); ctx.fill(); ctx.stroke() }
+            if (P.srl > 0) { ctx.fillStyle = '#111'; ctx.font = 'italic 18px Georgia,serif'; ctx.fillText('reloading…', 22, calcTop() + 60) }
             ctx.restore();
         }
 
@@ -3364,7 +3637,7 @@
             let dt = dt0;
             if (hitstop > 0) { hitstop -= dt0; dt = 0 }
 
-            update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); brainTick(dt);
+            update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); sgTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); brainTick(dt);
             shake = Math.max(0, shake - dt0 * 60);
             ctx.save();
             if (shake > .3) ctx.translate((Math.random() - .5) * shake * 1.6, (Math.random() - .5) * shake * 1.6);
@@ -3383,6 +3656,7 @@
             drawFootKnives(gy);
             drawKnives(gy);
             drawShots(gy);
+            drawPellets(gy);
             drawChar(W / 2, gy, P);
             drawSmoke(gy);
             drawBlood(gy);
@@ -3390,6 +3664,7 @@
             ctx.fillStyle = vig; ctx.fillRect(0, 0, W, H);
             drawHUD();
             drawGunHUD();
+            drawShotgunHUD();
             requestAnimationFrame(frame);
         }
         requestAnimationFrame(frame);
