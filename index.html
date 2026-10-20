@@ -95,6 +95,8 @@
         <div><span class="b" id="bp">J</span><span class="b" id="bk">K</span><span class="b" id="bj">▲</span></div>
         <span class="b" id="bd"
             style="position:fixed; right:18px; bottom:calc(env(safe-area-inset-bottom,0px) + 98px)">▼</span>
+        <span class="b" id="bh"
+            style="position:fixed; right:18px; bottom:calc(env(safe-area-inset-bottom,0px) + 178px)">H</span>
     </div>
     <script>
         const cv = document.getElementById('c'), ctx = cv.getContext('2d');
@@ -127,6 +129,7 @@
             if (P.sm === 1) return;                 // no actions while lighting up
             if (P.sgp > 0) return;    // no actions mid-stomp
             if (e.code === 'KeyG') pressG();
+            if (e.code === 'KeyH') pressHorse();
             if (e.code === 'KeyF') pressFire();
             if (e.code === 'KeyZ') pressSgDraw();
             if (e.code === 'KeyB') pressSgFire(true);
@@ -147,6 +150,7 @@
         document.getElementById('bj').addEventListener('pointerdown', pressJump);
         hold('bd', 'ArrowDown');
         document.getElementById('bp').addEventListener('pointerdown', e => { e.preventDefault(); pressAtk() });
+        document.getElementById('bh').addEventListener('pointerdown', e => { e.preventDefault(); pressHorse() });
 
 
         const P = {
@@ -169,6 +173,7 @@
         const groundKnives = [];
         const TOSS_T = .95;
         function pressK() {
+            if (P.mount) { banner.t = .6; banner.text = 'DISMOUNT FIRST (H)'; return }
             if (P.thw > 0 || P.fin > 0 || P.pk > 0) return;
             if (P.gun || P.gs === 2 || P.sg) { banner.t = .6; banner.text = 'HOLSTER GUN FIRST (G)'; return }
             P.idle = 0; P.fid = 0;
@@ -333,7 +338,7 @@
                 fidgetTick(P, true, dt);
                 return;
             }
-            const dir = (P.fin > 0 || P.sm === 1 || P.fs > 0 || P.yk > 0 || P.gu > 0 || P.sgp > 0) ? 0 : (keys.ArrowRight || keys.KeyD ? 1 : 0) - (keys.ArrowLeft || keys.KeyA ? 1 : 0);
+            const dir = (P.fin > 0 || P.sm === 1 || P.fs > 0 || P.yk > 0 || P.gu > 0 || P.sgp > 0 || P.mount) ? 0 : (keys.ArrowRight || keys.KeyD ? 1 : 0) - (keys.ArrowLeft || keys.KeyA ? 1 : 0);
             const run = keys.ShiftLeft || keys.ShiftRight;
             const max = run ? 520 : 190;
             const grounded = P.z >= 0;
@@ -350,11 +355,11 @@
             }
             else if (grounded) { const f = 1400 * dt; P.vx = Math.abs(P.vx) <= f ? 0 : P.vx - Math.sign(P.vx) * f }
             const lim = max; if (Math.abs(P.vx) > lim) P.vx += (Math.sign(P.vx) * lim - P.vx) * Math.min(1, dt * 8);
-            P.x += P.vx * dt;
+            if (!P.mount) P.x += P.vx * dt;
 
             // ---- parkour tumbling pass: Sprint + Jump at speed ----
             const isSprinting = run && Math.abs(P.vx) > 220;
-            if (P.jbuf > 0 && isSprinting && grounded && !P.pk && !P.cs && !P.fin && !P.stbk && !P.sg) {
+            if (P.jbuf > 0 && isSprinting && grounded && !P.pk && !P.mount && !P.cs && !P.fin && !P.stbk && !P.sg) {
                 startParkour(vs || P.face || 1);
                 P.jbuf = 0;
             }
@@ -362,7 +367,7 @@
             // ---- jump: buffering + coyote time + variable height ----
             if (grounded) P.coy = COYOTE; else P.coy = Math.max(0, P.coy - dt);
             if (P.jbuf > 0) {
-                if ((grounded || P.coy > 0) && !P.cs && !P.fin && !P.pk && !(P.yk > 0) && !(P.gu > 0) && !(P.sgp > 0)) { P.vz = -JUMP_V; P.jbuf = 0; P.coy = 0; P.grabbed = null; P.clast = 0 }// jumping breaks the clinch
+                if ((grounded || P.coy > 0) && !P.cs && !P.fin && !P.pk && !(P.yk > 0) && !(P.gu > 0) && !(P.sgp > 0) && !P.mount) { P.vz = -JUMP_V; P.jbuf = 0; P.coy = 0; P.grabbed = null; P.clast = 0 }// jumping breaks the clinch
                 else P.jbuf = Math.max(0, P.jbuf - dt);
             }
             const g = GRAV * (P.vz < 0 && !keys.Space ? CUT_MULT : 1);
@@ -406,7 +411,7 @@
                 }
             }
             // ---- idle fidgets ----
-            fidgetTick(P, dir || keys.Space || keys.KeyJ || keys.KeyF || P.sm > 0 || P.cs > 0 || P.skid || !grounded || sp > 8 || P.tt > 0 || P.atk > 0 || P.thw > 0 || P.stbk > 0 || P.fs > 0 || P.yk > 0 || P.gu > 0 || P.sg || P.sgp > 0, dt);
+            fidgetTick(P, dir || keys.Space || keys.KeyJ || keys.KeyF || P.sm > 0 || P.cs > 0 || P.skid || !grounded || sp > 8 || P.tt > 0 || P.atk > 0 || P.thw > 0 || P.stbk > 0 || P.fs > 0 || P.yk > 0 || P.gu > 0 || P.sg || P.sgp > 0 || P.mount, dt);
         }
 
         // ================= COMBAT =================
@@ -476,6 +481,7 @@
         const combo = { n: 0, dmg: 0, t: 0, pop: 0 }, banner = { t: 0, text: '' };
         let hitstop = 0, shake = 0;
         function pressAtk() {
+            if (P.mount) { banner.t = .6; banner.text = 'DISMOUNT FIRST (H)'; return }
             if (P.sg) { banner.t = .6; banner.text = 'DROP SHOTGUN FIRST (Z)'; return }
             if (P.kn === 1 && P.kt > .5 && (keys.ArrowDown || keys.KeyS) && !(P.gu > 0) && P.stbk === 0 && P.fs === 0 && !(P.yk > 0) && P.pk === 0 && P.z >= 0 && !P.fin && !P.thw && !P.tt && !P.cs && pressGut()) return;
             if (P.kn === 2 && P.kt > .5 && P.fs === 0 && P.stbk === 0 && P.z >= 0 && !P.fin && !P.thw && !P.tt && !P.cs && pressFootStab()) return;
@@ -1672,7 +1678,7 @@
             if (CUR && CUR.pk > 0) { nx = uy0 * F; ny = -ux0 * F; }   // knee always on the front of the thigh
             else if (nx * F < 0) { nx = -nx; ny = -ny }
             if (footFlat > .5 && ny > 0) { nx = -nx; ny = -ny }   // stomping leg: knee points up, shin comes down onto the head
-            const hs = h * (1 - .7 * (1 - Rf()) * (1 - (CUR.kneelK || 0))), kx = mx + nx * hs, ky = my + ny * hs;
+            const hf = 1 - .7 * (1 - Rf()) * (1 - (CUR.kneelK || 0)), hs = h * (hf + (.55 - hf) * (CUR.mk || 0)), kx = mx + nx * hs, ky = my + ny * hs;
             ctx.strokeStyle = '#111'; ctx.lineWidth = 7; ctx.lineCap = 'round';
             ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(kx, ky); ctx.stroke();
             const sx = ax - kx, sy = ay - ky, sl = Math.hypot(sx, sy), ux = sx / sl, uy = sy / sl, px = -uy, py = ux;
@@ -1893,6 +1899,9 @@
             // ---- clinch: held enemy hunches with bent knees; attacker steps in and leans ----
             const grabHipY = isGrabbed ? 20 : 0;
             const kk = P.kneelK || 0, fk = P.fallK || 0;
+            const mk = (P === PL) ? (P.mk || 0) : 0;                        // mounted blend 0..1
+            const mz = mk * (HRS.z / S) - 62 * Math.sin(Math.PI * mk);      // horse jump + hop arc while climbing on/off
+            const seatY = HR_SEAT + hrsBob() + mz;
             const sgW = (P === PL && P.sgK > .01 && z >= 0) ? sm(P.sgK) * (1 - Math.min(1, sp / 120)) : 0;   // shotgun stance weight
             const sgpE = (P === PL && P.sgp > 0 && !P.sgpWalk) ? sgpEnv() : 0;   // stomp crouch weight
             const fkk = (P !== PL && P.fk) ? (P.fkK || 0) : 0;
@@ -1929,6 +1938,7 @@
             if (P === PL) hipY += 10 * Math.min(1.2, P.sgRec) + 4 * sm(P.sgK);
             hipY += 13 * sgW;   // sink a little so the wide legs still reach the floor
             hipY += 16 * sgpE;
+            if (mk > 0) hipY = hipY * (1 - mk) + seatY * mk;
             let hipX = cb ? F * cb.hipX * cb.w : 0, cbLean = cb ? cb.lean * cb.w : 0;
 
             if (isGrabbed) hipX = -F * 8;
@@ -2009,6 +2019,7 @@
                     }
                 }
                 if (P === PL && i === 0 && P.sgp > 0 && !P.sgpWalk) { const o = sgpFoot(S, fx, fy, lf, F); fx = o[0]; fy = o[1]; lf = o[2]; }
+                if (mk > 0) { const mtx = hipX + F * (i ? 4 : 18) + Math.sin(HRS.ph * 4 * Math.PI + i * 2) * 2 * HRS.amp, mty = seatY + 92 + ANK; fx = fx * (1 - mk) + mtx * mk; fy = fy * (1 - mk) + mty * mk; lf *= (1 - mk) }
                 const so = gkv * 34 * (i ? 1 : -1), hpL = rot(so, 0);
                 leg(hpL[0], hpL[1], fx, fy, F, p, lf);
                 footFlat = 0;
@@ -2046,6 +2057,7 @@
                     ang = ang * (1 - rw) + (-.35 + 1.1 * s + up) * rw;           // forward: about +.75, back: about -1.45 (elbow high behind)
                     flex = flex * (1 - rw) + (1.35 + .15 * s) * rw;              // about 90° elbows
                 }
+                if (mk > .01) { const [a, f] = ikTo(sh, F * (44 + 3 * i), hipY - 44 - 4 * i, F); ang = ang * (1 - mk) + a * mk; flex = flex * (1 - mk) + f * mk }
                 if (i === 0 && P === PL && P.gunK > .01) {
                     const w = sm(P.gunK), rlk = P.rl > 0 ? rlArm(P.rl / RELOAD_T) : 0;
                     const rc = P.recoil, rcE = Math.sin(Math.PI * rc);   // rcE is 0 at the shot, peaks mid-recoil, returns to 0
@@ -2254,6 +2266,7 @@
                 (P.armFullPts || (P.armFullPts = []))[i] = [sh, lastArm[0], lastArm[1]];
                 (P.fistInfo || (P.fistInfo = []))[i] = { x: lastArm[1][0], y: lastArm[1][1], a: Math.atan2(lastArm[1][1] - lastArm[0][1], (lastArm[1][0] - lastArm[0][0]) * F), F };
             }
+            if (P === PL && mk > .9 && P.gunK < .05 && P.sgK < .05) drawReins(F);
             const grabHdOffX = isGrabbed ? F * 4 - F * hk * 10 + Math.sin(now * 23) * 1.5 : 0;
             const grabHdOffY = isGrabbed ? 6 - hk * 2 : 0;
             const fnn = (P !== PL && P.fst === 1 && PL.fin > 0) ? finK(PL.fin) : null;
@@ -2568,6 +2581,7 @@
             return best;
         }
         function pressThrow() {
+            if (P.mount) { banner.t = .6; banner.text = 'DISMOUNT FIRST (H)'; return }
             P.idle = 0; P.fid = 0;
             if (P.thw > 0 || P.fin > 0 || P.cs > 0 || P.tt > 0 || P.kn === 0 || P.kt < .9) return;
 
@@ -2814,6 +2828,7 @@
         }
 
         function pressFinish() {
+            if (P.mount) { banner.t = .6; banner.text = 'DISMOUNT FIRST (H)'; return }
             if (P.yk > 0 || P.fin > 0 || P.cs > 0 || P.tt > 0 || P.thw > 0 || P.z < 0) return;
             if (tryPickupKnife()) return;
             if (P.gun || P.gs === 2 || P.sg) { banner.t = .6; banner.text = 'HOLSTER GUN FIRST (G)'; return }
@@ -3045,6 +3060,7 @@
 
         function smStill() { return P.z >= 0 && Math.abs(P.vx) < 8 && !(P.cs > 0 || P.fin > 0 || P.thw > 0 || P.tt > 0 || P.kt > .05 || P.skid || P.abuf > 0) }
         function pressSmoke() {
+            if (P.mount) { banner.t = .6; banner.text = 'DISMOUNT FIRST (H)'; return }
             if (P.sm === 1 || P.sm === 3) return;
             if (P.sm === 2) { flickCig(); return }
             if (!smStill() || P.kn !== 0 || P.sg) return;
@@ -3750,6 +3766,7 @@
         function sgCenter(S) { return SGG.x + SGG.F * Math.cos(SG_REST) * SG_CEN * S }
 
         function pressSgDraw() {
+            if (P.mount && !P.sg) { banner.t = .6; banner.text = 'DISMOUNT FIRST (H)'; return }
             if (P.sgp > 0) return;
             if (P.sg) { dropShotgun(); return }
             if (P.gun || P.gs === 2) { banner.t = .7; banner.text = 'HOLSTER REVOLVER FIRST (G)'; return }
@@ -4028,6 +4045,904 @@
             ctx.restore();
         }
 
+        // ================= HORSE (mount, ride, jump, trample) =================
+        const HR_MOUNT_R = 170, HR_SEAT = -148, HR_WALK = 215, HR_RUN = 790, HR_JUMP = 640, HR_REAR_T = 1.0;
+        const HRS = { x: 480, vx: 0, z: 0, vz: 0, face: -1, ph: 0, amp: 0, rg: 0, home: 480, goal: 480, wait: 2, gz: 0, gT: 3, gk: 0, rear: 0, muz: null };
+        P.mount = 0; P.mountT = 0; P.mx0 = 0; P.mk = 0;   // mount: 0 off, 1 climbing on, 2 riding, 3 climbing off
+        const clamp01 = v => Math.max(0, Math.min(1, v));
+
+        function hrsGait(sp) { return { A: 22 + 34 * clamp01((sp - 100) / 680), st: .55 - .17 * HRS.rg } }   // stride half-length, stance fraction
+        function hrsBob() { return Math.sin(HRS.ph * 4 * Math.PI) * 2.6 * HRS.amp * (.3 + HRS.rg) }
+        function hrsRear() { return HRS.rear > 0 ? Math.sin(Math.PI * (1 - HRS.rear / HR_REAR_T)) : 0 }
+        function horseSpook() { if (P.mount || HRS.rear > 0) return; if (Math.abs(HRS.x - P.x) < 800) HRS.rear = HR_REAR_T }
+
+        function pressHorse() {
+            if (P.mount === 2) {
+                if (HRS.z < -4) return;
+                P.mount = 3; P.mountT = 0; P.mx0 = P.x; return;
+            }
+            if (P.mount) return;
+            if (P.fin > 0 || P.cs > 0 || P.thw > 0 || P.tt > 0 || P.sm > 0 || P.pk > 0 || P.fs > 0 || P.gu > 0 || P.yk > 0 || P.stbk > 0 || P.sgp > 0 || P.gs === 2 || P.z < 0) return;
+            if (P.kn !== 0 || P.kt > .2) { banner.t = .7; banner.text = 'PUT THE KNIFE AWAY (K)'; return }
+            const S = CSc();
+            if (Math.abs(HRS.x - P.x) > HR_MOUNT_R * S) { banner.t = .8; banner.text = 'WALK TO THE HORSE'; return }
+            if (P.skid) endSkid();
+            HRS.rear = 0; HRS.wait = 2;
+            P.face = HRS.face; P.mount = 1; P.mountT = 0; P.mx0 = P.x; P.vx = 0;
+            P.idle = 0; P.fid = 0; P.abuf = 0; P.clast = 0; P.cgr = 0; P.grabbed = null;
+        }
+
+        function horseTick(dt) {
+            const h = HRS, S = CSc(), st = P.mount;
+            for (const e of ENEMIES) if (e.trampT > 0) e.trampT -= dt;
+            let braking = false;
+
+            if (st === 2) {                                                   // ---- riding: player input drives the horse
+                const dir = (keys.ArrowRight || keys.KeyD ? 1 : 0) - (keys.ArrowLeft || keys.KeyA ? 1 : 0), run = !!(keys.ShiftLeft || keys.ShiftRight);
+                const max = run ? HR_RUN : HR_WALK, grounded = h.z >= 0;
+                if (dir) {
+                    if (dir !== h.face && Math.abs(h.vx) > 60) { h.vx -= Math.sign(h.vx) * 1800 * dt; braking = true }   // skid to a stop before turning
+                    else { h.face = dir; h.vx += dir * (run ? 560 : 800) * dt }
+                } else if (grounded) { const f = 900 * dt; h.vx = Math.abs(h.vx) <= f ? 0 : h.vx - Math.sign(h.vx) * f }
+                if (Math.abs(h.vx) > max) h.vx += (Math.sign(h.vx) * max - h.vx) * Math.min(1, dt * (grounded ? 2.5 : .6));
+                if (P.jbuf > 0 && grounded) { h.vz = -HR_JUMP; h.z = -1; P.jbuf = 0; burst(h.x, -3, 6, 200, -h.face) }
+                if (braking && grounded && Math.abs(h.vx) > 200 && Math.random() < dt * 40)
+                    flecks.push({ x: h.x + Math.sign(h.vx) * 30 * S, y: -2, vx: -Math.sign(h.vx) * (40 + Math.random() * 80), vy: -(40 + Math.random() * 90), r: 1.2 + Math.random() * 1.8, t: 0, life: .35 });
+            } else if (st === 0) {                                            // ---- free horse: wanders, grazes, rears
+                if (h.rear > 0) {
+                    h.rear -= dt; h.vx *= Math.max(0, 1 - dt * 8);
+                    if (h.rear <= 0) { h.rear = 0; if (Math.abs(h.x - P.x) < W) { shake = Math.max(shake, 4); burst(h.x + h.face * 45 * S, -3, 10, 240, h.face) } }
+                } else {
+                    let dir = 0;
+                    if (h.wait > 0) h.wait -= dt;
+                    else { const gd = h.goal - h.x; if (Math.abs(gd) > 14) { dir = Math.sign(gd); h.face = dir } else { h.wait = 3 + Math.random() * 5; h.goal = h.home + (Math.random() * 2 - 1) * 380 } }
+                    if (dir) h.vx += (dir * 105 - h.vx) * Math.min(1, dt * 3);
+                    else { const f = 700 * dt; h.vx = Math.abs(h.vx) <= f ? 0 : h.vx - Math.sign(h.vx) * f }
+                }
+            } else h.vx *= Math.max(0, 1 - dt * (st === 3 ? 6 : 10));         // mounting / dismounting: he stands still
+
+            const idle = st === 0 && h.rear <= 0 && Math.abs(h.vx) < 8;
+            h.gT -= dt;
+            if (!idle) { h.gz = 0; h.gT = 2 + Math.random() * 3 }
+            else if (h.gT <= 0) { h.gz = h.gz ? 0 : 1; h.gT = h.gz ? 2.5 + Math.random() * 2.5 : 3 + Math.random() * 5 }
+            h.gk += (h.gz - h.gk) * Math.min(1, dt * 3.5);
+
+            h.x += h.vx * dt;
+            if (h.vz !== 0 || h.z < 0) {
+                h.vz += GRAV * (h.vz < 0 && !(st === 2 && keys.Space) ? 3.5 : 1) * dt; h.z += h.vz * dt;
+                if (h.z >= 0) {
+                    if (h.vz > 300) { shake = Math.max(shake, 4); burst(h.x, -3, 8, 220, h.face); burst(h.x, -3, 6, 180, -h.face) }
+                    h.z = 0; h.vz = 0;
+                }
+            }
+            const sp = Math.abs(h.vx);
+            h.rg += (clamp01((sp - 380) / 260) - h.rg) * Math.min(1, dt * 5);
+            h.amp += (Math.min(1, sp / 160) - h.amp) * Math.min(1, dt * 10);
+            if (h.z >= 0) { const g = hrsGait(sp); h.ph = (h.ph + sp * dt / ((2 * g.A / g.st) * S)) % 1 }
+
+            // ---- rider sync ----
+            if (st === 1) {
+                P.mountT += dt; const k = Math.min(1, P.mountT / .5);
+                P.mk = sm(k); P.x = lerp(P.mx0, h.x, P.mk); P.vx = 0; P.face = h.face;
+                if (k >= 1) { P.mount = 2; P.mk = 1; banner.t = .8; banner.text = 'MOUNTED'; shake = Math.max(shake, 4); burst(h.x, -3, 8, 200, -h.face) }
+            } else if (st === 2) {
+                P.x = h.x; P.vx = h.vx; P.face = h.face; P.mk = 1;
+                if (sp > 380) {                                                // trample
+                    const sg = Math.sign(h.vx);
+                    for (const e of ENEMIES) {
+                        if (e.dead > 0 || e.dying > 0 || e.trampT > 0) continue;
+                        const dx = (e.x - h.x) * sg;
+                        if (dx > -30 * S && dx < 105 * S && h.z > -70 * S) {
+                            e.trampT = .8;
+                            hitEnemyParkour(e, 34, sg * 560, 9);
+                            if (e.z >= 0) e.z = -1; e.vz = -420; e.tumble = 1;
+                            if (e.hp > 0) { banner.t = .8; banner.text = 'TRAMPLED!' }
+                        }
+                    }
+                }
+            } else if (st === 3) {
+                P.mountT += dt; const k = Math.min(1, P.mountT / .45);
+                P.mk = 1 - sm(k); P.x = lerp(P.mx0, h.x - h.face * 105 * S, sm(k)); P.vx = 0;
+                if (k >= 1) { P.mount = 0; P.mk = 0; h.home = h.x; h.goal = h.x; h.wait = 3; burst(P.x, -3, 6, 160, h.face) }
+            }
+        }
+
+        // two-bone leg IK for the horse: returns [kneeX, kneeY, ankleX, ankleY]; bend +1 = knee forward, -1 = hock backward
+        function hrsLegIK(ax, ay, fx, fy, bend) {
+            const A1 = 62, A2 = 60, dx = fx - ax, dy = fy - ay, d = Math.hypot(dx, dy) || 1, dm = Math.min(d, A1 + A2 - .5), ux = dx / d, uy = dy / d;
+            const c = Math.max(-1, Math.min(1, (A1 * A1 + dm * dm - A2 * A2) / (2 * A1 * dm)));
+            const ang = Math.atan2(uy, ux) - bend * Math.acos(c);
+            return [ax + Math.cos(ang) * A1, ay + Math.sin(ang) * A1, ax + ux * dm, ay + uy * dm];
+        }
+
+
+
+
+
+
+        function drawHorse(gy) {
+            const h = HRS, S = CSc(), F = h.face, now = performance.now() / 1000;
+            const sx = h.x - P.x + W / 2;
+
+            if (Math.abs(sx - W / 2) > W / 2 + 260) return;
+
+            const sp = Math.abs(h.vx);
+            const rg = h.rg;
+            const rr = hrsRear();
+            const by = hrsBob();
+            const g = hrsGait(sp);
+            const kk = sm(sp / 50);
+            const gk = h.gk;
+
+            const air = h.z < 0 ? clamp01(-h.z / (40 * S)) : 0;
+
+            const HORSE_W = 1.30;
+            const HORSE_H = 1.40;
+
+            ctx.save();
+            ctx.translate(sx, gy + 4 + h.z);
+            ctx.scale(S * F * HORSE_W, S * HORSE_H);
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+
+            if (rr > .01) {
+                ctx.translate(-52, 0);
+                ctx.rotate(-.55 * rr);
+                ctx.translate(52, 0);
+            }
+
+            // ============================================================
+            // LEGS
+            // Straighter horse legs - only a small natural knee/hock bend
+            // ============================================================
+
+            const AT = -108 + by;
+
+            const legs = [
+                // front far
+                { ax: 46, wo: .50, go: .10, bend: 0.18, front: 1, far: 1 },
+
+                // rear far
+                { ax: -52, wo: .25, go: .62, bend: -0.18, front: 0, far: 1 },
+
+                // front near
+                { ax: 46, wo: 0, go: 0, bend: 0.18, front: 1, far: 0 },
+
+                // rear near
+                { ax: -52, wo: .75, go: .50, bend: -0.18, front: 0, far: 0 }
+            ];
+
+            const geo = legs.map(L => {
+
+                const u =
+                    ((h.ph + lerp(L.wo, L.go, rg)) % 1 + 1) % 1;
+
+                const A = g.A * kk;
+                const st = g.st;
+
+                let x;
+                let lift = 0;
+
+                if (u < st) {
+
+                    x = A * (1 - 2 * u / st);
+
+                } else {
+
+                    const s = (u - st) / (1 - st);
+                    const e = s * s * (3 - 2 * s);
+
+                    x = -A + 2 * A * e;
+
+                    lift =
+                        Math.sin(Math.PI * s) *
+                        (10 + 18 * rg) *
+                        kk;
+                }
+
+                let fx = L.ax + x;
+                let fy = -lift;
+
+                // --------------------------------------------------------
+                // Airborne pose
+                // --------------------------------------------------------
+
+                if (air > 0) {
+
+                    fx = lerp(
+                        fx,
+                        L.ax + (L.front ? 30 : -32),
+                        air
+                    );
+
+                    fy = lerp(
+                        fy,
+                        L.front ? -58 : -52,
+                        air
+                    );
+                }
+
+                // --------------------------------------------------------
+                // Rearing pose
+                // --------------------------------------------------------
+
+                if (rr > 0 && L.front) {
+
+                    fx = lerp(
+                        fx,
+                        L.ax + 24,
+                        rr
+                    );
+
+                    fy = lerp(
+                        fy,
+                        -70 + 5 * Math.sin(
+                            now * 10 + L.far * 1.5
+                        ),
+                        rr
+                    );
+                }
+
+                // --------------------------------------------------------
+                // IMPORTANT:
+                // Reduced IK bend dramatically.
+                // Previously this was 1 / -1.
+                // Now the knees remain almost straight.
+                // --------------------------------------------------------
+
+                return {
+                    L,
+                    k: hrsLegIK(
+                        L.ax,
+                        AT,
+                        fx,
+                        fy - 9,
+                        L.bend
+                    )
+                };
+            });
+
+
+            // ============================================================
+            // LEG DRAWING
+            // ============================================================
+
+            const legPass = (list, col, add) => {
+
+                ctx.strokeStyle = col;
+
+                for (const q of list) {
+
+                    const [kx, ky, px, py] = q.k;
+
+                    // Upper leg
+                    ctx.lineWidth = 17 + add;
+                    ctx.beginPath();
+                    ctx.moveTo(q.L.ax, AT);
+                    ctx.lineTo(kx, ky);
+                    ctx.stroke();
+
+                    // Lower leg
+                    ctx.lineWidth = 10 + add;
+                    ctx.beginPath();
+                    ctx.moveTo(kx, ky);
+                    ctx.lineTo(px, py);
+                    ctx.stroke();
+                }
+            };
+
+
+            // ============================================================
+            // HOOF
+            // ============================================================
+
+            const hoof = list => {
+
+                ctx.fillStyle = '#111';
+
+                for (const q of list) {
+
+                    const [kx, ky, px, py] = q.k;
+
+                    const dx = px - kx;
+                    const dy = py - ky;
+
+                    const dl = Math.hypot(dx, dy) || 1;
+
+                    const ux = dx / dl;
+                    const uy = dy / dl;
+
+                    const nx = -uy;
+                    const ny = ux;
+
+                    ctx.beginPath();
+
+                    ctx.moveTo(
+                        px + nx * 6 - ux * 3,
+                        py + ny * 6 - uy * 3
+                    );
+
+                    ctx.lineTo(
+                        px - nx * 6 - ux * 3,
+                        py - ny * 6 - uy * 3
+                    );
+
+                    ctx.lineTo(
+                        px - nx * 7 + ux * 11 + 6,
+                        py - ny * 7 + uy * 11
+                    );
+
+                    ctx.lineTo(
+                        px + nx * 7 + ux * 11 + 1,
+                        py + ny * 7 + uy * 11
+                    );
+
+                    ctx.closePath();
+                    ctx.fill();
+                }
+            };
+
+
+            const far = geo.filter(q => q.L.far);
+            const near = geo.filter(q => !q.L.far);
+
+
+            // Far legs first
+            legPass(far, '#111', 6);
+            legPass(far, PAPER, 0);
+            hoof(far);
+
+
+            // ============================================================
+            // TAIL
+            // ============================================================
+
+            ctx.strokeStyle = '#111';
+
+            for (let j = 0; j < 5; j++) {
+
+                const sw =
+                    Math.sin(
+                        now * (2.2 + 7 * rg) + j * 1.1
+                    ) *
+                    (3 + 7 * rg);
+
+                ctx.lineWidth = 5 - j * .5;
+
+                ctx.beginPath();
+
+                ctx.moveTo(
+                    -64,
+                    -138 + by + j * 2
+                );
+
+                ctx.quadraticCurveTo(
+                    -90 - 28 * rg,
+                    -122 + by - 10 * rg,
+                    -86 - 7 * j - 60 * rg,
+                    -52 + 6 * j - 48 * rg + sw + by
+                );
+
+                ctx.stroke();
+            }
+
+
+            // ============================================================
+            // NECK + HEAD
+            // ============================================================
+
+            const nod =
+                Math.sin(h.ph * 2 * Math.PI) *
+                5 *
+                kk *
+                (.2 + rg);
+
+            const n0 = [
+                46,
+                -124 + by
+            ];
+
+            const n1 = [
+                lerp(88 + 4 * rg, 100, gk),
+                lerp(
+                    -188 + by + nod - 4 * rg,
+                    -52,
+                    gk
+                )
+            ];
+
+            const nc = [
+                lerp(76, 90, gk),
+                lerp(-152 + by, -100, gk)
+            ];
+
+            const m = [
+                n1[0] +
+                lerp(
+                    lerp(32, 38, rg),
+                    7,
+                    gk
+                ),
+
+                n1[1] +
+                lerp(
+                    lerp(28, 18, rg),
+                    34,
+                    gk
+                )
+            ];
+
+            h.muz = [
+                m[0] + 3,
+                m[1] + 2
+            ];
+
+
+            const neckP = () => {
+
+                ctx.beginPath();
+
+                ctx.moveTo(
+                    n0[0],
+                    n0[1]
+                );
+
+                ctx.quadraticCurveTo(
+                    nc[0],
+                    nc[1],
+                    n1[0],
+                    n1[1]
+                );
+            };
+
+
+            const headP = () => {
+
+                ctx.beginPath();
+
+                ctx.moveTo(
+                    n1[0],
+                    n1[1]
+                );
+
+                ctx.lineTo(
+                    m[0],
+                    m[1]
+                );
+            };
+
+
+            // Black outline
+            ctx.strokeStyle = '#111';
+
+            ctx.lineWidth = 36;
+            neckP();
+            ctx.stroke();
+
+            ctx.lineWidth = 28;
+            headP();
+            ctx.stroke();
+
+
+            // ============================================================
+            // BODY
+            // ============================================================
+
+            ctx.beginPath();
+
+            ctx.moveTo(
+                42,
+                -148 + by
+            );
+
+            // Back
+            ctx.quadraticCurveTo(
+                -4,
+                -154 + by,
+                -48,
+                -150 + by
+            );
+
+            // Rump
+            ctx.bezierCurveTo(
+                -70,
+                -148 + by,
+                -74,
+                -108 + by,
+                -58,
+                -94 + by
+            );
+
+            // Belly
+            ctx.quadraticCurveTo(
+                -6,
+                -86 + by,
+                38,
+                -92 + by
+            );
+
+            // Chest
+            ctx.bezierCurveTo(
+                62,
+                -96 + by,
+                68,
+                -126 + by,
+                52,
+                -148 + by
+            );
+
+            ctx.closePath();
+
+            ctx.fillStyle = PAPER;
+            ctx.fill();
+
+            ctx.strokeStyle = '#111';
+            ctx.lineWidth = 5;
+            ctx.stroke();
+
+
+            // ============================================================
+            // PAPER FILL NECK + HEAD
+            // ============================================================
+
+            ctx.strokeStyle = PAPER;
+
+            ctx.lineWidth = 27;
+            neckP();
+            ctx.stroke();
+
+            ctx.lineWidth = 19;
+            headP();
+            ctx.stroke();
+
+
+            // ============================================================
+            // MANE
+            // ============================================================
+
+            ctx.strokeStyle = '#111';
+            ctx.lineWidth = 4;
+
+            for (let i = 0; i <= 7; i++) {
+
+                const t = i / 7;
+
+                const a = (1 - t) * (1 - t);
+                const b = 2 * (1 - t) * t;
+                const c = t * t;
+
+                const bx =
+                    a * n0[0] +
+                    b * nc[0] +
+                    c * n1[0] -
+                    11;
+
+                const byy =
+                    a * n0[1] +
+                    b * nc[1] +
+                    c * n1[1] -
+                    9;
+
+                const w =
+                    Math.sin(
+                        now * 6 + i
+                    ) *
+                    2 *
+                    (.3 + rg);
+
+                ctx.beginPath();
+
+                ctx.moveTo(
+                    bx + 5,
+                    byy + 2
+                );
+
+                ctx.lineTo(
+                    bx - 14 - 8 * rg + w,
+                    byy + 12
+                );
+
+                ctx.stroke();
+            }
+
+
+            // ============================================================
+            // BRIDLE
+            // ============================================================
+
+            {
+                const dx = m[0] - n1[0];
+                const dy = m[1] - n1[1];
+
+                const dl =
+                    Math.hypot(dx, dy) || 1;
+
+                const ux = dx / dl;
+                const uy = dy / dl;
+
+                const nx = -uy;
+                const ny = ux;
+
+                const p = (t, o) => [
+
+                    n1[0] +
+                    dx * t +
+                    nx * o,
+
+                    n1[1] +
+                    dy * t +
+                    ny * o
+                ];
+
+                ctx.strokeStyle = '#111';
+                ctx.lineWidth = 3;
+
+                // Noseband
+                let a = p(.72, -10);
+                let b = p(.72, 10);
+
+                ctx.beginPath();
+                ctx.moveTo(a[0], a[1]);
+                ctx.lineTo(b[0], b[1]);
+                ctx.stroke();
+
+
+                // Cheek strap
+                a = p(.05, -7);
+                b = p(.72, 3);
+
+                ctx.beginPath();
+                ctx.moveTo(a[0], a[1]);
+                ctx.lineTo(b[0], b[1]);
+                ctx.stroke();
+
+
+                // Browband
+                a = p(.05, -11);
+                b = p(.05, 11);
+
+                ctx.beginPath();
+                ctx.moveTo(a[0], a[1]);
+                ctx.lineTo(b[0], b[1]);
+                ctx.stroke();
+            }
+
+
+            // ============================================================
+            // EAR + EYE + NOSTRIL
+            // ============================================================
+
+            const flick =
+                Math.pow(
+                    Math.max(
+                        0,
+                        Math.sin(now * 1.3)
+                    ),
+                    12
+                ) * 5;
+
+            ctx.fillStyle = PAPER;
+            ctx.strokeStyle = '#111';
+            ctx.lineWidth = 3.5;
+
+
+            // Ear
+            ctx.beginPath();
+
+            ctx.moveTo(
+                n1[0] - 9,
+                n1[1] - 8
+            );
+
+            ctx.lineTo(
+                n1[0] - 10 + flick,
+                n1[1] - 32
+            );
+
+            ctx.lineTo(
+                n1[0] + 3,
+                n1[1] - 11
+            );
+
+            ctx.closePath();
+
+            ctx.fill();
+            ctx.stroke();
+
+
+            // Eye
+            const ex =
+                n1[0] +
+                (m[0] - n1[0]) * .32;
+
+            const ey =
+                n1[1] +
+                (m[1] - n1[1]) * .32 -
+                3;
+
+            ctx.fillStyle = '#111';
+
+            ctx.beginPath();
+            ctx.arc(
+                ex,
+                ey,
+                3,
+                0,
+                7
+            );
+            ctx.fill();
+
+
+            // Nostril
+            ctx.beginPath();
+
+            ctx.arc(
+                m[0] + 1,
+                m[1] - 2,
+                1.8,
+                0,
+                7
+            );
+
+            ctx.fill();
+
+
+            // ============================================================
+            // SADDLE
+            // ============================================================
+
+            ctx.fillStyle = '#5a5a5a';
+            ctx.strokeStyle = '#111';
+            ctx.lineWidth = 4;
+
+            ctx.beginPath();
+
+            ctx.moveTo(
+                -32,
+                -140 + by
+            );
+
+            ctx.lineTo(
+                -31,
+                -160 + by
+            );
+
+            ctx.quadraticCurveTo(
+                -26,
+                -166 + by,
+                -19,
+                -157 + by
+            );
+
+            ctx.quadraticCurveTo(
+                0,
+                -149 + by,
+                19,
+                -157 + by
+            );
+
+            ctx.quadraticCurveTo(
+                26,
+                -166 + by,
+                32,
+                -158 + by
+            );
+
+            ctx.lineTo(
+                30,
+                -138 + by
+            );
+
+            ctx.lineTo(
+                24,
+                -112 + by
+            );
+
+            ctx.lineTo(
+                -24,
+                -112 + by
+            );
+
+            ctx.closePath();
+
+            ctx.fill();
+            ctx.stroke();
+
+
+            // Saddle strap
+            ctx.lineWidth = 4;
+
+            ctx.beginPath();
+
+            ctx.moveTo(
+                2,
+                -130 + by
+            );
+
+            ctx.lineTo(
+                2,
+                -94 + by
+            );
+
+            ctx.stroke();
+
+
+            // Stirrup
+            ctx.lineWidth = 3.5;
+
+            ctx.beginPath();
+
+            ctx.rect(
+                -5,
+                -94 + by,
+                14,
+                13
+            );
+
+            ctx.stroke();
+
+
+            // ============================================================
+            // NEAR LEGS
+            // ============================================================
+
+            legPass(
+                near,
+                '#111',
+                6
+            );
+
+            legPass(
+                near,
+                PAPER,
+                0
+            );
+
+            hoof(near);
+
+
+            ctx.restore();
+
+
+            // ============================================================
+            // MOUNT HINT
+            // ============================================================
+
+            if (
+                !P.mount &&
+                Math.abs(h.x - P.x) <
+                HR_MOUNT_R * S
+            ) {
+
+                ctx.save();
+
+                ctx.fillStyle = '#111';
+
+                ctx.font =
+                    'italic bold 22px Georgia,serif';
+
+                ctx.textAlign = 'center';
+
+                ctx.fillText(
+                    'H',
+                    sx,
+                    gy - 235 * S -
+                    4 * Math.sin(now * 5)
+                );
+
+                ctx.restore();
+            }
+        }
+
+
+
+        function drawReins(F) {          // called inside drawChar (character space): thin line from his fist to the bit
+            const A = P.armPts && P.armPts[0]; if (!A || !HRS.muz) return;
+            const w = A[1], mx = F * HRS.muz[0], my = HRS.muz[1] + HRS.z / CSc();
+            ctx.save(); ctx.strokeStyle = '#111'; ctx.lineWidth = 1.8; ctx.lineCap = 'round';
+            ctx.beginPath(); ctx.moveTo(w[0], w[1]); ctx.quadraticCurveTo((w[0] + mx) / 2, Math.max(w[1], my) + 10, mx, my); ctx.stroke(); ctx.restore();
+        }
+
         // ================= FINGER SPIN / HOLSTER =================
         const TAU = Math.PI * 2;
         P.gs = 0;        // 0 none, 1 idle spin, 2 spin-to-holster
@@ -4102,7 +5017,7 @@
             let dt = dt0;
             if (hitstop > 0) { hitstop -= dt0; dt = 0 }
 
-            update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); sgTick(dt); sgGroundTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); brainTick(dt); gibTick(dt); weatherTick(dt);
+            update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); sgTick(dt); sgGroundTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); brainTick(dt); gibTick(dt); weatherTick(dt); horseTick(dt);
             shake = Math.max(0, shake - dt0 * 60);
             ctx.save();
             if (shake > .3) ctx.translate((Math.random() - .5) * shake * 1.6, (Math.random() - .5) * shake * 1.6);
@@ -4126,6 +5041,7 @@
             drawKnives(gy);
             drawShots(gy);
             drawPellets(gy);
+            drawHorse(gy);
             drawChar(W / 2, gy, P);
             drawSgProp(gy, true);
             drawSmoke(gy);
