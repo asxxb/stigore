@@ -1720,7 +1720,7 @@
             ctx.save(); ctx.translate(cx, gy + 4); ctx.scale(S, S); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
             if (P.rot) {
                 const pk = Math.min(1, -z / 60);
-                const py = (cb && cb.py !== undefined) ? cb.py : (-40 * (1 - pk) + (hipY - 30) * pk);
+                const py = (P !== PL && P.gutDead) ? 0 : ((cb && cb.py !== undefined) ? cb.py : (-40 * (1 - pk) + (hipY - 30) * pk));
                 const px = (cb && cb.px !== undefined) ? cb.px : 0;
                 ctx.translate(px, py); ctx.rotate(P.rot); ctx.translate(-px, -py);
             }
@@ -1911,7 +1911,7 @@
                     const clutchW = (1 - fk);
                     ang = ang * (1 - clutchW) + a * clutchW; flex = flex * (1 - clutchW) + f * clutchW;
                 }
-                if (fk > .01) { ang = ang * (1 - fk) + 1.35 * fk; flex = flex * (1 - fk) + .2 * fk }   // arms flop forward when he falls
+                if (gk > .01 && !isGrabbed) { const gw = sm(gk); ang = ang * (1 - gw) + (i ? -.3 : .1) * gw; flex = flex * (1 - gw) + .08 * gw }   // gutted: arms lie along the body
                 if (fz && fz.grip > .01 && P.finE && (P.finE.hdp || P.finE.stbStoP)) {
                     const E = P.finE, ox = (E.x - P.x) / S;
                     const hv = (keys.KeyE && !P.finDone) ? 1 : 0;
