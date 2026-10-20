@@ -4051,7 +4051,16 @@
         P.mount = 0; P.mountT = 0; P.mx0 = 0; P.mk = 0;   // mount: 0 off, 1 climbing on, 2 riding, 3 climbing off
         const clamp01 = v => Math.max(0, Math.min(1, v));
 
-        function hrsGait(sp) { return { A: 22 + 34 * clamp01((sp - 100) / 680), st: .55 - .17 * HRS.rg } }   // stride half-length, stance fraction
+        function hrsGait(sp) {
+            return {
+                // Longer, more natural stride
+                A: 34 + 58 * clamp01((sp - 80) / 620),
+
+                // Longer ground-contact phase at walk,
+                // shorter at faster speeds
+                st: .62 - .20 * HRS.rg
+            };
+        } // stride half-length, stance fraction
         function hrsBob() { return Math.sin(HRS.ph * 4 * Math.PI) * 2.6 * HRS.amp * (.3 + HRS.rg) }
         function hrsRear() { return HRS.rear > 0 ? Math.sin(Math.PI * (1 - HRS.rear / HR_REAR_T)) : 0 }
         function horseSpook() { if (P.mount || HRS.rear > 0) return; if (Math.abs(HRS.x - P.x) < 800) HRS.rear = HR_REAR_T }
@@ -4239,7 +4248,7 @@
 
                     lift =
                         Math.sin(Math.PI * s) *
-                        (10 + 18 * rg) *
+                        (7 + 14 * rg) *
                         kk;
                 }
 
