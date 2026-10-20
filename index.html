@@ -2510,6 +2510,186 @@
             }
             ctx.restore(); CUR = PL;
         }
+        // ================= BARN (fixed landmark, right side of world) =================
+
+        // Replace your whole existing `function drawBarnBG(gy, x, scale) { ... }` with this one.
+        // Nothing else needs to change (drawWorld still calls drawBarnBG(gy, barnSX, barnScale)).
+        // Line widths are tuned for the 3.5 scale you use.
+
+        function drawBarnBG(gy, x, scale) {
+            scale = scale || 1;
+            const INK = '#111';
+            const WALL = 'rgba(238,216,142,.55)';     // pale yellow paper wash
+            const WALL_D = 'rgba(222,190,110,.60)';   // doors, slightly deeper
+            const ROOF = 'rgba(201,150,72,.60)';      // warm ochre roof
+            const HAY = 'rgba(232,200,96,.75)';
+
+            // deterministic hand-drawn wobble
+            const j = (a, b, s) => hash(a * 1.37 + b * 2.11 + s) - .5;
+            const path = (pts, close, seed, amp) => {
+                ctx.beginPath();
+                for (let i = 0; i < pts.length; i++) {
+                    const p = pts[i];
+                    if (i === 0) { ctx.moveTo(p[0], p[1]); continue; }
+                    const q = pts[i - 1];
+                    const mx = (p[0] + q[0]) / 2 + j(p[0], p[1], seed + i) * amp;
+                    const my = (p[1] + q[1]) / 2 + j(p[1], p[0], seed + i * 3) * amp;
+                    ctx.quadraticCurveTo(mx, my, p[0], p[1]);
+                }
+                if (close) ctx.closePath();
+            };
+            // colour wash, deliberately offset from the outline like a misregistered print
+            const wash = (pts, color, dx, dy) => {
+                ctx.save(); ctx.translate(dx, dy);
+                path(pts, true, 1, 0); ctx.fillStyle = color; ctx.fill();
+                ctx.restore();
+            };
+            const ink = (pts, close, w, seed, alpha) => {
+                ctx.globalAlpha = alpha == null ? 1 : alpha;
+                ctx.lineWidth = w; path(pts, close, seed, 1.2); ctx.stroke();
+                ctx.globalAlpha = 1;
+            };
+            const lerp2 = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+
+            ctx.save();
+            ctx.translate(x, gy);
+            ctx.scale(scale, scale);
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.strokeStyle = INK;
+
+            // ---------- ground shadow ----------
+            ink([[-175, 4], [-60, 7], [60, 6], [175, 4]], false, 2.4, 11, .22);
+
+            // ---------- walls ----------
+            const wallPts = [[-120, 0], [-120, -92], [-90, -148], [0, -184], [90, -148], [120, -92], [120, 0]];
+            wash(wallPts, WALL, 3, 2);
+            ink(wallPts, true, 1.7, 3);
+
+            // board-and-batten lines
+            ctx.strokeStyle = INK;
+            for (let bx = -108; bx <= 108; bx += 14) {
+                if (Math.abs(bx) < 48) continue; // doors cover the middle
+                const top = bx < -90 || bx > 90 ? -88 : -112 - (1 - Math.abs(bx) / 120) * 20;
+                ink([[bx, -4], [bx + j(bx, 1, 5) * 1.5, top]], false, .7, 20 + bx, .3);
+            }
+            // a few weathered knots / plank breaks
+            for (let i = 0; i < 6; i++) {
+                const px = -105 + i * 42 + j(i, 3, 8) * 8, py = -30 - hash(i + 4) * 50;
+                if (Math.abs(px) < 50) continue;
+                ink([[px - 5, py], [px + 5, py + j(i, 9, 2) * 2]], false, .7, 40 + i, .35);
+            }
+
+            // ---------- gambrel roof band ----------
+            const out = [[-130, -86], [-97, -156], [0, -194], [97, -156], [130, -86]];
+            const inn = [[-118, -78], [-88, -138], [0, -174], [88, -138], [118, -78]];
+            const roofPoly = out.concat(inn.slice().reverse());
+            wash(roofPoly, ROOF, 3, 2);
+            ink(roofPoly, true, 1.9, 7);
+            // shingle ticks along the band
+            for (let s = 0; s < 4; s++) {
+                const n = s === 1 || s === 2 ? 11 : 7;
+                for (let k = 0; k <= n; k++) {
+                    const t = k / n;
+                    const o = lerp2(out[s], out[s + 1], t), i2 = lerp2(inn[s], inn[s + 1], t);
+                    ink([o, lerp2(o, i2, .65 + j(s, k, 3) * .2)], false, .7, 60 + s * 20 + k, .45);
+                }
+            }
+
+            // ---------- hayloft window ----------
+            const loft = [[-17, -152], [17, -152], [17, -122], [-17, -122]];
+            ctx.save();
+            path(loft, true, 5, .6); ctx.fillStyle = 'rgba(40,30,18,.72)'; ctx.fill();
+            ctx.restore();
+            ink(loft, true, 1.5, 5);
+            ink([[0, -152], [0, -122]], false, .8, 9, .7);
+            // hay tuft poking out
+            for (let k = -2; k <= 2; k++) ink([[k * 5, -122], [k * 6 + j(k, 2, 4) * 4, -114]], false, .9, 70 + k, .8);
+
+            // ---------- big doors with X braces ----------
+            const dl = [[-46, 0], [-46, -86], [0, -86], [0, 0]];
+            const dr = [[0, 0], [0, -86], [46, -86], [46, 0]];
+            wash(dl, WALL_D, 2, 1.5); wash(dr, WALL_D, 2, 1.5);
+            ink(dl, true, 1.6, 13); ink(dr, true, 1.6, 17);
+            ink([[-46, 0], [0, -86]], false, 1.1, 21, .85);
+            ink([[-46, -86], [0, 0]], false, 1.1, 23, .85);
+            ink([[0, 0], [46, -86]], false, 1.1, 25, .85);
+            ink([[0, -86], [46, 0]], false, 1.1, 27, .85);
+            // door handles
+            ctx.fillStyle = INK;
+            for (const hx of [-6, 6]) { ctx.beginPath(); ctx.arc(hx, -42, 1.6, 0, 7); ctx.fill(); }
+
+            // ---------- hay bale (right) ----------
+            const bale = [[128, 0], [128, -22], [162, -22], [162, 0]];
+            wash(bale, HAY, 2, 1.5);
+            ink(bale, true, 1.4, 31);
+            for (let k = 0; k < 7; k++) {
+                const bx = 132 + k * 4.5;
+                ink([[bx, -20], [bx + j(k, 1, 6) * 2, -3]], false, .6, 80 + k, .5);
+            }
+            ink([[137, -22], [137, 0]], false, .9, 33, .8);
+            ink([[153, -22], [153, 0]], false, .9, 35, .8);
+            // loose straw
+            for (let k = 0; k < 4; k++) ink([[120 - k * 4, -1], [114 - k * 5, -6 - k]], false, .7, 90 + k, .6);
+
+
+
+
+            // ---------- weathervane ----------
+            {
+                // Fixed pole
+                ink([[0, -194], [0, -226]], false, 1.2, 41);
+
+                // Slow, subtle wind
+                const t = performance.now() * 0.001;
+                const wind =
+                    Math.sin(t * 0.8) * 0.08 +
+                    Math.sin(t * 1.7) * 0.05;
+
+                // Vane rotates around the actual pivot at the top of the pole
+                ctx.save();
+                ctx.translate(0, -226);
+                ctx.rotate(wind);
+
+                // Arrow shaft
+                ink([[-12, 12], [12, 12]], false, 1.1, 43);
+
+                // Arrow head
+                ctx.fillStyle = INK;
+                ctx.beginPath();
+                ctx.moveTo(12, 12);
+                ctx.lineTo(7, 8);
+                ctx.lineTo(7, 16);
+                ctx.closePath();
+                ctx.fill();
+
+                // Small tail fins
+                ink([[-12, 12], [-17, 7]], false, .8, 44, .7);
+                ink([[-12, 12], [-17, 17]], false, .8, 45, .7);
+
+                ctx.restore();
+
+                // Pivot cap
+                ctx.fillStyle = INK;
+                ctx.beginPath();
+                ctx.arc(0, -226, 2.2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // ---------- grass tufts at the base ----------
+            for (const gx of [-150, -108, -70, 72, 104, 176]) {
+                for (let k = -1; k <= 1; k++) {
+                    ctx.lineWidth = 1;
+                    ctx.beginPath(); ctx.moveTo(gx + k * 3, 3);
+                    ctx.quadraticCurveTo(gx + k * 5, -5, gx + k * 8 + j(gx, k, 1) * 4, -11 - hash(gx + k) * 4);
+                    ctx.stroke();
+                }
+            }
+
+            ctx.restore();
+        }
+
+
         // ================= BACKDROP (ink sketch, parallax) =================
         function drawBackdrop(gy) {
             const cam = P.x;
@@ -2588,36 +2768,26 @@
         }
 
 
-        // ================= WEATHER: wind, ink dots, paper scraps =================
+        // ================= WEATHER: wind, paper scraps =================
         const wind = { v: 90, g: 0, gt: 4, t: 0 };        // v = current wind (px/s, + = right), g = gust part of it
-        const WX_DROPS = 70, WX_SCRAPS = 9;
-        const inkDrops = [], scraps = [];
+        const WX_SCRAPS = 9;
+        const scraps = [];
+        let wxInited = false;
 
         function newScrap(x, y) {
             return { x, y, vy: 0, z: .55 + Math.random() * .45, rot: Math.random() * 6, vr: (Math.random() - .5) * 4, fl: Math.random() * 6, ph: Math.random() * 6, s: 6 + Math.random() * 6, seed: Math.random() * 100 };
         }
         function wxInit() {
-            for (let i = 0; i < WX_DROPS; i++) inkDrops.push({ x: Math.random() * W, y: Math.random() * H, z: .4 + Math.random() * .6, r: 1.2 + Math.random() * 1.6 });
             for (let i = 0; i < WX_SCRAPS; i++) scraps.push(newScrap(Math.random() * W, H * (.15 + Math.random() * .55)));
         }
 
         function weatherTick(dt) {
-            if (!inkDrops.length) wxInit();
+            if (!wxInited) { wxInited = true; wxInit(); }
             wind.t += dt; wind.gt -= dt;
             if (wind.gt <= 0) { wind.gt = 5 + Math.random() * 7; wind.g = (Math.random() < .8 ? 1 : -1) * (180 + Math.random() * 260) }   // random gust
             wind.g *= Math.exp(-dt * .55);
             wind.v = 90 + Math.sin(wind.t * .23) * 60 + Math.sin(wind.t * .71) * 30 + wind.g;
             const gy = groundY();
-
-            for (const d of inkDrops) {
-                d.y += (420 + 300 * d.z) * dt;
-                d.x += (wind.v * .35 * d.z - P.vx * .3 * d.z) * dt;          // parallax: the world slides past as you run
-                if (d.y > gy + 10 * d.z) {
-                    if (Math.random() < .5 && flecks.length < 500) flecks.push({ x: P.x + d.x - W / 2, y: -1, vx: (Math.random() - .5) * 60 + wind.v * .1, vy: -(30 + Math.random() * 60), r: 1 + Math.random(), t: 0, life: .25 });   // tiny ink splash
-                    d.y = -10; d.x = Math.random() * (W + 200) - 100;
-                }
-                if (d.x > W + 40) d.x -= W + 80; else if (d.x < -40) d.x += W + 80;
-            }
 
             for (const s of scraps) {
                 const lift = Math.abs(wind.g) * .9 + 40 * Math.sin(wind.t * 2.2 + s.ph);
@@ -2633,12 +2803,6 @@
 
         function drawWeather(gy) {
             ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#111'; ctx.fillStyle = '#111';
-            for (const d of inkDrops) {                                          // slanted ink dots with short tails
-                const vx = wind.v * .35 * d.z - P.vx * .3 * d.z, vy = 420 + 300 * d.z;
-                ctx.globalAlpha = .22 + .4 * d.z; ctx.lineWidth = d.r * (.6 + .5 * d.z);
-                ctx.beginPath(); ctx.moveTo(d.x, d.y); ctx.lineTo(d.x - vx * .03, d.y - vy * .03); ctx.stroke();
-                ctx.beginPath(); ctx.arc(d.x, d.y, ctx.lineWidth * .7, 0, 7); ctx.fill();
-            }
             for (const s of scraps) {                                            // flipping paper scraps
                 const f = Math.cos(s.fl);
                 ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(s.rot); ctx.scale(s.z, s.z * (Math.abs(f) < .12 ? .12 * Math.sign(f || 1) : f));
@@ -2692,6 +2856,18 @@
                 }
                 else { ink(1.5); ctx.beginPath(); ctx.moveTo(sx, gy + 18); ctx.lineTo(sx + 30 + hash(i) * 30, gy + 20); ctx.stroke() }
             }
+
+            // ================= SINGLE BARN LANDMARK (right side) =================
+            {
+                const barnWorldX = 2200;   // fixed world position further to the right
+                const barnSX = W / 2 + barnWorldX - cam;
+                const barnScale = 3.5;
+                // only draw when vaguely on screen (with generous margin for the barn width)
+                if (barnSX > -900 && barnSX < W + 900) {
+                    drawBarnBG(gy, barnSX, barnScale);
+                }
+            }
+
             ctx.restore();
         }
 
