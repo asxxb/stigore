@@ -4514,10 +4514,12 @@
                 P.mount = 3; P.mountT = 0; P.mx0 = P.x; return;
             }
             if (P.mount) return;
-            if (P.fin > 0 || P.cs > 0 || P.thw > 0 || P.tt > 0 || P.sm > 0 || P.pk > 0 || P.fs > 0 || P.gu > 0 || P.yk > 0 || P.stbk > 0 || P.sgp > 0 || P.gs === 2 || P.z < 0) return;
+            if (P.sm === 1 || P.sm === 3) return;   // lighting up / flicking: wait
+            if (P.fin > 0 || P.cs > 0 || P.thw > 0 || P.tt > 0 || P.pk > 0 || P.fs > 0 || P.gu > 0 || P.yk > 0 || P.stbk > 0 || P.sgp > 0 || P.gs === 2 || P.z < 0) return;
             if (P.kn !== 0 || P.kt > .2) { banner.t = .7; banner.text = 'PUT THE KNIFE AWAY (K)'; return }
             const S = CSc();
             if (Math.abs(HRS.x - P.x) > HR_MOUNT_R * S) { banner.t = .8; banner.text = 'WALK TO THE HORSE'; return }
+            if (P.sm === 2) { releaseButt(); P.sm = 0; }   // drop the cigarette, then climb on
             if (P.skid) endSkid();
             HRS.rear = 0; HRS.wait = 2;
             HRS.tied = false;   // Untie the lead rope when mounting
