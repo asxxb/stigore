@@ -633,7 +633,7 @@
         }
         function respawn(n) {
             const side = Math.random() < .5 ? -1 : 1, x = P.x + side * (W / 2 + 150 + Math.random() * 250);
-            Object.assign(n, { int: null, gut: 0, headThud: 0, gutDead: false, gutK: 0, gutPop: 0, gutCut: 0, fkSnk: 0, fk: null, fkT: 0, fkK: 0, fkPend: false, stab: 0, kneelK: 0, fst: 0, fallT: 0, fallK: 0, thud: 0, x, home: x, goal: x, vx: 0, z: 0, vz: 0, hp: n.maxhp, hurt: 0, down: 0, rot: 0, dying: 0, dead: 0, bar: 0, tumble: 0, wait: 1.5, face: -side, fid: 0, fidK: 0 });
+            Object.assign(n, { int: null, gut: 0, headThud: 0, gutDead: false, gutK: 0, gutPop: 0, gutCut: 0, fkSnk: 0, fk: null, fkT: 0, fkK: 0, fkPend: false, stab: 0, kneelK: 0, fst: 0, fallT: 0, fallK: 0, thud: 0, x, home: x, goal: x, vx: 0, z: 0, vz: 0, hp: n.maxhp, hurt: 0, down: 0, rot: 0, dying: 0, dead: 0, bar: 0, tumble: 0, wait: 1.5, face: -side, fid: 0, fidK: 0, headCut: 0, headK: 0, cord: null });
         }
         function killBurst(n) {
             const S = CSc();
@@ -957,6 +957,39 @@
             }
         }
 
+
+        // ---- torn brainstem: small verlet rope hanging from the head ----
+        function headAttach(e) {
+            const S = CSc(), h = e.hdp || [0, -121], th = e.rot || 0, py = -22, c = Math.cos(th), s = Math.sin(th), dx = h[0], dy = h[1] + 20 - py;
+            return [e.x + S * (dx * c - dy * s), S * (py + dx * s + dy * c)];
+        }
+        function stepCord(e, dt) {
+            const C = e.cord, Q = C.p, N = Q.length, S = CSc(), rest = 8 * S, floor = -4 * S, sub = 3, h = dt / sub;
+            for (let s = 0; s < sub; s++) {
+                for (let i = 1; i < N; i++) { const p = Q[i], vx = (p.x - p.ox) * .98, vy = (p.y - p.oy) * .98; p.ox = p.x; p.oy = p.y; p.x += vx; p.y += vy + 1800 * h * h }
+                for (let it = 0; it < 6; it++) {
+                    const A = headAttach(e); Q[0].x = A[0]; Q[0].y = A[1]; Q[0].ox = A[0]; Q[0].oy = A[1];
+                    for (let i = 0; i < N - 1; i++) {
+                        const a = Q[i], b = Q[i + 1], dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || .0001, k = (d - rest) / d * .5;
+                        if (i === 0) { b.x -= dx * k * 2; b.y -= dy * k * 2 } else { a.x += dx * k; a.y += dy * k; b.x -= dx * k; b.y -= dy * k }
+                    }
+                    for (let i = 1; i < N; i++) { const p = Q[i]; if (p.y > floor) { p.y = floor; p.ox += (p.x - p.ox) * .5 } }
+                }
+            }
+        }
+        function drawCords(gy) {
+            for (const e of ENEMIES) {
+                if (!e.cord || e.dead > 0) continue;
+                const p = e.cord.p, S = CSc();
+                if (Math.abs(p[0].x - P.x) > W / 2 + 300) continue;
+                const X = q => q.x - P.x + W / 2, Y = q => gy + 4 + q.y;
+                ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+                const pass = (w, col) => { ctx.strokeStyle = col; ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(X(p[0]), Y(p[0])); for (let i = 1; i < p.length; i++) ctx.lineTo(X(p[i]), Y(p[i])); ctx.stroke() };
+                pass(7 * S, '#111'); pass(4.2 * S, '#f1a79a'); pass(1.4 * S, '#fbd5cc');
+                const t = p[p.length - 1]; ctx.fillStyle = '#8c0d14'; ctx.beginPath(); ctx.arc(X(t), Y(t), 3 * S, 0, 7); ctx.fill();
+                ctx.restore();
+            }
+        }
 
 
         // ---- yank the knife out of his foot (E) ----
@@ -1367,7 +1400,7 @@
                         n.drip = (n.drip || 0) - dt;
                         if (n.drip <= 0) {
                             n.drip = 0.12 + Math.random() * 0.16;
-                            const sto = n.stbStoP || [0, -215];
+                            const sto = (n.headCut && n.hdp) ? n.hdp : (n.stbStoP || [0, -215]);
                             const bx = n.x + sto[0] * Sf + n.face * 6 * Sf;
                             const by = sto[1] * Sf;
                             blood.push({
@@ -1429,6 +1462,8 @@
             if (n.fkT > 0) { n.x = n.fkX; n.vx = 0; }
             n.fkK = (n.fkK || 0) + (((n.fkT > 0 && n.fk) ? 1 : 0) - (n.fkK || 0)) * Math.min(1, dt * 6);
             n.gutK = (n.gutK || 0) + ((n.gutDead ? 1 : 0) - (n.gutK || 0)) * Math.min(1, dt * 3.2);
+            n.headK = (n.headK || 0) + ((n.headCut ? 1 : 0) - (n.headK || 0)) * Math.min(1, dt * 6);
+            if (n.cord && dt > 0) stepCord(n, dt);
             if (n.gutDead) {
                 n.fallK = n.gutK; n.vx = 0; n.gutT = (n.gutT || 0) + dt;
                 if (n.int && dt > 0) stepInt(n, dt);
@@ -2022,7 +2057,7 @@
                 }
                 // After knife is pulled: while kneeling on ground, clutch stomach wound
                 if (P.fst === 2 && P.stomachStabbed && fk < .95) {
-                    const sto = P.stbStoP || rot(0, -38);
+                    const sto = (P.headCut && P.hdp) ? P.hdp : (P.stbStoP || rot(0, -38));
                     const off = i ? 8 : -6;
                     const px = sto[0] + F * off, py = sto[1];
                     const ddx = px - sh[0], ddy = py - sh[1], dl = Math.hypot(ddx, ddy) || 1;
@@ -2030,6 +2065,12 @@
                     const [a, f] = ik2(sh, px - ddx / dl * 10 + trem, py - ddy / dl * 10 + trem * .5, F);
                     const clutchW = (1 - fk);
                     ang = ang * (1 - clutchW) + a * clutchW; flex = flex * (1 - clutchW) + f * clutchW;
+                }
+                // collapsed corpse: arms lie flat along the ground, hands pointing toward the legs
+                if (P.fst === 2 && !P.gutDead && fk > .01) {
+                    const lw = sm(fk);                                   // blends in as he falls flat
+                    ang = ang * (1 - lw) + (i ? -1.52 : -1.57) * lw;     // -PI/2 = arm straight along the ground, away from the head
+                    flex = flex * (1 - lw);                              // fully straight, no elbow bend
                 }
                 if (gk > .01 && !isGrabbed) {
                     const gw = sm(gk);
@@ -2135,13 +2176,66 @@
                 const sg = rot(0, -38 + (P.stoDrag || 0));
                 P.stbStoP = [sg[0], sg[1]];
             }
-            ctx.fillStyle = P.dark ? '#111' : PAPER; ctx.beginPath(); ctx.arc(hd[0], hd[1], 24, 0, 7); ctx.fill();
-            ctx.strokeStyle = '#111'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(hd[0], hd[1], 24, 0, 7); ctx.stroke();
-            ctx.lineWidth = 2.2; ctx.beginPath(); ctx.arc(hd[0] + F * 2.5 + L * 6, hd[1] - 1, 23.5, .2 + L * .7, 5.6 + L * .7); ctx.stroke();
-            if (P.dark) {
-                ctx.strokeStyle = PAPER; ctx.lineWidth = 3.2;
-                ctx.beginPath(); ctx.moveTo(hd[0] + F * 4, hd[1] - 5); ctx.lineTo(hd[0] + F * 15, hd[1] + 1); ctx.stroke();
-                ctx.beginPath(); ctx.moveTo(hd[0] + F * 7, hd[1] + 5); ctx.lineTo(hd[0] + F * 13, hd[1] + 5); ctx.stroke()
+            const hcK = P.headK || 0;
+            if (hcK > .01) {
+                const gap = 9 * hcK, spread = .38 * hcK;
+                let ux = hd[0] - nk[0], uy = hd[1] - nk[1];
+                const ul = Math.hypot(ux, uy) || 1; ux /= ul; uy /= ul;
+                const th = Math.atan2(ux, -uy);
+
+                ctx.save(); ctx.translate(hd[0], hd[1]); ctx.rotate(th); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+                ctx.fillStyle = '#7a0b11'; ctx.beginPath(); ctx.ellipse(0, 0, gap + 2, 22, 0, 0, 7); ctx.fill();   // gore behind the gap
+
+                for (const s of [-1, 1]) {
+                    ctx.save(); ctx.translate(s * gap, 24); ctx.rotate(s * spread); ctx.translate(0, -24);
+                    const a0 = s > 0 ? -Math.PI / 2 : Math.PI / 2, a1 = s > 0 ? Math.PI / 2 : Math.PI * 1.5;
+
+                    ctx.save(); ctx.beginPath(); ctx.arc(0, 0, 21, a0, a1, false); ctx.closePath(); ctx.clip();
+                    if (s < 0) {
+                        // ---- outer surface of the brain: folds (gyri) ----
+                        ctx.fillStyle = '#e9786c'; ctx.fillRect(-22, -22, 22, 44);
+                        const row = (yy, ph, off) => {
+                            ctx.beginPath();
+                            for (let x = -22; x <= 0; x += 2) { const y = yy + off + Math.sin(x * .55 + ph) * 2.6; x === -22 ? ctx.moveTo(x, y) : ctx.lineTo(x, y) }
+                            ctx.stroke();
+                        };
+                        for (let i = 0; i < 5; i++) {
+                            const yy = -15 + i * 7.2, ph = i * 1.7;
+                            ctx.strokeStyle = '#a93a34'; ctx.lineWidth = 1.8; row(yy, ph, 0);
+                            ctx.strokeStyle = '#f8c2b8'; ctx.lineWidth = 1; row(yy, ph, -2);
+                        }
+                        ctx.strokeStyle = '#8c2a2a'; ctx.lineWidth = 1.6; ctx.beginPath();   // long groove
+                        for (let y = -22; y <= 22; y += 2) { const x = -9 + Math.sin(y * .4) * 2.2; y === -22 ? ctx.moveTo(x, y) : ctx.lineTo(x, y) }
+                        ctx.stroke();
+                    } else {
+                        // ---- cut face: white matter, cortex rim, ventricles, fibres ----
+                        ctx.fillStyle = '#f8c2b8'; ctx.fillRect(0, -22, 22, 44);
+                        ctx.strokeStyle = '#cf5f55'; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(0, 0, 19, a0, a1, false); ctx.stroke();
+                        ctx.strokeStyle = '#e9786c'; ctx.lineWidth = 1.2;
+                        for (let i = 0; i < 4; i++) {
+                            ctx.beginPath(); ctx.moveTo(1, -15 + i * 3); ctx.bezierCurveTo(10, -8 + i * 2, 8, 6, 12 + i * 2, 19); ctx.stroke();
+                        }
+                        ctx.fillStyle = '#8c0d14'; ctx.strokeStyle = '#4a0508'; ctx.lineWidth = 1.2;
+                        for (const [vx, vy, rx, ry, ro] of [[7, -9, 5.5, 3.5, .5], [9, 1, 6.5, 4, -.3], [7, 10, 5, 3.2, .3]]) {
+                            ctx.beginPath(); ctx.ellipse(vx, vy, rx, ry, ro, 0, 7); ctx.fill(); ctx.stroke();
+                        }
+                    }
+                    ctx.restore();
+
+                    ctx.strokeStyle = '#5a0a10'; ctx.lineWidth = 1.8; ctx.beginPath(); ctx.arc(0, 0, 21, a0, a1, false); ctx.closePath(); ctx.stroke();   // brain outline
+                    ctx.strokeStyle = '#111'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(0, 0, 23.5, a0, a1, false); ctx.stroke();                         // skull shell
+                    ctx.restore();
+                }
+                ctx.restore();
+            } else {
+                ctx.fillStyle = P.dark ? '#111' : PAPER; ctx.beginPath(); ctx.arc(hd[0], hd[1], 24, 0, 7); ctx.fill();
+                ctx.strokeStyle = '#111'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(hd[0], hd[1], 24, 0, 7); ctx.stroke();
+                ctx.lineWidth = 2.2; ctx.beginPath(); ctx.arc(hd[0] + F * 2.5 + L * 6, hd[1] - 1, 23.5, .2 + L * .7, 5.6 + L * .7); ctx.stroke();
+                if (P.dark) {
+                    ctx.strokeStyle = PAPER; ctx.lineWidth = 3.2;
+                    ctx.beginPath(); ctx.moveTo(hd[0] + F * 4, hd[1] - 5); ctx.lineTo(hd[0] + F * 15, hd[1] + 1); ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(hd[0] + F * 7, hd[1] + 5); ctx.lineTo(hd[0] + F * 13, hd[1] + 5); ctx.stroke()
+                }
             }
             if (P === PL && P.sm) drawSmokeProps(F, hd, S, now);
             if (cb && cb.sw > .02) { if (cb.st.line !== undefined) punchLines(P.fistInfo[cb.st.line], cb.sw); else swoosh(sh[0], sh[1], F, cb.st, cb.sw) }
@@ -2430,6 +2524,28 @@
         const FIN_PULL = 40;     // how far the knife slides out (needs >= ~35 to clear the head)
         const FIN_POP = 1.15;    // time the knife comes free
         const FIN_END = 1.65;    // total length
+        const HU_LEN = 105;   // how far up (px) the knife travels: stomach -> top of skull
+
+        function headRip(e) {
+            const S = CSc(), F = P.face;
+            for (let i = knives.length - 1; i >= 0; i--) if (knives[i].st === e) knives.splice(i, 1);
+            e.stab = 0; e.stoDrag = 0;
+            if (e.stabTh0 !== undefined) { e.stabTh = e.stabTh0; e.stabTh0 = undefined; }
+            e.hp = 0; e.bar = 0; e.kdir = F;
+            e.fst = 2; e.fallT = 0; e.fallK = 0; e.thud = 0;   // kneels, then collapses (same path as "knife pulled")
+            e.headCut = 1;
+            P.kn = 1; P.kt = 0; P.rv = 0; hasKnife = true;
+            const hx = e.x + (e.hdp ? e.hdp[0] : 0) * S, hy = (e.hdp ? e.hdp[1] : -190) * S;
+            burst(hx, hy, 40, 460, 0); spray(hx, hy, 70, 650, -F); spray(hx, hy, 40, 520, F); spray(hx, hy, 30, 340, 0);
+            impacts.push({ x: hx, y: hy, t: 0, life: .3, s: 130, seed: Math.random() * 50 });
+            hitstop = Math.max(hitstop, .12); shake = Math.max(shake, 12);
+            banner.t = 1.2; banner.text = 'HEAD SPLIT!';
+            const A = headAttach(e);
+            e.cord = { p: Array.from({ length: 8 }, () => {
+                const vx = F * (30 + Math.random() * 90), vy = 40 + Math.random() * 80;
+                return { x: A[0], y: A[1], ox: A[0] - vx / 60, oy: A[1] - vy / 60 };
+            }) };
+        }
         function finK(t) {
             const foot = t < .35 ? sm(t / .35) : t < FIN_POP ? 1 : 1 - sm((t - FIN_POP) / .3);
             const grip = t < 1.3 ? sm((t - .2) / .25) : 1 - sm((t - 1.3) / .3);
@@ -2474,6 +2590,7 @@
             // phase 1 (before .6): foot lands and hands grip, automatic
             // phase 2 (.6 to FIN_POP): progress only while E is held, in tugging jerks; relaxes when released
             const downH = !!(keys.ArrowDown || keys.KeyS);
+            const upH = !!(keys.ArrowUp || keys.KeyW);
             const stoNow = !!(e.stomachStabbed && e.stbStoP);
             if (!P.finDone && stoNow && held && downH && P.fin >= .6) {
                 // E + Down: rip the knife down through the stomach
@@ -2493,6 +2610,25 @@
                     P.fin = 0; P.finE = null; P.finDone = 0; P.finW = 0; P.finIdle = 0; P.finGut = 0;
                     return;
                 }
+            } else if (!P.finDone && stoNow && held && upH && P.fin >= .6) {
+                // E + Up: drag the knife up through chest, neck and skull
+                if (e.stabTh0 === undefined) e.stabTh0 = e.stabTh;
+                P.finUp = Math.min(HU_LEN, (P.finUp || 0) + dt * 75);
+                const t = P.finUp / HU_LEN;
+                e.stoDrag = -P.finUp; P.finIdle = 0;
+                e.stabTh = lerp(e.stabTh0, -1.3, t);                       // blade swings to point upward
+                for (const k of knives) if (k.st === e) k.th = e.stabTh;
+                shake = Math.max(shake, 3 + 3 * t);
+                P.gutBl = (P.gutBl || 0) - dt;
+                if (P.gutBl <= 0 && e.stbStoP) {
+                    P.gutBl = .035;
+                    blood.push({ x: e.x + e.stbStoP[0] * S, y: e.stbStoP[1] * S, vx: -P.face * (30 + Math.random() * 70), vy: -60 - Math.random() * 90, r: 1.4 + Math.random() * 1.8, t: 0 });
+                }
+                if (P.finUp >= HU_LEN) {
+                    headRip(e);
+                    P.fin = 0; P.finE = null; P.finDone = 0; P.finW = 0; P.finIdle = 0; P.finGut = 0; P.finUp = 0;
+                    return;
+                }
             } else if (P.finDone || P.fin < .6) P.fin += dt;
             else if (held) {
                 P.finW = (P.finW || 0) + dt * 11;
@@ -2508,7 +2644,9 @@
                 P.finIdle = (P.finIdle || 0) + dt;
                 if (P.finIdle > 1.2) {
                     e.fst = 0; P.fin = 0; P.finE = null; P.finIdle = 0;
-                    for (const k of knives) if (k.st === e) k.pull = 0;
+                    if (e.stabTh0 !== undefined) { e.stabTh = e.stabTh0; e.stabTh0 = undefined; }
+                    e.stoDrag = 0; P.finGut = 0; P.finUp = 0;
+                    for (const k of knives) if (k.st === e) k.pull = 0; for (const k of knives) if (k.st === e) k.th = e.stabTh;
                     return;
                 }
             }
@@ -3171,6 +3309,7 @@
             drawEnemies(gy);
             drawGutFX(gy);
             drawIntestines(gy);
+            drawCords(gy);
             drawFootKnives(gy);
             drawKnives(gy);
             drawShots(gy);
