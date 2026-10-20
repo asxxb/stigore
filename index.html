@@ -4915,35 +4915,182 @@
             // TAIL
             // ============================================================
 
-            ctx.strokeStyle = '#111';
 
-            for (let j = 0; j < 5; j++) {
 
-                const sw =
-                    Math.sin(
-                        now * (2.2 + 7 * rg) + j * 1.1
-                    ) *
-                    (3 + 7 * rg);
 
-                ctx.lineWidth = 5 - j * .5;
+
+            // ============================================================
+            // TAIL — ragdoll rope physics + tapered ribbon with split tips
+            // ============================================================
+            {
+                const N = 11, SEG = 10;                    // joints, segment length
+                const dock = [-62, -140 + by];             // where the tail attaches
+
+                // ---- state (persists on the horse between frames) ----
+                let T = h.tail;
+                if (!T || now - T.t > 0.25) {              // first frame / came back on screen
+                    T = h.tail = { p: [], q: [], t: now, x: h.x, z: h.z };
+                    for (let i = 0; i < N; i++) {
+                        const px = dock[0] - i * SEG * 0.5, py = dock[1] + i * SEG * 0.85;
+                        T.p.push([px, py]);
+                        T.q.push([px, py]);
+                    }
+                }
+                const dt = Math.max(1 / 240, Math.min(1 / 20, now - T.t));
+                const steps = Math.max(1, Math.min(4, Math.round(dt * 60)));
+
+                // ---- inertia: the horse moves, the tail wants to stay behind ----
+                const lim = v => Math.max(-30, Math.min(30, v));
+                const fs = (F * S * HORSE_W) || 1;
+                const shX = lim(((h.x - T.x) / fs) * 0.94);               // 0.94 = a little air drag
+                const shY = lim((h.z - T.z) / ((S * HORSE_H) || 1));
+                for (const a of T.p) { a[0] -= shX; a[1] -= shY; }
+                for (const a of T.q) { a[0] -= shX; a[1] -= shY; }
+
+                const wind = Math.min(sp, 240);
+                const P_ = T.p, Q_ = T.q;
+
+                for (let s = 0; s < steps; s++) {
+
+                    // --- verlet integration ---
+                    for (let i = 1; i < N; i++) {
+                        const t = i / (N - 1);
+                        const p = P_[i], q = Q_[i];
+                        const vx = (p[0] - q[0]) * 0.985;
+                        const vy = (p[1] - q[1]) * 0.985;
+                        q[0] = p[0]; q[1] = p[1];
+
+                        const ax =
+                            -wind * 0.0022 * (0.25 + 0.75 * t) +                 // streams backward
+                            Math.sin(now * 1.3 + i * 0.5) * 0.02 +               // idle breeze
+                            Math.sin(now * (5 + 9 * rg) + i * 0.8) * 0.05 * rg;  // gallop flutter
+                        const ay =
+                            0.42 -                                               // gravity
+                            wind * 0.0009 * t +                                  // wind lift
+                            Math.sin(now * (4 + 8 * rg) + i * 0.9) * (0.03 + 0.12 * rg) * t;
+
+                        p[0] += vx + ax;
+                        p[1] += vy + ay;
+                    }
+
+                    // --- soft stiffness near the dock (tail leaves the body going back/up, then falls) ---
+                    {
+                        let dx = -0.9, dy = -0.12 - 0.55 * rg - 0.30 * kk;
+                        let bx = dock[0], bY = dock[1];
+                        const K = [0.30, 0.10, 0.04];
+                        for (let i = 1; i <= 3; i++) {
+                            const l = Math.hypot(dx, dy) || 1;
+                            bx += (dx / l) * SEG;
+                            bY += (dy / l) * SEG;
+                            P_[i][0] += (bx - P_[i][0]) * K[i - 1];
+                            P_[i][1] += (bY - P_[i][1]) * K[i - 1];
+                            dy += 0.30;                                          // droop further along
+                        }
+                    }
+
+                    // --- distance constraints (root pinned) ---
+                    for (let it = 0; it < 8; it++) {
+                        P_[0][0] = dock[0]; P_[0][1] = dock[1];
+                        for (let i = 0; i < N - 1; i++) {
+                            const a = P_[i], b = P_[i + 1];
+                            const dx = b[0] - a[0], dy = b[1] - a[1];
+                            const d = Math.hypot(dx, dy) || 0.0001;
+                            const k = (d - SEG) / d;
+                            if (i === 0) {
+                                b[0] -= dx * k; b[1] -= dy * k;
+                            } else {
+                                a[0] += dx * k * 0.5; a[1] += dy * k * 0.5;
+                                b[0] -= dx * k * 0.5; b[1] -= dy * k * 0.5;
+                            }
+                        }
+                    }
+                    P_[0][0] = dock[0]; P_[0][1] = dock[1];
+                    Q_[0][0] = dock[0]; Q_[0][1] = dock[1];
+                }
+                T.t = now; T.x = h.x; T.z = h.z;
+
+                // ---- geometry: tangents, normals, tapered width ----
+                const hwAt = t => 3.5 + 6.5 * Math.sin(Math.PI * Math.pow(t, 0.75)) + 2.5 * t;
+                const tan = [], nor = [], L = [], R = [];
+                for (let i = 0; i < N; i++) {
+                    const a = P_[Math.max(0, i - 1)], b = P_[Math.min(N - 1, i + 1)];
+                    let tx = b[0] - a[0], ty = b[1] - a[1];
+                    const tl = Math.hypot(tx, ty) || 1;
+                    tx /= tl; ty /= tl;
+                    tan.push([tx, ty]);
+                    nor.push([-ty, tx]);
+                    const hw = hwAt(i / (N - 1));
+                    L.push([P_[i][0] + nor[i][0] * hw, P_[i][1] + nor[i][1] * hw]);
+                    R.push([P_[i][0] - nor[i][0] * hw, P_[i][1] - nor[i][1] * hw]);
+                }
+
+                // ---- split, pointed tips at the end ----
+                const e = N - 1, pe = P_[e];
+                const te = tan[e], ne = nor[e];
+                const hwE = hwAt(1);
+                const TL = 26;
+                const dirAt = ang => [
+                    te[0] * Math.cos(ang) - te[1] * Math.sin(ang),
+                    te[0] * Math.sin(ang) + te[1] * Math.cos(ang)
+                ];
+                const sw = Math.sin(now * (2.5 + 5 * rg)) * 0.10;
+                const pt = (side, along, ang) => {
+                    const d = dirAt(ang + sw);
+                    return [pe[0] + ne[0] * side + d[0] * along,
+                    pe[1] + ne[1] * side + d[1] * along];
+                };
+                const tipA = pt(hwE * 0.80, TL * 0.80, 0.24);
+                const valA = pt(hwE * 0.30, TL * 0.25, 0.05);
+                const tipB = pt(0, TL * 1.30, -0.02);
+                const valB = pt(-hwE * 0.30, TL * 0.30, -0.05);
+                const tipC = pt(-hwE * 0.85, TL * 0.70, -0.26);
+                const ctrlA = pt(hwE * 1.10, TL * 0.30, 0.10);
+                const ctrlC = pt(-hwE * 1.10, TL * 0.25, -0.12);
+
+                // ---- draw ----
+                ctx.fillStyle = '#111';
+                ctx.strokeStyle = '#111';
+                ctx.lineWidth = 2;
+                ctx.lineJoin = 'round';
+                ctx.lineCap = 'round';
 
                 ctx.beginPath();
-
-                ctx.moveTo(
-                    -64,
-                    -138 + by + j * 2
-                );
-
-                ctx.quadraticCurveTo(
-                    -90 - 28 * rg,
-                    -122 + by - 10 * rg,
-                    -86 - 7 * j - 60 * rg,
-                    -52 + 6 * j - 48 * rg + sw + by
-                );
-
+                ctx.moveTo(L[0][0], L[0][1]);
+                for (let i = 1; i < N - 1; i++) {
+                    const mx = (L[i][0] + L[i + 1][0]) / 2, my = (L[i][1] + L[i + 1][1]) / 2;
+                    ctx.quadraticCurveTo(L[i][0], L[i][1], mx, my);
+                }
+                ctx.lineTo(L[e][0], L[e][1]);
+                ctx.quadraticCurveTo(ctrlA[0], ctrlA[1], tipA[0], tipA[1]);
+                ctx.lineTo(valA[0], valA[1]);
+                ctx.lineTo(tipB[0], tipB[1]);
+                ctx.lineTo(valB[0], valB[1]);
+                ctx.lineTo(tipC[0], tipC[1]);
+                ctx.quadraticCurveTo(ctrlC[0], ctrlC[1], R[e][0], R[e][1]);
+                for (let i = N - 2; i >= 1; i--) {
+                    const mx = (R[i][0] + R[i - 1][0]) / 2, my = (R[i][1] + R[i - 1][1]) / 2;
+                    ctx.quadraticCurveTo(R[i][0], R[i][1], mx, my);
+                }
+                ctx.lineTo(R[0][0], R[0][1]);
+                ctx.closePath();
+                ctx.fill();
                 ctx.stroke();
-            }
 
+                // light hair strands flowing along the tail
+                ctx.strokeStyle = PAPER;
+                ctx.lineWidth = 1;
+                ctx.globalAlpha = 0.45;
+                for (const k of [-0.5, 0, 0.5]) {
+                    ctx.beginPath();
+                    for (let i = 2; i < N; i++) {
+                        const hw = hwAt(i / (N - 1)) * k;
+                        const x = P_[i][0] + nor[i][0] * hw, y = P_[i][1] + nor[i][1] * hw;
+                        i === 2 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+                    }
+                    ctx.stroke();
+                }
+                ctx.globalAlpha = 1;
+            }
 
 
 
