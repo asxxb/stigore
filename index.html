@@ -5377,6 +5377,9 @@
             // MANE: locks that follow the neck curve (sweep back + hang down)
             // ============================================================
 
+
+
+
             {
                 const nk = t => {
                     const a1 = (1 - t) * (1 - t), b1 = 2 * (1 - t) * t, c1 = t * t;
@@ -5480,6 +5483,10 @@
                     ctx.stroke();
                 }
             }
+
+
+
+
 
             // ============================================================
             // MANE: full mane starting at the poll (behind the ears)
@@ -5588,6 +5595,57 @@
                     ctx.quadraticCurveTo(cc[0], cc[1], e[0], e[1]);
                     ctx.stroke();
                 }
+            }
+
+            // ============================================================
+            // HEAD-TOP HAIR: black crest from poll to forehead, joins the mane
+            // ============================================================
+            {
+                ctx.fillStyle = '#111';
+                ctx.strokeStyle = '#111';
+                ctx.lineWidth = 2;
+                ctx.lineJoin = 'round';
+
+                const flow = Math.sin(now * (2 + 6 * rg)) * (0.6 + 1.5 * rg);
+
+                // outer edge (over the top of the head, around the ear bases)
+                const t0 = hp(-8, -8);
+                const t1 = hp(-8, -14 + flow * 0.2);
+                const t2 = hp(8, -15);
+                const t3 = hp(22, -13);
+                const t4 = hp(34, -11);
+
+                // inner edge (follows the top of the face, stays above the brow/eye)
+                const i0 = hp(36, -10);
+                const i1 = hp(24, -10);
+                const i2 = hp(10, -9);
+
+                ctx.beginPath();
+                ctx.moveTo(t0[0], t0[1]);
+                ctx.quadraticCurveTo(t1[0], t1[1], t2[0], t2[1]);
+                ctx.quadraticCurveTo(hp(16, -22)[0], hp(16, -22)[1], t3[0], t3[1]);
+                ctx.quadraticCurveTo(hp(30, -16)[0], hp(30, -16)[1], t4[0], t4[1]);
+                // pointed tip of the forehead hair
+                ctx.lineTo(i0[0], i0[1]);
+                ctx.quadraticCurveTo(i1[0], i1[1], i2[0], i2[1]);
+                ctx.lineTo(t0[0], t0[1]);
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+
+                // light hair strands so it matches the neck mane
+                ctx.strokeStyle = PAPER;
+                ctx.lineWidth = 1;
+                ctx.globalAlpha = .5;
+                for (let j = 0; j < 3; j++) {
+                    const s = hp(-4 + j * 3, -15);
+                    const e = hp(14 + j * 6, -12);
+                    ctx.beginPath();
+                    ctx.moveTo(s[0], s[1]);
+                    ctx.quadraticCurveTo(hp(6 + j * 4, -19)[0], hp(6 + j * 4, -19)[1], e[0], e[1]);
+                    ctx.stroke();
+                }
+                ctx.globalAlpha = 1;
             }
 
             // ============================================================
