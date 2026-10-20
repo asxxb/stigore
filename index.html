@@ -1957,11 +1957,25 @@
                     )
                     : 0;
 
-            const moveLean =
+            // ---- riding lean: small at walk, big at gallop ----
+            const RIDE_LEAN_WALK = .05;   // radians at walking speed (tiny)
+            const RIDE_LEAN_RUN = .42;   // radians at full gallop
+            const rideLean = (P === PL && mk > 0)
+                ? F * (RIDE_LEAN_WALK * clamp01(Math.abs(HRS.vx) / 215)
+                    + (RIDE_LEAN_RUN - RIDE_LEAN_WALK) * HRS.rg)
+                : 0;
+
+            const walkLean =
                 (P.pk > 0)
                     ? 0
                     : (P.lean * (.2 + .8 * R) * BODY_LEAN * (1 - sk))
                     + F * mountLean;
+
+            // blend by the mount amount so climbing on/off stays smooth
+            const moveLean = walkLean * (1 - mk) + rideLean * mk;
+
+
+
             const l = moveLean - F * .5 * sk + (z < 0 ? .1 * F : 0) + .3 * pq * F - F * .2 * st + Math.sin(now * 30) * .012 * st + F * cbLean - F * (isGrabbed ? .1 : .4) * hk + grabLean + F * kk * KNEEL_BEND + Math.sin(now * 9) * .035 * kk * (1 - fk) + (fz ? F * fz.lean : 0) + F * fk * 0.47 * (1 - gk)
                 + ((P !== PL && P.fst === 1 && PL.fin > 0 && !P.stomachStabbed) ? F * .1 * finK(PL.fin).foot : 0) - F * .07 * (P === PL ? P.recoil : 0) - F * (P === PL ? .12 * P.sgRec - .06 * sm(P.sgK) : 0) + F * fkk * (.8 - .2 * fkPull) + F * gkv * .3 + F * .25 * (gk - gkv) + F * .2 * sgpE;   // lies flat: head on the floor, hips on the floor
             const rot = (x, y) => [hipX + x * Math.cos(l) - y * Math.sin(l), hipY + x * Math.sin(l) + y * Math.cos(l)];
