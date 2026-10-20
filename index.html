@@ -869,17 +869,13 @@
                 if (Math.abs(e.x - P.x) > W / 2 + 300) continue;
                 const X = p => e.x + p[0] * S - P.x + W / 2, Y = p => gy + 4 + p[1] * S;
                 const cut = e.gutDead ? 1 : (e.gutCut || 0);
-                if (cut > .01) {                                     // the cut, growing down the torso
+                if (cut > .01 && !e.gutDead) {                                       // the cut, growing down the torso
                     const x0 = X(e.gutS), y0 = Y(e.gutS), x1 = x0 + (X(e.gutG) - x0) * cut, y1 = y0 + (Y(e.gutG) - y0) * cut;
                     ctx.save(); ctx.lineCap = 'round'; ctx.strokeStyle = '#8c0d14'; ctx.lineWidth = 4.5 * S;
                     ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
                     ctx.strokeStyle = '#4a0508'; ctx.lineWidth = 1.6 * S; ctx.stroke(); ctx.restore();
                 }
-                if (e.gutDead) {                                     // pelvis pops open at the exit point
-                    const pop = e.gutPop || 0, gx = X(e.gutG), gyy = Y(e.gutG);
-                    ctx.save(); ctx.fillStyle = '#111'; ctx.beginPath(); ctx.ellipse(gx, gyy, (10 + 16 * pop) * S, (8 + 10 * pop) * S, 0, 0, 7); ctx.fill();
-                    ctx.fillStyle = '#8c0d14'; ctx.beginPath(); ctx.ellipse(gx, gyy + 2 * S, (6 + 12 * pop) * S, (4 + 7 * pop) * S, 0, 0, 7); ctx.fill(); ctx.restore();
-                }
+
             }
         }
         // ---- yank the knife out of his foot (E) ----
@@ -1272,6 +1268,7 @@
             let tgt = 0;
 
             if (n.down > 0 || (n.dying > 0 && grounded && !n.gutDead)) tgt = n.kdir * Math.PI / 2;
+            else if (n.gutDead && grounded) tgt = n.kdir * Math.PI / 2 * Math.min(1, (n.gutK || 0) * 1.25);   // topples flat after the split
             else if (!grounded) tgt = n.kdir * (n.tumble ? Math.PI / 2 : .5);
             n.rot += (tgt - n.rot) * Math.min(1, dt * (n.down > 0 ? 14 : 9));
             // stomach stab: slight forward lean (0.22) while stabbed; full kneel (1.0) once knife is pulled out or for head stab
@@ -1695,6 +1692,7 @@
             const kk = P.kneelK || 0, fk = P.fallK || 0;
             const fkk = (P !== PL && P.fk) ? (P.fkK || 0) : 0;
             const gk = (P !== PL && P.gutDead) ? (P.gutK || 0) : 0;
+            const gkv = gk * (1 - Math.min(1, Math.abs(P.rot || 0) / (Math.PI / 2)));   // split amount shrinks as he lies flat
             let fkPull = 0;                               // 0..1: straining on the handle, then slipping off
             if (fkk > .01) { const c = (now * .7) % 1; fkPull = c < .5 ? sm(c / .5) : c < .6 ? 1 - sm((c - .5) / .1) : 0 }
             const fz = (P === PL && P.fin > 0) ? finK(P.fin) : null;      // player finisher animation
@@ -1709,7 +1707,7 @@
 
             hipY += 40 * fkk;
             hipY += 40 * fkk;
-            hipY += 80 * gk;
+            hipY += 80 * gkv;
             let hipX = cb ? F * cb.hipX * cb.w : 0, cbLean = cb ? cb.lean * cb.w : 0;
 
             if (isGrabbed) hipX = -F * 8;
@@ -1717,7 +1715,7 @@
             const grabLean = isGrabbed ? F * (.16 + Math.sin(now * 21) * .012) : 0;
             const moveLean = (P.pk > 0) ? 0 : (P.lean * (.2 + .8 * R) * BODY_LEAN * (1 - sk));
             const l = moveLean - F * .5 * sk + (z < 0 ? .1 * F : 0) + .3 * pq * F - F * .2 * st + Math.sin(now * 30) * .012 * st + F * cbLean - F * (isGrabbed ? .1 : .4) * hk + grabLean + F * kk * KNEEL_BEND + Math.sin(now * 9) * .035 * kk * (1 - fk) + (fz ? F * fz.lean : 0) + F * fk * 0.47
-                + ((P !== PL && P.fst === 1 && PL.fin > 0 && !P.stomachStabbed) ? F * .1 * finK(PL.fin).foot : 0) - F * .07 * (P === PL ? P.recoil : 0) + F * fkk * (.8 - .2 * fkPull) + F * gk * .3;
+                + ((P !== PL && P.fst === 1 && PL.fin > 0 && !P.stomachStabbed) ? F * .1 * finK(PL.fin).foot : 0) - F * .07 * (P === PL ? P.recoil : 0) + F * fkk * (.8 - .2 * fkPull) + F * gkv * .3;
             const rot = (x, y) => [hipX + x * Math.cos(l) - y * Math.sin(l), hipY + x * Math.sin(l) + y * Math.cos(l)];
             ctx.save(); ctx.translate(cx, gy + 4); ctx.scale(S, S); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
             if (P.rot) {
@@ -1774,14 +1772,25 @@
                         fx = fx * (1 - fz.foot) + (F * -24) * fz.foot; fy *= (1 - fz.foot); lf *= (1 - fz.foot);
                     }
                 }
-                if (gk > .001) { const sx_ = hipX + F * (i ? -1 : 1) * (26 + 88 * gk); fx = fx * (1 - gk) + sx_ * gk; fy *= (1 - gk); lf *= (1 - gk) }
-                leg(hipX, hipY, fx, fy, F, p, lf);
+                if (gk > .001) { const sx_ = hipX + F * (i ? -1 : 1) * (26 + 88 * gkv); fx = fx * (1 - gk) + sx_ * gk; fy *= (1 - gk); lf *= (1 - gk) }
+                const so = gkv * 34 * (i ? 1 : -1), hpL = rot(so, 0);
+                leg(hpL[0], hpL[1], fx, fy, F, p, lf);
                 footFlat = 0;
 
             }
             const cp = rot(-F * (SPINE_BOW + (cb ? cb.arch * 28 * cb.w : 0)), -T / 2);
-            ctx.strokeStyle = '#111'; ctx.lineWidth = 6.5; ctx.beginPath(); ctx.moveTo(hipX, hipY);
-            ctx.quadraticCurveTo(cp[0], cp[1], nk[0], nk[1]); ctx.stroke();
+            ctx.strokeStyle = '#111'; ctx.lineWidth = 6.5; ctx.beginPath();
+            if (gk > .01) {
+                const sp0 = rot(0, -38), h0 = rot(-34 * gkv, 0), h1 = rot(34 * gkv, 0);
+                P.splitP = [sp0, h0, h1];
+                ctx.moveTo(sp0[0], sp0[1]); ctx.quadraticCurveTo(cp[0], cp[1] * .8 + sp0[1] * .2, nk[0], nk[1]); ctx.stroke();   // upper body stays whole
+                for (const [h, s] of [[h0, -1], [h1, 1]]) {                                                                      // two separate lower halves
+                    const c = rot(s * 46 * gkv, -18);
+                    ctx.beginPath(); ctx.moveTo(sp0[0], sp0[1]); ctx.quadraticCurveTo(c[0], c[1], h[0], h[1]); ctx.stroke();
+                }
+            } else {
+                ctx.moveTo(hipX, hipY); ctx.quadraticCurveTo(cp[0], cp[1], nk[0], nk[1]); ctx.stroke();
+            }
             if (P === PL) {
                 const hp = rot(F * 8, -14);
                 P.hol = [hp[0], hp[1], l];
