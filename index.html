@@ -633,7 +633,7 @@
         }
         function respawn(n) {
             const side = Math.random() < .5 ? -1 : 1, x = P.x + side * (W / 2 + 150 + Math.random() * 250);
-            Object.assign(n, { int: null, gut: 0, headThud: 0, gutDead: false, gutK: 0, gutPop: 0, gutCut: 0, fkSnk: 0, fk: null, fkT: 0, fkK: 0, fkPend: false, stab: 0, kneelK: 0, fst: 0, fallT: 0, fallK: 0, thud: 0, x, home: x, goal: x, vx: 0, z: 0, vz: 0, hp: n.maxhp, hurt: 0, down: 0, rot: 0, dying: 0, dead: 0, bar: 0, tumble: 0, wait: 1.5, face: -side, fid: 0, fidK: 0, headCut: 0, headK: 0, cord: null });
+            Object.assign(n, { int: null, gut: 0, headThud: 0, gutDead: false, gutK: 0, gutPop: 0, gutCut: 0, fkSnk: 0, fk: null, fkT: 0, fkK: 0, fkPend: false, stab: 0, kneelK: 0, fst: 0, fallT: 0, fallK: 0, thud: 0, x, home: x, goal: x, vx: 0, z: 0, vz: 0, hp: n.maxhp, hurt: 0, down: 0, rot: 0, dying: 0, dead: 0, bar: 0, tumble: 0, wait: 1.5, face: -side, fid: 0, fidK: 0, headCut: 0, headK: 0, cord: null, brainOut: 0 });
         }
         function killBurst(n) {
             const S = CSc();
@@ -989,6 +989,56 @@
                 const t = p[p.length - 1]; ctx.fillStyle = '#8c0d14'; ctx.beginPath(); ctx.arc(X(t), Y(t), 3 * S, 0, 7); ctx.fill();
                 ctx.restore();
             }
+        }
+
+
+        // ---- scattered brain chunks ----
+        const brainBits = [];
+        function headWorld(e) {
+            const S = CSc(), h = e.hdp || [0, -30], th = e.rot || 0, py = -22, c = Math.cos(th), s = Math.sin(th), dx = h[0], dy = h[1] - py;
+            return [e.x + S * (dx * c - dy * s), S * (py + dx * s + dy * c)];
+        }
+        function scatterBrain(e) {
+            const S = CSc(), h = headWorld(e), F = e.kdir || 1;
+            e.brainOut = 1;
+            for (let i = 0; i < 18 && brainBits.length < 80; i++) {
+                brainBits.push({
+                    x: h[0] + (Math.random() - .5) * 30 * S, y: Math.min(-6, h[1]) - Math.random() * 10 * S,
+                    vx: (Math.random() - .5) * 420 + F * 60, vy: -(120 + Math.random() * 300),
+                    r: (4 + Math.random() * 5.5) * S, rot: Math.random() * 6, vr: (Math.random() - .5) * 16,
+                    k: Math.random() < .45 ? 0 : Math.random() < .6 ? 1 : 2, landed: false, bounced: 0, t: 0
+                });
+            }
+            spray(h[0], h[1], 26, 360, 0); burst(h[0], h[1], 14, 260, F);
+            shake = Math.max(shake, 5);
+        }
+        function brainTick(dt) {
+            for (let i = brainBits.length - 1; i >= 0; i--) {
+                const b = brainBits[i];
+                if (!b.landed) {
+                    b.vy += 1500 * dt; b.x += b.vx * dt; b.y += b.vy * dt; b.rot += b.vr * dt;
+                    if (b.y >= -b.r * .4) {
+                        b.y = -b.r * .4;
+                        if (b.vy > 220 && !b.bounced) { b.vy *= -.3; b.vx *= .6; b.bounced = 1 }
+                        else { b.landed = true; b.t = 0; if (splats.length < 160) splats.push({ x: b.x, w: b.r * 2.2, h: b.r * .5, t: 0 }) }
+                    }
+                } else { b.t += dt; if (b.t > 14) brainBits.splice(i, 1) }
+            }
+        }
+        function drawBrainBits(gy) {
+            ctx.save(); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+            for (const b of brainBits) {
+                const sx = b.x - P.x + W / 2; if (sx < -30 || sx > W + 30) continue;
+                ctx.globalAlpha = b.landed ? Math.min(1, (14 - b.t) / 3) : 1;
+                ctx.save(); ctx.translate(sx, gy + 4 + b.y); ctx.rotate(b.landed ? b.rot * .2 : b.rot); ctx.scale(1, b.landed ? .55 : 1);
+                ctx.fillStyle = b.k === 0 ? '#e9786c' : b.k === 1 ? '#f8c2b8' : '#8c0d14'; ctx.strokeStyle = '#5a0a10'; ctx.lineWidth = 1.6;
+                const r = b.r;
+                ctx.beginPath(); ctx.moveTo(-r, 0); ctx.bezierCurveTo(-r, -r * 1.1, r * .2, -r * 1.2, r, -r * .2); ctx.bezierCurveTo(r * 1.1, r * .9, -r * .6, r * 1.1, -r, 0); ctx.closePath(); ctx.fill(); ctx.stroke();
+                if (b.k === 0) { ctx.strokeStyle = '#a93a34'; ctx.beginPath(); ctx.moveTo(-r * .5, -r * .1); ctx.quadraticCurveTo(0, -r * .6, r * .4, 0); ctx.stroke() }
+                else if (b.k === 1) { ctx.fillStyle = '#8c0d14'; ctx.beginPath(); ctx.ellipse(r * .1, 0, r * .35, r * .2, 0, 0, 7); ctx.fill() }
+                ctx.restore();
+            }
+            ctx.restore();
         }
 
 
@@ -1422,6 +1472,7 @@
                         n.fallK = sm(progress);
                         if (n.fallT > 4.1 && !n.thud) {
                             n.thud = 1; shake = Math.max(shake, 6);
+                            if (n.headCut && !n.brainOut) scatterBrain(n);
                             burst(n.x + n.face * 70 * Sf, -6, 14, 220, n.face);
                             impacts.push({ x: n.x + n.face * 70 * Sf, y: -6, t: 0, life: .25, s: 80, seed: Math.random() * 50 });
                         }
@@ -2191,7 +2242,11 @@
                     const a0 = s > 0 ? -Math.PI / 2 : Math.PI / 2, a1 = s > 0 ? Math.PI / 2 : Math.PI * 1.5;
 
                     ctx.save(); ctx.beginPath(); ctx.arc(0, 0, 21, a0, a1, false); ctx.closePath(); ctx.clip();
-                    if (s < 0) {
+                    if (P.brainOut) {
+                        // empty skull: dark lining, no brain
+                        ctx.fillStyle = '#5a0a10'; ctx.fillRect(-22, -22, 44, 44);
+                        ctx.fillStyle = '#8c0d14'; ctx.beginPath(); ctx.ellipse(s * 7, 8, 5, 10, 0, 0, 7); ctx.fill();
+                    } else if (s < 0) {
                         // ---- outer surface of the brain: folds (gyri) ----
                         ctx.fillStyle = '#e9786c'; ctx.fillRect(-22, -22, 22, 44);
                         const row = (yy, ph, off) => {
@@ -3295,7 +3350,7 @@
             let dt = dt0;
             if (hitstop > 0) { hitstop -= dt0; dt = 0 }
 
-            update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt);
+            update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); brainTick(dt);
             shake = Math.max(0, shake - dt0 * 60);
             ctx.save();
             if (shake > .3) ctx.translate((Math.random() - .5) * shake * 1.6, (Math.random() - .5) * shake * 1.6);
@@ -3310,6 +3365,7 @@
             drawGutFX(gy);
             drawIntestines(gy);
             drawCords(gy);
+            drawBrainBits(gy);
             drawFootKnives(gy);
             drawKnives(gy);
             drawShots(gy);
