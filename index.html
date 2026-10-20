@@ -1451,7 +1451,7 @@
             let tgt = 0;
 
             if (n.down > 0 || (n.dying > 0 && grounded && !n.gutDead && !n.hsDead)) tgt = n.kdir * Math.PI / 2;
-            else if (n.hsDead && grounded) tgt = n.kdir * Math.PI / 2 * sm((n.hsT - .45) / .55);
+            else if (n.hsDead && grounded) tgt = n.kdir * Math.PI / 2 * sm((n.hsT - .45) / .7);
             else if (n.gutDead && grounded) tgt = n.kdir * Math.PI / 2 * Math.min(1, (n.gutK || 0) * 1.25);   // topples flat after the split
             else if (!grounded) tgt = n.kdir * (n.tumble ? Math.PI / 2 : .5);
             n.rot += (tgt - n.rot) * Math.min(1, dt * (n.down > 0 ? 14 : 9));
@@ -1687,7 +1687,7 @@
             const m = Math.min(1, lift / 20), pitch = m * .85 * (Math.atan2(uy, ux * F) - Math.PI / 2);
             ctx.save(); ctx.translate(fx + (ax + ux * 12 - fx) * m, fy + (ay + uy * 12 - fy) * m); ctx.scale(F * ((CUR.kneelK || 0) > .5 ? -1 : 1), 1);
             const pvx = 0; ctx.translate(pvx, 0);
-            ctx.rotate(pitch - F * (CUR.gutDead ? (CUR.rot || 0) : 0));
+            ctx.rotate(pitch - F * ((CUR.gutDead || CUR.hsDead) ? (CUR.rot || 0) : 0));
             ctx.translate(-pvx, 0);
             ctx.fillStyle = '#111'; ctx.beginPath(); ctx.moveTo(-9, 0); ctx.quadraticCurveTo(-11, -12, -3, -15);
             ctx.quadraticCurveTo(8, -13, 18, -1); ctx.lineTo(18, 0); ctx.lineTo(-9, 0); ctx.closePath(); ctx.fill();
@@ -1896,8 +1896,8 @@
             const sgW = (P === PL && P.sgK > .01 && z >= 0) ? sm(P.sgK) * (1 - Math.min(1, sp / 120)) : 0;   // shotgun stance weight
             const sgpE = (P === PL && P.sgp > 0 && !P.sgpWalk) ? sgpEnv() : 0;   // stomp crouch weight
             const fkk = (P !== PL && P.fk) ? (P.fkK || 0) : 0;
-            const gk = (P !== PL && P.gutDead) ? (P.gutK || 0) : 0;
-            const gkv = gk * (1 - Math.min(1, Math.abs(P.rot || 0) / (Math.PI / 2)));   // split amount shrinks as he lies flat
+            const gk = (P !== PL && P.gutDead) ? (P.gutK || 0) : ((P !== PL && P.hsDead) ? Math.min(1, Math.abs(P.rot || 0) / (Math.PI / 2)) : 0);   // headshot body: "flat" amount follows how far he has toppled
+            const gkv = (P !== PL && P.hsDead) ? 0 : gk * (1 - Math.min(1, Math.abs(P.rot || 0) / (Math.PI / 2)));   // no split for the headshot body
             let hl = 0;   // head lift: 0 = on the ground, 1 = raised looking at his guts
             if (P !== PL && P.gutDead) {
                 const lt = P.gutT || 0;
@@ -1944,7 +1944,7 @@
             if (pain > 0) ctx.translate((Math.sin(now * 47) * 1.6 + Math.sin(now * 83)) * pain, Math.sin(now * 61) * 1.2 * pain - spasm * 3);
             if (P.rot) {
                 const pk = Math.min(1, -z / 60);
-                const py = (P !== PL && P.gutDead) ? -24 : ((cb && cb.py !== undefined) ? cb.py : (-40 * (1 - pk) + (hipY - 30) * pk));
+                const py = (P !== PL && (P.gutDead || P.hsDead)) ? -24 : ((cb && cb.py !== undefined) ? cb.py : (-40 * (1 - pk) + (hipY - 30) * pk));
                 const px = (cb && cb.px !== undefined) ? cb.px : 0;
                 ctx.translate(px, py); ctx.rotate(P.rot + pain * Math.sin(now * 40) * .02 + spasm * .06 * Math.sin(now * 22)); ctx.translate(-px, -py);
             }
