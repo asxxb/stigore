@@ -4046,7 +4046,7 @@
         }
 
         // ================= HORSE (mount, ride, jump, trample) =================
-        const HR_MOUNT_R = 170, HR_SEAT = -148, HR_WALK = 215, HR_RUN = 790, HR_JUMP = 640, HR_REAR_T = 1.0;
+        const HR_MOUNT_R = 170, HR_SEAT = -220, HR_WALK = 215, HR_RUN = 790, HR_JUMP = 640, HR_REAR_T = 1.0;
         const HRS = { x: 480, vx: 0, z: 0, vz: 0, face: -1, ph: 0, amp: 0, rg: 0, home: 480, goal: 480, wait: 2, gz: 0, gT: 3, gk: 0, rear: 0, muz: null };
         P.mount = 0; P.mountT = 0; P.mx0 = 0; P.mk = 0;   // mount: 0 off, 1 climbing on, 2 riding, 3 climbing off
         const clamp01 = v => Math.max(0, Math.min(1, v));
@@ -4126,7 +4126,10 @@
                 P.mk = sm(k); P.x = lerp(P.mx0, h.x, P.mk); P.vx = 0; P.face = h.face;
                 if (k >= 1) { P.mount = 2; P.mk = 1; banner.t = .8; banner.text = 'MOUNTED'; shake = Math.max(shake, 4); burst(h.x, -3, 8, 200, -h.face) }
             } else if (st === 2) {
-                P.x = h.x; P.vx = h.vx; P.face = h.face; P.mk = 1;
+                P.x = h.x;
+                P.vx = h.vx;
+                P.face = h.face;
+                P.mk = 1;
                 if (sp > 380) {                                                // trample
                     const sg = Math.sign(h.vx);
                     for (const e of ENEMIES) {
