@@ -2646,11 +2646,11 @@
                         }
                     } else {
                         k.x += dx / d * step; k.y += dy / d * step;
-                        if (Math.abs(k.x - k.x0) > THROW_RANGE) { dropKnife(k.x, k.y, k.F, k.F * 250); knives.splice(i, 1) }
+                        if (Math.abs(k.x - k.x0) > THROW_RANGE) { dropThrown(k); knives.splice(i, 1) }
                     }
                 } else {
                     k.x += k.F * Math.cos(k.th) * k.v * dt; k.y += Math.sin(k.th) * k.v * dt;
-                    if (Math.abs(k.x - k.x0) > THROW_RANGE || k.y > 0) { dropKnife(k.x, Math.min(k.y, 0), k.F, k.F * 250); knives.splice(i, 1) }
+                    if (Math.abs(k.x - k.x0) > THROW_RANGE || k.y > 0) { dropThrown(k); knives.splice(i, 1) }
                 }
             }
         }
@@ -2815,6 +2815,7 @@
 
         function pressFinish() {
             if (P.yk > 0 || P.fin > 0 || P.cs > 0 || P.tt > 0 || P.thw > 0 || P.z < 0) return;
+            if (tryPickupKnife()) return;
             if (P.gun || P.gs === 2 || P.sg) { banner.t = .6; banner.text = 'HOLSTER GUN FIRST (G)'; return }
             if (P.fs === 0 && P.stbk === 0 && P.pk === 0) {
                 const S0 = CSc(); let fe = null, fd = 1e9;
@@ -2979,22 +2980,41 @@
         }
 
 
-        function dropKnife(x, y, F, vx) {
-            groundKnives.push({ x, y, vy: -150, vx, F, th: 0, landed: false, t: 0 });
+        function dropKnife(x, y, F, vx, vy = -150, th = 0) {
+            groundKnives.push({ x, y, vy, vx, F, th, landed: false, t: 0 });
+        }
+        function dropThrown(k) {            // knife ran out of range: keep its momentum and let it fall
+            const sp = k.v * .45;
+            dropKnife(k.x, Math.min(k.y, -4), k.F, k.F * Math.cos(k.th) * sp, Math.sin(k.th) * sp - 60, k.th);
         }
         function updateGroundKnives(dt) {
             const S = CSc(), STUCK = 1.1, rest = -(0.64 * KNIFE_LEN * Math.sin(STUCK) - 8) * S;
-            for (let i = groundKnives.length - 1; i >= 0; i--) {
-                const g = groundKnives[i]; g.t += dt;
-                if (!g.landed) {
-                    g.vy += 1500 * dt; g.y += g.vy * dt; g.x += g.vx * dt; g.vx *= Math.max(0, 1 - 3 * dt);
-                    g.th += (STUCK - g.th) * Math.min(1, dt * 10);
-                    if (g.y >= rest) { g.y = rest; g.landed = true; g.th = STUCK; g.t = 0; burst(g.x, -4, 6, 160, g.F) }
-                } else if (!hasKnife && P.kn === 0 && P.z >= 0 && !(P.fin > 0) && Math.abs(g.x - P.x) < PICKUP_R * S) {
-                    groundKnives.splice(i, 1); hasKnife = true;
-                    banner.t = .8; banner.text = 'KNIFE RECOVERED';
+            for (const g of groundKnives) {
+                g.t += dt;
+                if (g.landed) continue;
+                g.vy += 1500 * dt; g.y += g.vy * dt; g.x += g.vx * dt;
+                g.vx *= Math.max(0, 1 - 1.2 * dt);                              // air drag
+                g.th += (STUCK - g.th) * Math.min(1, dt * 4.5);                 // tip pitches down as it falls
+                if (g.y >= rest) {
+                    g.y = rest; g.landed = true; g.th = STUCK; g.t = 0; g.vx = 0;
+                    burst(g.x, -4, 8, 180, g.F); shake = Math.max(shake, 2);
                 }
             }
+        }
+        function tryPickupKnife() {
+            if (hasKnife || P.kn !== 0 || P.sm === 1 || P.pk > 0 || P.fs > 0 || P.stbk > 0 || P.gu > 0) return false;
+            const S = CSc(); let bi = -1, bd = 1e9;
+            for (let i = 0; i < groundKnives.length; i++) {
+                const g = groundKnives[i]; if (!g.landed) continue;
+                const d = Math.abs(g.x - P.x);
+                if (d < PICKUP_R * S && d < bd) { bd = d; bi = i }
+            }
+            if (bi < 0) return false;
+            const g = groundKnives[bi]; groundKnives.splice(bi, 1);
+            hasKnife = true; P.idle = 0; P.fid = 0;
+            burst(g.x, -4, 5, 140, g.F);
+            banner.t = .8; banner.text = 'KNIFE RECOVERED';
+            return true;
         }
         function drawGroundKnives(gy) {
             if (!KN.complete || !KN.naturalWidth) return;
@@ -3005,10 +3025,12 @@
                 const wob = g.landed ? Math.sin(g.t * 45) * .14 * Math.exp(-g.t * 7) : 0;
                 ctx.rotate(g.th + KNIFE_SPRITE_TILT + wob); ctx.scale(sc, sc);
                 ctx.drawImage(KN, -nw * KCOMX, -nh * KCOMY); ctx.restore();
-                if (g.landed && !hasKnife) {   // dashed ring showing where to stand
+                if (g.landed && !hasKnife) {   // dashed ring + E hint when you're in range
+                    const near = Math.abs(g.x - P.x) < PICKUP_R * S, now = performance.now();
                     ctx.save(); ctx.strokeStyle = '#111'; ctx.lineWidth = 2; ctx.setLineDash([6, 6]);
-                    ctx.globalAlpha = .35 + .25 * Math.sin(performance.now() / 250);
+                    ctx.globalAlpha = (near ? .55 : .3) + .2 * Math.sin(now / 250);
                     ctx.beginPath(); ctx.ellipse(sx, gy + 6, PICKUP_R * S, 8, 0, 0, 7); ctx.stroke(); ctx.restore();
+                    if (near) { ctx.save(); ctx.fillStyle = '#111'; ctx.font = 'italic bold 22px Georgia,serif'; ctx.textAlign = 'center'; ctx.fillText('E', sx, gy - 50 * S - 4 * Math.sin(now / 200)); ctx.restore() }
                 }
             }
         }
