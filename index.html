@@ -633,7 +633,7 @@
         }
         function respawn(n) {
             const side = Math.random() < .5 ? -1 : 1, x = P.x + side * (W / 2 + 150 + Math.random() * 250);
-            Object.assign(n, { int: null, gut: 0, gutDead: false, gutK: 0, gutPop: 0, gutCut: 0, fkSnk: 0, fk: null, fkT: 0, fkK: 0, fkPend: false, stab: 0, kneelK: 0, fst: 0, fallT: 0, fallK: 0, thud: 0, x, home: x, goal: x, vx: 0, z: 0, vz: 0, hp: n.maxhp, hurt: 0, down: 0, rot: 0, dying: 0, dead: 0, bar: 0, tumble: 0, wait: 1.5, face: -side, fid: 0, fidK: 0 });
+            Object.assign(n, { int: null, gut: 0, headThud: 0, gutDead: false, gutK: 0, gutPop: 0, gutCut: 0, fkSnk: 0, fk: null, fkT: 0, fkK: 0, fkPend: false, stab: 0, kneelK: 0, fst: 0, fallT: 0, fallK: 0, thud: 0, x, home: x, goal: x, vx: 0, z: 0, vz: 0, hp: n.maxhp, hurt: 0, down: 0, rot: 0, dying: 0, dead: 0, bar: 0, tumble: 0, wait: 1.5, face: -side, fid: 0, fidK: 0 });
         }
         function killBurst(n) {
             const S = CSc();
@@ -1432,6 +1432,12 @@
             if (n.gutDead) {
                 n.fallK = n.gutK; n.vx = 0; n.gutT = (n.gutT || 0) + dt;
                 if (n.int && dt > 0) stepInt(n, dt);
+                if (!n.headThud && n.gutT > 6.4) {
+                    n.headThud = 1; const S_ = CSc();
+                    shake = Math.max(shake, 5);
+                    burst(n.x + n.kdir * 60 * S_, -4, 10, 200, n.kdir);
+                    impacts.push({ x: n.x + n.kdir * 60 * S_, y: -4, t: 0, life: .22, s: 70, seed: Math.random() * 50 });
+                }
                 n.gutPop = Math.max(0, (n.gutPop || 0) - dt * 1.8);
 
                 if (n.gutG && n.gutT < 5) {                                       // keeps bleeding from the groin
@@ -1783,6 +1789,18 @@
             const fkk = (P !== PL && P.fk) ? (P.fkK || 0) : 0;
             const gk = (P !== PL && P.gutDead) ? (P.gutK || 0) : 0;
             const gkv = gk * (1 - Math.min(1, Math.abs(P.rot || 0) / (Math.PI / 2)));   // split amount shrinks as he lies flat
+            let hl = 0;   // head lift: 0 = on the ground, 1 = raised looking at his guts
+            if (P !== PL && P.gutDead) {
+                const lt = P.gutT || 0;
+                hl = sm((lt - 1.2) / .6) * (1 - sm((lt - 6.2) / .2)) * Math.min(1, Math.max(0, (gk - gkv) * 1.5));
+            }
+            const hlo = (wx, wy) => { const th = P.rot || 0; return [wx * Math.cos(th) + wy * Math.sin(th), -wx * Math.sin(th) + wy * Math.cos(th)] };   // world offset -> body-local
+            let pain = 0, spasm = 0;   // gutted NPC: writhing in agony
+            if (P !== PL && P.gutDead) {
+                const gt = P.gutT || 0;
+                pain = Math.min(1, .35 + gt * 2) * (1 - sm((gt - 3.5) / 3));
+                spasm = Math.pow(Math.max(0, Math.sin(now * 6.2) * Math.sin(now * 2.3 + 1)), 2) * 1.6 * pain;
+            }
             let fkPull = 0;                               // 0..1: straining on the handle, then slipping off
             if (fkk > .01) { const c = (now * .7) % 1; fkPull = c < .5 ? sm(c / .5) : c < .6 ? 1 - sm((c - .5) / .1) : 0 }
             const fz = (P === PL && P.fin > 0) ? finK(P.fin) : null;      // player finisher animation
@@ -1809,13 +1827,15 @@
                 + ((P !== PL && P.fst === 1 && PL.fin > 0 && !P.stomachStabbed) ? F * .1 * finK(PL.fin).foot : 0) - F * .07 * (P === PL ? P.recoil : 0) + F * fkk * (.8 - .2 * fkPull) + F * gkv * .3 + F * .25 * (gk - gkv);   // lies flat: head on the floor, hips on the floor
             const rot = (x, y) => [hipX + x * Math.cos(l) - y * Math.sin(l), hipY + x * Math.sin(l) + y * Math.cos(l)];
             ctx.save(); ctx.translate(cx, gy + 4); ctx.scale(S, S); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+            if (pain > 0) ctx.translate((Math.sin(now * 47) * 1.6 + Math.sin(now * 83)) * pain, Math.sin(now * 61) * 1.2 * pain - spasm * 3);
             if (P.rot) {
                 const pk = Math.min(1, -z / 60);
                 const py = (P !== PL && P.gutDead) ? -24 : ((cb && cb.py !== undefined) ? cb.py : (-40 * (1 - pk) + (hipY - 30) * pk));
                 const px = (cb && cb.px !== undefined) ? cb.px : 0;
-                ctx.translate(px, py); ctx.rotate(P.rot); ctx.translate(-px, -py);
+                ctx.translate(px, py); ctx.rotate(P.rot + pain * Math.sin(now * 40) * .02 + spasm * .06 * Math.sin(now * 22)); ctx.translate(-px, -py);
             }
             const nk = rot(0, -T);
+            if (hl > .01) { const o = hlo(-P.kdir * 3 * hl, -14 * hl); nk[0] += o[0]; nk[1] += o[1] }
             P.hipP = [hipX, hipY];
             P.gutS = rot(F * 5, -38);    // stomach centre (front of torso)
             P.gutG = rot(F * 5, 8);      // groin / exit point
@@ -1864,6 +1884,7 @@
                     }
                 }
                 if (gk > .001) { const sx_ = hipX + F * (i ? -1 : 1) * (26 + 88 * gkv); fx = fx * (1 - gk) + sx_ * gk; fy *= (1 - gk); lf *= (1 - gk) }
+                if (pain > 0) { fx += Math.sin(now * 43 + i * 2.3) * 3 * pain + spasm * (i ? -1 : 1) * 10; fy -= Math.max(0, Math.sin(now * 29 + i * 1.7)) * 5 * pain * gk }
                 {
                     const fl = gk - gkv;
                     if (fl > .001) {   // flat: both legs run straight along the ground
@@ -1877,7 +1898,7 @@
                 footFlat = 0;
 
             }
-            const cp = rot(-F * (SPINE_BOW + (cb ? cb.arch * 28 * cb.w : 0)), -T / 2);
+            const cp = rot(-F * (SPINE_BOW + (cb ? cb.arch * 28 * cb.w : 0) + spasm * 14), -T / 2);
             ctx.strokeStyle = '#111'; ctx.lineWidth = 6.5; ctx.beginPath();
             if (gk > .01) {
                 const sp0 = rot(0, -38), h0 = rot(-34 * gkv, 0), h1 = rot(34 * gkv, 0);
@@ -2010,7 +2031,11 @@
                     const clutchW = (1 - fk);
                     ang = ang * (1 - clutchW) + a * clutchW; flex = flex * (1 - clutchW) + f * clutchW;
                 }
-                if (gk > .01 && !isGrabbed) { const gw = sm(gk); ang = ang * (1 - gw) + (i ? -.17 : -.2) * gw; flex = flex * (1 - gw) + 0 * gw }   // arms lie along the ground
+                if (gk > .01 && !isGrabbed) {
+                    const gw = sm(gk);
+                    if (pain > 0) { ang += Math.sin(now * 44 + i * 2.1) * .07 * pain + spasm * .15 * Math.sin(now * 19 + i); flex += Math.abs(Math.sin(now * 31 + i)) * .12 * pain }
+                    ang = ang * (1 - gw) + (i ? -.17 : -.2) * gw; flex = flex * (1 - gw) + 0 * gw
+                }   // arms lie along the ground
                 if (fz && fz.grip > .01 && P.finE && (P.finE.hdp || P.finE.stbStoP)) {
                     const E = P.finE, ox = (E.x - P.x) / S;
                     const hv = (keys.KeyE && !P.finDone) ? 1 : 0;
@@ -2094,10 +2119,15 @@
             const grabHdOffY = isGrabbed ? 6 - hk * 2 : 0;
             const fnn = (P !== PL && P.fst === 1 && PL.fin > 0) ? finK(PL.fin) : null;
             const fp = fnn ? fnn.foot : 0, fq = fnn ? fnn.pull : 0;
-            const hdX = -F * 7 + F * (cb ? cb.hx * cb.w : 0) + F * pq * 10 + L * 10 - F * 5 * st + grabHdOffX - kux * kpull * 7 * kk + F * 9 * R * P.amp + F * sTilt[0];
-            const hdY = -T - 24 + (cb ? cb.hy * cb.w : 0) - 6 * st - Math.abs(L) * 1.5 + grabHdOffY - kuy * kpull * 7 * kk + 6 * kk + 5 * R * P.amp + sTilt[1];
+            const hdX = -F * 7 + F * (cb ? cb.hx * cb.w : 0) + F * pq * 10 + L * 10 - F * 5 * st + grabHdOffX - kux * kpull * 7 * kk + F * 9 * R * P.amp + F * sTilt[0] + (pain ? Math.sin(now * 58) * 2.5 * pain + Math.sin(now * 37) * 2 * pain - F * spasm * 8 : 0);
+            const hdY = -T - 24 + (cb ? cb.hy * cb.w : 0) - 6 * st - Math.abs(L) * 1.5 + grabHdOffY - kuy * kpull * 7 * kk + 6 * kk + 5 * R * P.amp + sTilt[1] + (pain ? Math.sin(now * 49) * 2 * pain - spasm * 6 : 0);
             const hd = rot(hdX, hdY);
-            P.hdp = hd;       // remembered so the attacker's hands can target them
+            if (hl > .01) {
+                const o = hlo(-P.kdir * (7 + 5 * Math.sin(now * 1.6)) * hl, -(26 + 2 * Math.sin(now * 2.2)) * hl);   // up, and slowly looking around at his guts
+                hd[0] += o[0]; hd[1] += o[1];
+                ctx.strokeStyle = '#111'; ctx.lineWidth = 6.5; ctx.beginPath(); ctx.moveTo(nk[0], nk[1]); ctx.lineTo(hd[0], hd[1]); ctx.stroke();   // neck
+            }
+            P.hdp = hd;
             // stomach stab anchor: update every frame so the knife tracks the bent body
             if (P.stomachStabbed) {
                 // y=-38: 38px above hip = lower belly/stomach (below arm elbow level)
