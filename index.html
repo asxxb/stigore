@@ -2040,158 +2040,85 @@
                 if (P === PL && P.mount === 1) {
 
                     const mt = Math.min(1, P.mountT / 1.0);
+                    const MAX_R = 153;   // safe leg reach (2*L1 = 160, keep 7px margin)
 
                     // ========================================================
-                    // COWBOY MOUNT LEGS
+                    // COWBOY MOUNT LEGS — physics-correct version
+                    //
+                    // The hip arc (via mz) sends hipY as deep as -186 at peak.
+                    // At mt=0.45 the hip is 164px up — foot cannot reach ground.
+                    // All foot targets are expressed as (hipX+dX, hipY+dY)
+                    // so they ALWAYS stay within MAX_R of the hip.
                     // ========================================================
 
                     if (i === 0) {
 
-                        // ----------------------------------------------------
-                        // PUSH-OFF LEG
-                        // Starts planted.
-                        // Pushes down.
-                        // Then folds upward toward the saddle.
-                        // ----------------------------------------------------
+                        // ── PUSH-OFF LEG ──
+                        // Hip rises too fast for the foot to stay on the ground
+                        // past mt~0.38 — so the foot is DRAGGED up by the body.
 
                         if (mt < .38) {
-
+                            // Foot is planted on ground and bracing for the push.
+                            // As the hip starts to rise, the foot is pulled toward
+                            // the reach limit (MAX_R below the hip).
                             const k = sm(mt / .38);
+                            const gnd = Math.min(0, hipY + MAX_R);  // as high as reach allows toward ground
+                            fx = lerp(fx, hipX + F * 18, k);
+                            fy = lerp(fy, gnd, k);
+                            lf = 0;
 
-                            fx = lerp(
-                                fx,
-                                hipX + F * 25,
-                                k
-                            );
-
-                            fy = lerp(
-                                fy,
-                                0,
-                                k
-                            );
-
-                        } else if (mt < .70) {
-
-                            const k =
-                                sm((mt - .38) / .32);
-
-                            fx = lerp(
-                                hipX + F * 25,
-                                hipX + F * 12,
-                                k
-                            );
-
-                            fy = lerp(
-                                0,
-                                -62,
-                                k
-                            );
-
-                            lf = lerp(
-                                0,
-                                35,
-                                k
-                            );
+                        } else if (mt < .62) {
+                            // Body is airborne — foot tucks toward body to prep for stirrup.
+                            const k = sm((mt - .38) / .24);
+                            const gndStart = Math.min(0, hipY + MAX_R);  // where foot was
+                            fx = lerp(hipX + F * 18, hipX + F * 12, k);
+                            fy = lerp(gndStart, hipY + 60, k);  // tuck: 60px below hip = bent knee
+                            lf = lerp(0, 22, k);
 
                         } else {
-
-                            const k =
-                                sm((mt - .70) / .30);
-
-                            fx = lerp(
-                                hipX + F * 12,
-                                hipX + F * 18,
-                                k
-                            );
-
-                            fy = lerp(
-                                -62,
-                                seatY + 92 + ANK,
-                                k
-                            );
-
-                            lf = lerp(
-                                35,
-                                0,
-                                k
-                            );
+                            // Hip is descending back to seat — guide foot into stirrup.
+                            const k = sm((mt - .62) / .38);
+                            fx = lerp(hipX + F * 12, hipX + F * 18, k);
+                            fy = lerp(hipY + 60, seatY + 92 + ANK, k);
+                            lf = lerp(22, 0, k);
                         }
 
                     } else {
 
-                        // ----------------------------------------------------
-                        // SWING LEG
-                        //
-                        // This is the leg that comes up and swings over
-                        // the horse's back.
-                        // ----------------------------------------------------
+                        // ── SWING LEG ──
+                        // This is the leg that swings up and over the horse's back.
+                        // The key motion is a tight knee-drive tuck then a lateral
+                        // sweep — all hip-relative so it stays within reach.
 
-                        if (mt < .42) {
+                        if (mt < .35) {
+                            // Leg trails behind and below — weight on push-off.
+                            const k = sm(mt / .35);
+                            fx = lerp(fx, hipX - F * 18, k);
+                            fy = lerp(fy, hipY + 90, k);   // 90px below hip = slightly bent, hanging
+                            lf = lerp(lf, 0, k);
 
-                            // Leg stays behind while pushing off.
-                            const k = sm(mt / .42);
+                        } else if (mt < .54) {
+                            // Knee-drive: drive knee sharply forward-upward.
+                            // Foot tucks very close to hip (knee-to-chest).
+                            const k = sm((mt - .35) / .19);
+                            fx = lerp(hipX - F * 18, hipX + F * 6, k);
+                            fy = lerp(hipY + 90, hipY - 22, k);  // foot 22px above hip = tight tuck
+                            lf = lerp(0, 48, k);
 
-                            fx = lerp(
-                                fx,
-                                hipX - F * 38,
-                                k
-                            );
-
-                            fy = lerp(
-                                fy,
-                                -8,
-                                k
-                            );
-
-                            lf = lerp(
-                                lf,
-                                0,
-                                k
-                            );
-
-                        } else if (mt < .70) {
-
-                            // Big upward swing.
-                            const k =
-                                sm((mt - .42) / .28);
-
-                            fx = lerp(
-                                hipX - F * 38,
-                                hipX + F * 42,
-                                k
-                            );
-
-                            fy =
-                                -8 -
-                                Math.sin(k * Math.PI) * 78;
-
-                            lf =
-                                Math.sin(k * Math.PI) * 48;
+                        } else if (mt < .76) {
+                            // Lateral sweep: uncurl the leg sideways over the horse.
+                            // Foot goes from in front of body to well past it.
+                            const k = sm((mt - .54) / .22);
+                            fx = lerp(hipX + F * 6, hipX + F * 26, k);
+                            fy = lerp(hipY - 22, hipY + 45, k);   // knee opens, foot drops forward
+                            lf = lerp(48, 8, k);
 
                         } else {
-
-                            // Leg comes down on the opposite side
-                            // and settles into riding position.
-                            const k =
-                                sm((mt - .70) / .30);
-
-                            fx = lerp(
-                                hipX + F * 42,
-                                hipX + F * 4,
-                                k
-                            );
-
-                            fy = lerp(
-                                -8,
-                                seatY + 92 + ANK,
-                                k
-                            );
-
-                            lf = lerp(
-                                48,
-                                0,
-                                k
-                            );
+                            // Settle into far-side stirrup.
+                            const k = sm((mt - .76) / .24);
+                            fx = lerp(hipX + F * 26, hipX + F * 4, k);
+                            fy = lerp(hipY + 45, seatY + 92 + ANK, k);
+                            lf = lerp(8, 0, k);
                         }
                     }
 
