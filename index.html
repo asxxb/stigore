@@ -1900,7 +1900,7 @@
             const grabHipY = isGrabbed ? 20 : 0;
             const kk = P.kneelK || 0, fk = P.fallK || 0;
             const mk = (P === PL) ? (P.mk || 0) : 0;                        // mounted blend 0..1
-            const mz = mk * (HRS.z / S) - 62 * Math.sin(Math.PI * mk);      // horse jump + hop arc while climbing on/off
+            const mz = mk * (HRS.z / S) - 85 * Math.sin(Math.PI * mk);    // horse jump + hop arc while climbing on/off
             const seatY = HR_SEAT + hrsBob() + mz;
             const sgW = (P === PL && P.sgK > .01 && z >= 0) ? sm(P.sgK) * (1 - Math.min(1, sp / 120)) : 0;   // shotgun stance weight
             const sgpE = (P === PL && P.sgp > 0 && !P.sgpWalk) ? sgpEnv() : 0;   // stomp crouch weight
@@ -1946,7 +1946,22 @@
             if (P === PL) hipX -= F * 7 * P.sgRec;
             hipX -= 24 * F * (gk - gkv);   // slides the hips down to ground level when lying flat
             const grabLean = isGrabbed ? F * (.16 + Math.sin(now * 21) * .012) : 0;
-            const moveLean = (P.pk > 0) ? 0 : (P.lean * (.2 + .8 * R) * BODY_LEAN * (1 - sk));
+            const mountLean =
+                (P.mount === 1)
+                    ? (
+                        P.mountT < .18
+                            ? 0
+                            : P.mountT < .62
+                                ? .32 * sm((P.mountT - .18) / .44)
+                                : .32 * (1 - sm((P.mountT - .62) / .38))
+                    )
+                    : 0;
+
+            const moveLean =
+                (P.pk > 0)
+                    ? 0
+                    : (P.lean * (.2 + .8 * R) * BODY_LEAN * (1 - sk))
+                    + F * mountLean;
             const l = moveLean - F * .5 * sk + (z < 0 ? .1 * F : 0) + .3 * pq * F - F * .2 * st + Math.sin(now * 30) * .012 * st + F * cbLean - F * (isGrabbed ? .1 : .4) * hk + grabLean + F * kk * KNEEL_BEND + Math.sin(now * 9) * .035 * kk * (1 - fk) + (fz ? F * fz.lean : 0) + F * fk * 0.47 * (1 - gk)
                 + ((P !== PL && P.fst === 1 && PL.fin > 0 && !P.stomachStabbed) ? F * .1 * finK(PL.fin).foot : 0) - F * .07 * (P === PL ? P.recoil : 0) - F * (P === PL ? .12 * P.sgRec - .06 * sm(P.sgK) : 0) + F * fkk * (.8 - .2 * fkPull) + F * gkv * .3 + F * .25 * (gk - gkv) + F * .2 * sgpE;   // lies flat: head on the floor, hips on the floor
             const rot = (x, y) => [hipX + x * Math.cos(l) - y * Math.sin(l), hipY + x * Math.sin(l) + y * Math.cos(l)];
@@ -2019,7 +2034,190 @@
                     }
                 }
                 if (P === PL && i === 0 && P.sgp > 0 && !P.sgpWalk) { const o = sgpFoot(S, fx, fy, lf, F); fx = o[0]; fy = o[1]; lf = o[2]; }
-                if (mk > 0) { const mtx = hipX + F * (i ? 4 : 18) + Math.sin(HRS.ph * 4 * Math.PI + i * 2) * 2 * HRS.amp, mty = seatY + 92 + ANK; fx = fx * (1 - mk) + mtx * mk; fy = fy * (1 - mk) + mty * mk; lf *= (1 - mk) }
+
+
+
+                if (P === PL && P.mount === 1) {
+
+                    const mt = Math.min(1, P.mountT / 1.0);
+
+                    // ========================================================
+                    // COWBOY MOUNT LEGS
+                    // ========================================================
+
+                    if (i === 0) {
+
+                        // ----------------------------------------------------
+                        // PUSH-OFF LEG
+                        // Starts planted.
+                        // Pushes down.
+                        // Then folds upward toward the saddle.
+                        // ----------------------------------------------------
+
+                        if (mt < .38) {
+
+                            const k = sm(mt / .38);
+
+                            fx = lerp(
+                                fx,
+                                hipX + F * 25,
+                                k
+                            );
+
+                            fy = lerp(
+                                fy,
+                                0,
+                                k
+                            );
+
+                        } else if (mt < .70) {
+
+                            const k =
+                                sm((mt - .38) / .32);
+
+                            fx = lerp(
+                                hipX + F * 25,
+                                hipX + F * 12,
+                                k
+                            );
+
+                            fy = lerp(
+                                0,
+                                -62,
+                                k
+                            );
+
+                            lf = lerp(
+                                0,
+                                35,
+                                k
+                            );
+
+                        } else {
+
+                            const k =
+                                sm((mt - .70) / .30);
+
+                            fx = lerp(
+                                hipX + F * 12,
+                                hipX + F * 18,
+                                k
+                            );
+
+                            fy = lerp(
+                                -62,
+                                seatY + 92 + ANK,
+                                k
+                            );
+
+                            lf = lerp(
+                                35,
+                                0,
+                                k
+                            );
+                        }
+
+                    } else {
+
+                        // ----------------------------------------------------
+                        // SWING LEG
+                        //
+                        // This is the leg that comes up and swings over
+                        // the horse's back.
+                        // ----------------------------------------------------
+
+                        if (mt < .42) {
+
+                            // Leg stays behind while pushing off.
+                            const k = sm(mt / .42);
+
+                            fx = lerp(
+                                fx,
+                                hipX - F * 38,
+                                k
+                            );
+
+                            fy = lerp(
+                                fy,
+                                -8,
+                                k
+                            );
+
+                            lf = lerp(
+                                lf,
+                                0,
+                                k
+                            );
+
+                        } else if (mt < .70) {
+
+                            // Big upward swing.
+                            const k =
+                                sm((mt - .42) / .28);
+
+                            fx = lerp(
+                                hipX - F * 38,
+                                hipX + F * 42,
+                                k
+                            );
+
+                            fy =
+                                -8 -
+                                Math.sin(k * Math.PI) * 78;
+
+                            lf =
+                                Math.sin(k * Math.PI) * 48;
+
+                        } else {
+
+                            // Leg comes down on the opposite side
+                            // and settles into riding position.
+                            const k =
+                                sm((mt - .70) / .30);
+
+                            fx = lerp(
+                                hipX + F * 42,
+                                hipX + F * 4,
+                                k
+                            );
+
+                            fy = lerp(
+                                -8,
+                                seatY + 92 + ANK,
+                                k
+                            );
+
+                            lf = lerp(
+                                48,
+                                0,
+                                k
+                            );
+                        }
+                    }
+
+                } else if (mk > 0) {
+
+                    // Normal mounted riding legs
+                    const mtx =
+                        hipX +
+                        F * (i ? 4 : 18) +
+                        Math.sin(
+                            HRS.ph * 4 * Math.PI + i * 2
+                        ) * 2 * HRS.amp;
+
+                    const mty =
+                        seatY + 92 + ANK;
+
+                    fx =
+                        fx * (1 - mk) +
+                        mtx * mk;
+
+                    fy =
+                        fy * (1 - mk) +
+                        mty * mk;
+
+                    lf *= (1 - mk);
+                }
                 const so = gkv * 34 * (i ? 1 : -1), hpL = rot(so, 0);
                 leg(hpL[0], hpL[1], fx, fy, F, p, lf);
                 footFlat = 0;
@@ -2227,6 +2425,7 @@
                     const [a, f] = ik2(sh, px - ddx / dl * 12 + tr, py - ddy / dl * 12 + tr * .6, F);
                     ang = ang * (1 - fkk) + a * fkk; flex = flex * (1 - fkk) + f * fkk;
                 }
+
                 if (P === PL && P.yk > 0 && P.ykE && P.ykE.fk) {      // both hands on the knife handle while pulling
                     const E = P.ykE, w = ykW(), o = i ? 12 : 0;
                     const gx = (E.x + E.fk.dx - P.x) / S + E.fk.F * .267 * o, gy = fkY(E) / S + .964 * o;
@@ -4130,11 +4329,59 @@
             if (h.z >= 0) { const g = hrsGait(sp); h.ph = (h.ph + sp * dt / ((2 * g.A / g.st) * S)) % 1 }
 
             // ---- rider sync ----
+
             if (st === 1) {
-                P.mountT += dt; const k = Math.min(1, P.mountT / .5);
-                P.mk = sm(k); P.x = lerp(P.mx0, h.x, P.mk); P.vx = 0; P.face = h.face;
-                if (k >= 1) { P.mount = 2; P.mk = 1; banner.t = .8; banner.text = 'MOUNTED'; shake = Math.max(shake, 4); burst(h.x, -3, 8, 200, -h.face) }
-            } else if (st === 2) {
+
+                P.mountT += dt;
+
+                // Total mounting time
+                const t = Math.min(1, P.mountT / 0.95);
+
+                // Smooth progress
+                const k = sm(t);
+
+                P.vx = 0;
+                P.face = h.face;
+
+                // Move toward the saddle
+                P.x = lerp(
+                    P.mx0,
+                    h.x - h.face * 28,
+                    k
+                );
+
+                // Mount pose amount
+                P.mk = k;
+
+                // Finish mounting
+                if (t >= 1) {
+
+                    P.mount = 2;
+                    P.mountT = 0;
+                    P.mk = 1;
+
+                    P.x = h.x;
+                    P.vx = h.vx;
+                    P.face = h.face;
+
+                    banner.t = .8;
+                    banner.text = 'MOUNTED';
+
+                    shake = Math.max(shake, 3);
+
+                    burst(
+                        h.x,
+                        -3,
+                        8,
+                        200,
+                        -h.face
+                    );
+                }
+
+            }
+
+
+            else if (st === 2) {
                 P.x = h.x;
                 P.vx = h.vx;
                 P.face = h.face;
