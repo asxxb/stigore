@@ -2846,6 +2846,109 @@
             ctx.restore();
         }
 
+        // ================= WOODEN HITCHING POST NEXT TO BARN =================
+        function drawHitchingPost(gy, hx) {
+            ctx.save();
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+
+            // Ground shadow
+            ctx.globalAlpha = 0.22;
+            ctx.strokeStyle = '#111';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(hx - 28, gy + 3);
+            ctx.lineTo(hx + 28, gy + 3);
+            ctx.stroke();
+
+            // Two rustic vertical posts + horizontal rail
+            const posts = [hx - 18, hx + 18];
+            const topY = gy - 68;
+            const railY = gy - 54;
+
+            ctx.fillStyle = PAPER;
+            ctx.strokeStyle = '#111';
+
+            // Vertical posts
+            for (const px of posts) {
+                // Post shadow / wash
+                ctx.globalAlpha = 0.55;
+                ctx.fillStyle = 'rgba(215, 185, 120, 0.6)';
+                ctx.fillRect(px - 4, topY, 8, gy - topY);
+
+                // Post outline
+                ctx.globalAlpha = 1;
+                ctx.lineWidth = 2.4;
+                ctx.beginPath();
+                ctx.rect(px - 4, topY, 8, gy - topY);
+                ctx.stroke();
+
+                // Post beveled cap
+                ctx.beginPath();
+                ctx.moveTo(px - 5, topY);
+                ctx.lineTo(px, topY - 4);
+                ctx.lineTo(px + 5, topY);
+                ctx.stroke();
+
+                // Wood grain lines
+                ctx.globalAlpha = 0.35;
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(px - 1, topY + 4);
+                ctx.lineTo(px - 1, gy - 4);
+                ctx.moveTo(px + 2, topY + 8);
+                ctx.lineTo(px + 2, gy - 2);
+                ctx.stroke();
+            }
+
+            // Horizontal cross rail
+            ctx.globalAlpha = 0.65;
+            ctx.fillStyle = 'rgba(225, 195, 130, 0.7)';
+            ctx.fillRect(hx - 26, railY - 4, 52, 8);
+
+            ctx.globalAlpha = 1;
+            ctx.lineWidth = 2.4;
+            ctx.beginPath();
+            ctx.rect(hx - 26, railY - 4, 52, 8);
+            ctx.stroke();
+
+            // Iron bolts on posts
+            ctx.fillStyle = '#111';
+            for (const px of posts) {
+                ctx.beginPath();
+                ctx.arc(px, railY, 2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Knot and wrapped loops on the rail
+            const knotX = hx + 12;
+            const knotY = railY;
+            ctx.lineWidth = 2.2;
+            ctx.strokeStyle = '#111';
+            for (let i = -3; i <= 3; i += 3) {
+                ctx.beginPath();
+                ctx.ellipse(knotX + i, knotY, 3, 6, 0.15, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+
+            // Dangling rope tail
+            ctx.beginPath();
+            ctx.moveTo(knotX, knotY + 5);
+            ctx.quadraticCurveTo(knotX - 3, knotY + 16, knotX - 1, knotY + 24);
+            ctx.stroke();
+
+            // Frayed tail end
+            ctx.lineWidth = 1.1;
+            ctx.beginPath();
+            ctx.moveTo(knotX - 1, knotY + 24);
+            ctx.lineTo(knotX - 3, knotY + 28);
+            ctx.moveTo(knotX - 1, knotY + 24);
+            ctx.lineTo(knotX + 2, knotY + 28);
+            ctx.stroke();
+
+            ctx.restore();
+        }
+
         function drawWorld(gy) {
             const cam = P.x;
             ctx.save(); ink(2); ctx.globalAlpha = .35;
@@ -2895,6 +2998,14 @@
                 // only draw when vaguely on screen (with generous margin for the barn width)
                 if (barnSX > -900 && barnSX < W + 900) {
                     drawBarnBG(gy, barnSX, barnScale);
+                }
+            }
+
+            // ================= WOODEN HITCHING POST NEXT TO BARN =================
+            {
+                const hitchSX = W / 2 + 1620 - cam;
+                if (hitchSX > -150 && hitchSX < W + 150) {
+                    drawHitchingPost(gy, hitchSX);
                 }
             }
 
@@ -4378,8 +4489,8 @@
         }
 
         // ================= HORSE (mount, ride, jump, trample) =================
-        const HR_MOUNT_R = 170, HR_SEAT = -220, HR_WALK = 215, HR_RUN = 790, HR_JUMP = 640, HR_REAR_T = 1.0;
-        const HRS = { x: 480, vx: 0, z: 0, vz: 0, face: -1, ph: 0, amp: 0, rg: 0, home: 480, goal: 480, wait: 2, gz: 0, gT: 3, gk: 0, rear: 0, muz: null };
+        const HR_MOUNT_R = 170, HR_SEAT = -240, HR_WALK = 215, HR_RUN = 790, HR_JUMP = 640, HR_REAR_T = 1.0;
+        const HRS = { x: 1840, vx: 0, z: 0, vz: 0, face: -1, ph: 0, amp: 0, rg: 0, home: 1840, goal: 1840, wait: 2, gz: 0, gT: 3, gk: 0, rear: 0, muz: [123, -158], tied: true };
         P.mount = 0; P.mountT = 0; P.mx0 = 0; P.mk = 0;   // mount: 0 off, 1 climbing on, 2 riding, 3 climbing off
         const clamp01 = v => Math.max(0, Math.min(1, v));
 
@@ -4395,7 +4506,7 @@
         } // stride half-length, stance fraction
         function hrsBob() { return Math.sin(HRS.ph * 4 * Math.PI) * 2.6 * HRS.amp * (.3 + HRS.rg) }
         function hrsRear() { return HRS.rear > 0 ? Math.sin(Math.PI * (1 - HRS.rear / HR_REAR_T)) : 0 }
-        function horseSpook() { if (P.mount || HRS.rear > 0) return; if (Math.abs(HRS.x - P.x) < 800) HRS.rear = HR_REAR_T }
+        function horseSpook() { if (P.mount || HRS.rear > 0 || HRS.tied) return; if (Math.abs(HRS.x - P.x) < 800) HRS.rear = HR_REAR_T }
 
         function pressHorse() {
             if (P.mount === 2) {
@@ -4409,6 +4520,7 @@
             if (Math.abs(HRS.x - P.x) > HR_MOUNT_R * S) { banner.t = .8; banner.text = 'WALK TO THE HORSE'; return }
             if (P.skid) endSkid();
             HRS.rear = 0; HRS.wait = 2;
+            HRS.tied = false;   // Untie the lead rope when mounting
             P.face = HRS.face; P.mount = 1; P.mountT = 0; P.mx0 = P.x; P.vx = 0;
             P.idle = 0; P.fid = 0; P.abuf = 0; P.clast = 0; P.cgr = 0; P.grabbed = null;
         }
@@ -4430,7 +4542,12 @@
                 if (braking && grounded && Math.abs(h.vx) > 200 && Math.random() < dt * 40)
                     flecks.push({ x: h.x + Math.sign(h.vx) * 30 * S, y: -2, vx: -Math.sign(h.vx) * (40 + Math.random() * 80), vy: -(40 + Math.random() * 90), r: 1.2 + Math.random() * 1.8, t: 0, life: .35 });
             } else if (st === 0) {                                            // ---- free horse: wanders, grazes, rears
-                if (h.rear > 0) {
+                if (h.tied) {
+                    h.vx = 0;
+                    h.goal = h.home;
+                    h.face = -1;
+                    h.gz = 0;
+                } else if (h.rear > 0) {
                     h.rear -= dt; h.vx *= Math.max(0, 1 - dt * 8);
                     if (h.rear <= 0) { h.rear = 0; if (Math.abs(h.x - P.x) < W) { shake = Math.max(shake, 4); burst(h.x + h.face * 45 * S, -3, 10, 240, h.face) } }
                 } else {
@@ -4568,8 +4685,8 @@
 
             const air = h.z < 0 ? clamp01(-h.z / (40 * S)) : 0;
 
-            const HORSE_W = 1.30;
-            const HORSE_H = 1.40;
+            const HORSE_W = 1.55;
+            const HORSE_H = 1.60;
 
             ctx.save();
             ctx.translate(sx, gy + 4 + h.z);
@@ -5292,8 +5409,53 @@
 
             hoof(near);
 
-
             ctx.restore();
+
+            // ============================================================
+            // TIED LEAD ROPE (connecting horse muzzle to the hitching post)
+            // ============================================================
+            if (h.tied) {
+                const postSX = W / 2 + 1620 - P.x + 12; // knot position on hitch rail
+                const postSY = gy - 54;
+                const muzSX = sx + F * (h.muz ? h.muz[0] : 123) * S * HORSE_W;
+                const muzSY = gy + 4 + h.z + (h.muz ? h.muz[1] : -158) * S * HORSE_H;
+
+                ctx.save();
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+
+                const midX = (postSX + muzSX) * 0.5;
+                const midY = (postSY + muzSY) * 0.5 + 18;
+
+                // Ground shadow of the hanging rope
+                ctx.globalAlpha = 0.15;
+                ctx.strokeStyle = '#111';
+                ctx.lineWidth = 3.2;
+                ctx.beginPath();
+                ctx.moveTo(postSX, gy + 3);
+                ctx.quadraticCurveTo(midX, gy + 4, muzSX, gy + 3);
+                ctx.stroke();
+
+                // Main lead rope (ink)
+                ctx.globalAlpha = 0.95;
+                ctx.strokeStyle = '#111';
+                ctx.lineWidth = 2.4;
+                ctx.beginPath();
+                ctx.moveTo(postSX, postSY);
+                ctx.quadraticCurveTo(midX, midY, muzSX, muzSY);
+                ctx.stroke();
+
+                // Warm hemp strand highlight
+                ctx.globalAlpha = 0.7;
+                ctx.strokeStyle = 'rgba(215, 185, 120, 0.9)';
+                ctx.lineWidth = 1.2;
+                ctx.beginPath();
+                ctx.moveTo(postSX, postSY);
+                ctx.quadraticCurveTo(midX, midY, muzSX, muzSY);
+                ctx.stroke();
+
+                ctx.restore();
+            }
 
 
             // ============================================================
