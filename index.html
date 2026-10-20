@@ -4816,27 +4816,47 @@
             // LEG DRAWING
             // ============================================================
 
+
+
+            // ============================================================
+            // LEG DRAWING (tapered, with knee/hock and fetlock joints)
+            // ============================================================
+
+            // tapered limb segment with round ends
+            const limb = (x0, y0, x1, y1, w0, w1) => {
+                const dx = x1 - x0, dy = y1 - y0, dl = Math.hypot(dx, dy) || 1;
+                const nx = -dy / dl, ny = dx / dl;
+                ctx.beginPath();
+                ctx.moveTo(x0 + nx * w0 / 2, y0 + ny * w0 / 2);
+                ctx.lineTo(x1 + nx * w1 / 2, y1 + ny * w1 / 2);
+                ctx.lineTo(x1 - nx * w1 / 2, y1 - ny * w1 / 2);
+                ctx.lineTo(x0 - nx * w0 / 2, y0 - ny * w0 / 2);
+                ctx.closePath();
+                ctx.fill();
+                ctx.beginPath(); ctx.arc(x0, y0, w0 / 2, 0, 7); ctx.fill();
+                ctx.beginPath(); ctx.arc(x1, y1, w1 / 2, 0, 7); ctx.fill();
+            };
+
             const legPass = (list, col, add) => {
 
-                ctx.strokeStyle = col;
+                ctx.fillStyle = col;
 
                 for (const q of list) {
 
                     const [kx, ky, px, py] = q.k;
+                    const front = q.L.front;
 
-                    // Upper leg
-                    ctx.lineWidth = 17 + add;
-                    ctx.beginPath();
-                    ctx.moveTo(q.L.ax, AT);
-                    ctx.lineTo(kx, ky);
-                    ctx.stroke();
+                    // forearm / thigh: broad at the top, narrowing to the knee or hock
+                    limb(q.L.ax, AT, kx, ky, (front ? 16 : 22) + add, 9 + add);
 
-                    // Lower leg
-                    ctx.lineWidth = 10 + add;
-                    ctx.beginPath();
-                    ctx.moveTo(kx, ky);
-                    ctx.lineTo(px, py);
-                    ctx.stroke();
+                    // cannon bone: thin and straight
+                    limb(kx, ky, px, py, 7 + add, 6 + add);
+
+                    // knee / hock joint
+                    ctx.beginPath(); ctx.arc(kx, ky, (front ? 5.5 : 6.5) + add / 2, 0, 7); ctx.fill();
+
+                    // fetlock joint
+                    ctx.beginPath(); ctx.arc(px, py, 5 + add / 2, 0, 7); ctx.fill();
                 }
             };
 
@@ -4853,39 +4873,28 @@
 
                     const [kx, ky, px, py] = q.k;
 
-                    const dx = px - kx;
-                    const dy = py - ky;
-
+                    const dx = px - kx, dy = py - ky;
                     const dl = Math.hypot(dx, dy) || 1;
+                    const ux = dx / dl, uy = dy / dl;
+                    const nx = -uy, ny = ux;
 
-                    const ux = dx / dl;
-                    const uy = dy / dl;
-
-                    const nx = -uy;
-                    const ny = ux;
+                    // pastern: slim, slopes slightly forward
+                    const tx = px + ux * 7 + 3, ty = py + uy * 7;
 
                     ctx.beginPath();
+                    ctx.moveTo(px + nx * 3.5, py + ny * 3.5);
+                    ctx.lineTo(tx + nx * 3, ty + ny * 3);
+                    ctx.lineTo(tx - nx * 3, ty - ny * 3);
+                    ctx.lineTo(px - nx * 3.5, py - ny * 3.5);
+                    ctx.closePath();
+                    ctx.fill();
 
-                    ctx.moveTo(
-                        px + nx * 6 - ux * 3,
-                        py + ny * 6 - uy * 3
-                    );
-
-                    ctx.lineTo(
-                        px - nx * 6 - ux * 3,
-                        py - ny * 6 - uy * 3
-                    );
-
-                    ctx.lineTo(
-                        px - nx * 7 + ux * 11 + 6,
-                        py - ny * 7 + uy * 11
-                    );
-
-                    ctx.lineTo(
-                        px + nx * 7 + ux * 11 + 1,
-                        py + ny * 7 + uy * 11
-                    );
-
+                    // hoof: small wedge, flat on the ground
+                    ctx.beginPath();
+                    ctx.moveTo(tx - nx * 5, ty - ny * 5);
+                    ctx.lineTo(tx + nx * 5, ty + ny * 5);
+                    ctx.lineTo(tx + nx * 7 + ux * 5 + 7, ty + ny * 7 + uy * 5);
+                    ctx.lineTo(tx - nx * 7 + ux * 5 + 7, ty - ny * 7 + uy * 5);
                     ctx.closePath();
                     ctx.fill();
                 }
@@ -4936,100 +4945,70 @@
             }
 
 
+
+
+
             // ============================================================
-            // NECK + HEAD
+            // NECK + HEAD (shaped after the reference drawing)
             // ============================================================
 
-            const nod =
-                Math.sin(h.ph * 2 * Math.PI) *
-                5 *
-                kk *
-                (.2 + rg);
+            const nod = Math.sin(h.ph * 2 * Math.PI) * 5 * kk * (.2 + rg);
 
-            const n0 = [
-                46,
-                -124 + by
-            ];
-
+            const n0 = [46, -124 + by];
             const n1 = [
                 lerp(88 + 4 * rg, 100, gk),
-                lerp(
-                    -188 + by + nod - 4 * rg,
-                    -52,
-                    gk
-                )
+                lerp(-188 + by + nod - 4 * rg, -52, gk)
             ];
+            const nc = [lerp(76, 90, gk), lerp(-152 + by, -100, gk)];
 
-            const nc = [
-                lerp(76, 90, gk),
-                lerp(-152 + by, -100, gk)
+            // head axis (poll -> muzzle) and its perpendicular (toward jaw/throat)
+            const hax = lerp(lerp(32, 38, rg), 7, gk);
+            const hay = lerp(lerp(28, 18, rg), 34, gk);
+            const hal = Math.hypot(hax, hay) || 1;
+            const hux = hax / hal, huy = hay / hal;
+            const hvx = -huy, hvy = hux;
+            const hp = (u, v) => [n1[0] + hux * u + hvx * v, n1[1] + huy * u + hvy * v];
+
+            const m = hp(66, 5);
+            h.muz = [m[0] + 3, m[1] + 2];
+
+            // smooth closed curve through points
+            const smoothClosed = pts => {
+                const n = pts.length;
+                const mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+                const s = mid(pts[n - 1], pts[0]);
+                ctx.beginPath();
+                ctx.moveTo(s[0], s[1]);
+                for (let i = 0; i < n; i++) {
+                    const p = pts[i], q = mid(p, pts[(i + 1) % n]);
+                    ctx.quadraticCurveTo(p[0], p[1], q[0], q[1]);
+                }
+                ctx.closePath();
+            };
+
+            // head outline: forehead, nose bridge, round muzzle, chin, jaw, cheek, throat
+            const headPts = [
+                hp(-2, -12), hp(14, -14), hp(34, -12), hp(52, -9), hp(63, -6),
+                hp(69, 0), hp(68, 8), hp(62, 13), hp(52, 14), hp(42, 13),
+                hp(34, 15), hp(24, 22), hp(12, 25), hp(2, 18), hp(-4, 6)
             ];
-
-            const m = [
-                n1[0] +
-                lerp(
-                    lerp(32, 38, rg),
-                    7,
-                    gk
-                ),
-
-                n1[1] +
-                lerp(
-                    lerp(28, 18, rg),
-                    34,
-                    gk
-                )
-            ];
-
-            h.muz = [
-                m[0] + 3,
-                m[1] + 2
-            ];
-
 
             const neckP = () => {
-
                 ctx.beginPath();
-
-                ctx.moveTo(
-                    n0[0],
-                    n0[1]
-                );
-
-                ctx.quadraticCurveTo(
-                    nc[0],
-                    nc[1],
-                    n1[0],
-                    n1[1]
-                );
+                ctx.moveTo(n0[0], n0[1]);
+                ctx.quadraticCurveTo(nc[0], nc[1], n1[0], n1[1]);
             };
 
-
-            const headP = () => {
-
-                ctx.beginPath();
-
-                ctx.moveTo(
-                    n1[0],
-                    n1[1]
-                );
-
-                ctx.lineTo(
-                    m[0],
-                    m[1]
-                );
-            };
-
-
-            // Black outline
+            // ---- outline pass (drawn under the body so everything merges) ----
             ctx.strokeStyle = '#111';
-
-            ctx.lineWidth = 36;
+            ctx.fillStyle = '#111';
+            ctx.lineWidth = 34;
             neckP();
             ctx.stroke();
 
-            ctx.lineWidth = 28;
-            headP();
+            smoothClosed(headPts);
+            ctx.lineWidth = 5;
+            ctx.fill();
             ctx.stroke();
 
 
@@ -5038,263 +5017,360 @@
             // ============================================================
 
             ctx.beginPath();
-
-            ctx.moveTo(
-                42,
-                -148 + by
-            );
-
-            // Back
-            ctx.quadraticCurveTo(
-                -4,
-                -154 + by,
-                -48,
-                -150 + by
-            );
-
-            // Rump
-            ctx.bezierCurveTo(
-                -70,
-                -148 + by,
-                -74,
-                -108 + by,
-                -58,
-                -94 + by
-            );
-
-            // Belly
-            ctx.quadraticCurveTo(
-                -6,
-                -86 + by,
-                38,
-                -92 + by
-            );
-
-            // Chest
-            ctx.bezierCurveTo(
-                62,
-                -96 + by,
-                68,
-                -126 + by,
-                52,
-                -148 + by
-            );
-
+            ctx.moveTo(42, -148 + by);
+            ctx.quadraticCurveTo(-4, -154 + by, -48, -150 + by);
+            ctx.bezierCurveTo(-70, -148 + by, -74, -108 + by, -58, -94 + by);
+            ctx.quadraticCurveTo(-6, -86 + by, 38, -92 + by);
+            ctx.bezierCurveTo(62, -96 + by, 68, -126 + by, 52, -148 + by);
             ctx.closePath();
 
             ctx.fillStyle = PAPER;
             ctx.fill();
-
             ctx.strokeStyle = '#111';
             ctx.lineWidth = 5;
             ctx.stroke();
 
 
             // ============================================================
-            // PAPER FILL NECK + HEAD
+            // PAPER FILL: NECK + HEAD
             // ============================================================
 
             ctx.strokeStyle = PAPER;
-
-            ctx.lineWidth = 27;
+            ctx.lineWidth = 25;
             neckP();
             ctx.stroke();
 
-            ctx.lineWidth = 19;
-            headP();
-            ctx.stroke();
+            smoothClosed(headPts);
+            ctx.fillStyle = PAPER;
+            ctx.fill();
 
 
             // ============================================================
-            // MANE
+            // EARS (two, far one slightly behind)
+            // ============================================================
+
+            const flick = Math.pow(Math.max(0, Math.sin(now * 1.3)), 12) * 4;
+
+            const ear = (u0, back, tipLen) => {
+                const b1 = hp(u0, -11), b2 = hp(u0 + 13, -12);
+                const tip = hp(u0 + 4 - back + flick * .5, -11 - tipLen);
+                ctx.beginPath();
+                ctx.moveTo(b1[0], b1[1]);
+                ctx.quadraticCurveTo(
+                    (b1[0] + tip[0]) / 2 - hvx * 3, (b1[1] + tip[1]) / 2 - hvy * 3,
+                    tip[0], tip[1]
+                );
+                ctx.quadraticCurveTo(
+                    (b2[0] + tip[0]) / 2 + hvx * 2, (b2[1] + tip[1]) / 2 + hvy * 2,
+                    b2[0], b2[1]
+                );
+                ctx.closePath();
+                ctx.fillStyle = PAPER;
+                ctx.fill();
+                ctx.strokeStyle = '#111';
+                ctx.lineWidth = 3.2;
+                ctx.stroke();
+            };
+            ear(-3, 4, 24);   // far ear
+            ear(5, 1, 27);    // near ear
+
+
+            // ============================================================
+            // HEAD DETAILS: cheek, jaw line, mouth, nostril, eye
             // ============================================================
 
             ctx.strokeStyle = '#111';
-            ctx.lineWidth = 4;
+            ctx.lineCap = 'round';
 
-            for (let i = 0; i <= 7; i++) {
+            // cheek / jaw curve
+            ctx.lineWidth = 2.2;
+            let c0 = hp(32, 3), c1 = hp(18, 5), c2 = hp(10, 17);
+            ctx.beginPath();
+            ctx.moveTo(c0[0], c0[1]);
+            ctx.quadraticCurveTo(c1[0], c1[1], c2[0], c2[1]);
+            ctx.stroke();
 
-                const t = i / 7;
+            // mouth line
+            ctx.lineWidth = 2;
+            let ml0 = hp(47, 9), ml1 = hp(58, 10);
+            ctx.beginPath();
+            ctx.moveTo(ml0[0], ml0[1]);
+            ctx.lineTo(ml1[0], ml1[1]);
+            ctx.stroke();
 
-                const a = (1 - t) * (1 - t);
-                const b = 2 * (1 - t) * t;
-                const c = t * t;
+            // nostril (small curl)
+            const nos = hp(63, 0);
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.ellipse(nos[0], nos[1], 3, 2.2, Math.atan2(huy, hux), 0, Math.PI * 1.7);
+            ctx.stroke();
 
-                const bx =
-                    a * n0[0] +
-                    b * nc[0] +
-                    c * n1[0] -
-                    11;
+            // brow line above the eye
+            const bw0 = hp(17, -8), bw1 = hp(30, -9);
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(bw0[0], bw0[1]);
+            ctx.lineTo(bw1[0], bw1[1]);
+            ctx.stroke();
 
-                const byy =
-                    a * n0[1] +
-                    b * nc[1] +
-                    c * n1[1] -
-                    9;
-
-                const w =
-                    Math.sin(
-                        now * 6 + i
-                    ) *
-                    2 *
-                    (.3 + rg);
-
-                ctx.beginPath();
-
-                ctx.moveTo(
-                    bx + 5,
-                    byy + 2
-                );
-
-                ctx.lineTo(
-                    bx - 14 - 8 * rg + w,
-                    byy + 12
-                );
-
-                ctx.stroke();
-            }
+            // eye
+            const eye = hp(24, -3);
+            ctx.fillStyle = '#111';
+            ctx.beginPath();
+            ctx.ellipse(eye[0], eye[1], 4, 3, Math.atan2(huy, hux), 0, 7);
+            ctx.fill();
+            ctx.fillStyle = PAPER;
+            ctx.beginPath();
+            ctx.arc(eye[0] + 1.2, eye[1] - 1.2, 1, 0, 7);
+            ctx.fill();
 
 
             // ============================================================
             // BRIDLE
             // ============================================================
 
+            ctx.strokeStyle = '#111';
+            ctx.lineWidth = 2.8;
+
+            let a, b;
+
+            // noseband
+            a = hp(50, -9); b = hp(50, 12);
+            ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+
+            // cheekpiece
+            a = hp(10, -9); b = hp(50, 2);
+            ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+
+            // throatlatch
+            a = hp(8, -11); b = hp(12, 20);
+            ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+
+
+
+            // ============================================================
+            // MANE: even band along the crest, tips hang outward and down
+            // ============================================================
+
+
+
+
+            // ============================================================
+            // MANE: locks that follow the neck curve (sweep back + hang down)
+            // ============================================================
+
             {
-                const dx = m[0] - n1[0];
-                const dy = m[1] - n1[1];
+                const nk = t => {
+                    const a1 = (1 - t) * (1 - t), b1 = 2 * (1 - t) * t, c1 = t * t;
+                    let tx = 2 * (1 - t) * (nc[0] - n0[0]) + 2 * t * (n1[0] - nc[0]);
+                    let ty = 2 * (1 - t) * (nc[1] - n0[1]) + 2 * t * (n1[1] - nc[1]);
+                    const tl = Math.hypot(tx, ty) || 1;
+                    tx /= tl; ty /= tl;
+                    return {
+                        x: a1 * n0[0] + b1 * nc[0] + c1 * n1[0],
+                        y: a1 * n0[1] + b1 * nc[1] + c1 * n1[1],
+                        tx, ty, nx: ty, ny: -tx
+                    };
+                };
 
-                const dl =
-                    Math.hypot(dx, dy) || 1;
+                const T0 = 0.10, T1 = 1.0;     // withers -> poll (keep T1 at 1.0 or less)
+                const EDGE = 16;               // neck half-width
+                const TOP = 4;                 // crest line sits slightly outside the neck
+                const NL = 11;                 // number of locks
+                const SWEEP = 0.16;            // how far back along the neck each tip reaches (in t units)
+                const LAY = 3;                 // how far the tips sit off the neck edge (small = lies on the neck)
+                const DROP = 10;               // gravity pull on the tips
+                const sway = Math.sin(now * (2 + 6 * rg)) * (1 + 4 * rg);
 
-                const ux = dx / dl;
-                const uy = dy / dl;
+                const edge = (t, off) => {
+                    const q = nk(Math.max(0, Math.min(1, t)));
+                    return [q.x + q.nx * off, q.y + q.ny * off];
+                };
 
-                const nx = -uy;
-                const ny = ux;
+                // each lock: root on the crest, tip further back ALONG the neck curve
+                const locks = [];
+                for (let i = 0; i < NL; i++) {
+                    const t = T0 + (i / (NL - 1)) * (T1 - T0);
+                    const sw = SWEEP * (0.8 + 0.4 * Math.sin(i * 1.9 + 1)) * (0.7 + 0.3 * t);
+                    const tipT = t - sw + sway * 0.002 * (0.5 + i / NL);
+                    const tip = edge(tipT, EDGE + LAY + 3 * Math.sin(i * 2.3));
+                    tip[1] += (DROP + 6 * gk) * (0.6 + 0.4 * t);
+                    locks.push({ t, tip });
+                }
 
-                const p = (t, o) => [
+                const poll = hp(-3, -15);      // top of the head, behind the ears
 
-                    n1[0] +
-                    dx * t +
-                    nx * o,
-
-                    n1[1] +
-                    dy * t +
-                    ny * o
-                ];
-
+                ctx.fillStyle = '#111';
                 ctx.strokeStyle = '#111';
-                ctx.lineWidth = 3;
-
-                // Noseband
-                let a = p(.72, -10);
-                let b = p(.72, 10);
-
+                ctx.lineWidth = 2;
+                ctx.lineJoin = 'round';
                 ctx.beginPath();
-                ctx.moveTo(a[0], a[1]);
-                ctx.lineTo(b[0], b[1]);
+
+                // top edge: withers -> poll, following the crest
+                for (let i = 0; i <= 16; i++) {
+                    const p = edge(T0 + (i / 16) * (T1 - T0), EDGE + TOP);
+                    i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]);
+                }
+                ctx.lineTo(poll[0], poll[1]);
+
+                // bottom edge: poll -> tips, each lock a curved point
+                ctx.lineTo(locks[NL - 1].tip[0], locks[NL - 1].tip[1]);
+                for (let i = NL - 1; i > 0; i--) {
+                    const tm = (locks[i].t + locks[i - 1].t) / 2;
+                    const v = edge(tm - 0.02, EDGE - 1);             // valley sits on the neck
+                    const c = edge(tm - SWEEP * 0.5, EDGE + 2);      // control point bends the lock back
+                    ctx.quadraticCurveTo(c[0], c[1], v[0], v[1]);
+                    ctx.quadraticCurveTo(
+                        (v[0] + locks[i - 1].tip[0]) / 2,
+                        (v[1] + locks[i - 1].tip[1]) / 2 - 1,
+                        locks[i - 1].tip[0], locks[i - 1].tip[1]
+                    );
+                }
+                ctx.closePath();
+                ctx.fill();
                 ctx.stroke();
 
+                // light hair strands along each lock
+                ctx.strokeStyle = PAPER;
+                ctx.lineCap = 'round';
+                ctx.lineWidth = 1.1;
+                ctx.globalAlpha = .5;
+                for (let i = 0; i < NL; i++) {
+                    const root = edge(locks[i].t, EDGE + TOP - 1);
+                    const tip = locks[i].tip;
+                    const mid = edge(locks[i].t - SWEEP * 0.5, EDGE + LAY + 1);
+                    ctx.beginPath();
+                    ctx.moveTo(root[0], root[1]);
+                    ctx.quadraticCurveTo(mid[0], mid[1],
+                        tip[0] + (root[0] - tip[0]) * .15,
+                        tip[1] + (root[1] - tip[1]) * .15);
+                    ctx.stroke();
+                }
+                ctx.globalAlpha = 1;
 
-                // Cheek strap
-                a = p(.05, -7);
-                b = p(.72, 3);
-
-                ctx.beginPath();
-                ctx.moveTo(a[0], a[1]);
-                ctx.lineTo(b[0], b[1]);
-                ctx.stroke();
-
-
-                // Browband
-                a = p(.05, -11);
-                b = p(.05, 11);
-
-                ctx.beginPath();
-                ctx.moveTo(a[0], a[1]);
-                ctx.lineTo(b[0], b[1]);
-                ctx.stroke();
+                // forelock over the forehead
+                ctx.strokeStyle = '#111';
+                ctx.lineCap = 'round';
+                for (let j = 0; j < 3; j++) {
+                    const s = hp(3 + j * 3, -13);
+                    const e = hp(24 + j * 4 + Math.sin(now * 5 + j) * 1.5, -7 + j * 1.5);
+                    const cc = hp(12 + j * 3, -20 + j * 2);
+                    ctx.lineWidth = 4 - j * .8;
+                    ctx.beginPath();
+                    ctx.moveTo(s[0], s[1]);
+                    ctx.quadraticCurveTo(cc[0], cc[1], e[0], e[1]);
+                    ctx.stroke();
+                }
             }
 
-
             // ============================================================
-            // EAR + EYE + NOSTRIL
+            // MANE: full mane starting at the poll (behind the ears)
             // ============================================================
 
-            const flick =
-                Math.pow(
-                    Math.max(
-                        0,
-                        Math.sin(now * 1.3)
-                    ),
-                    12
-                ) * 5;
+            {
+                const nk = t => {
+                    const a1 = (1 - t) * (1 - t), b1 = 2 * (1 - t) * t, c1 = t * t;
+                    let tx = 2 * (1 - t) * (nc[0] - n0[0]) + 2 * t * (n1[0] - nc[0]);
+                    let ty = 2 * (1 - t) * (nc[1] - n0[1]) + 2 * t * (n1[1] - nc[1]);
+                    const tl = Math.hypot(tx, ty) || 1;
+                    tx /= tl; ty /= tl;
+                    return {
+                        x: a1 * n0[0] + b1 * nc[0] + c1 * n1[0],
+                        y: a1 * n0[1] + b1 * nc[1] + c1 * n1[1],
+                        tx, ty, nx: ty, ny: -tx
+                    };
+                };
 
-            ctx.fillStyle = PAPER;
-            ctx.strokeStyle = '#111';
-            ctx.lineWidth = 3.5;
+                const T0 = 0.04, T1 = 1.0;     // 1.0 = top of the neck, right at the head
+                const EDGE = 16;               // neck half-width
+                const TOP = 4;                 // crest line sits slightly outside the neck
+                const NL = 11;                 // number of locks (more = fuller)
+                const OUT = 18;                // how far locks stick out (bigger = thicker mane)
+                const DROP = 12;               // how far locks hang down
+                const BACK = 10;               // how far locks sweep toward the body
+                const sway = Math.sin(now * (2 + 6 * rg)) * (1 + 4 * rg);
 
+                const edge = (t, off, back) => {
+                    const q = nk(t);
+                    return [
+                        q.x + q.nx * off - q.tx * back,
+                        q.y + q.ny * off - q.ty * back
+                    ];
+                };
 
-            // Ear
-            ctx.beginPath();
+                // tips of the locks: thickest at the head, thinner toward the withers
+                const tips = [];
+                for (let i = 0; i < NL; i++) {
+                    const t = T0 + (i / (NL - 1)) * (T1 - T0);
+                    const fat = 0.55 + 0.45 * t;
+                    const out = (OUT + 8 * (0.5 + 0.5 * Math.sin(i * 2.1 + 1))) * fat;
+                    const bk = BACK + 4 * Math.sin(i * 1.3) + sway * (0.5 + i / NL);
+                    const p = edge(t, EDGE + out, bk);
+                    p[1] += (DROP + 6 * gk) * fat;
+                    tips.push({ t, p });
+                }
 
-            ctx.moveTo(
-                n1[0] - 9,
-                n1[1] - 8
-            );
+                // point on top of the head, between and behind the ears
+                const poll = hp(-3, -15);
 
-            ctx.lineTo(
-                n1[0] - 10 + flick,
-                n1[1] - 32
-            );
+                ctx.fillStyle = '#111';
+                ctx.strokeStyle = '#111';
+                ctx.lineWidth = 2;
+                ctx.lineJoin = 'round';
+                ctx.beginPath();
 
-            ctx.lineTo(
-                n1[0] + 3,
-                n1[1] - 11
-            );
+                // top edge: withers -> top of neck -> poll
+                for (let i = 0; i <= 14; i++) {
+                    const p = edge(T0 + (i / 14) * (T1 - T0), EDGE + TOP, 0);
+                    i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]);
+                }
+                ctx.lineTo(poll[0], poll[1]);
 
-            ctx.closePath();
+                // bottom edge: poll -> last tip -> ... -> first tip (curved sawtooth)
+                ctx.lineTo(tips[NL - 1].p[0], tips[NL - 1].p[1]);
+                for (let i = NL - 1; i > 0; i--) {
+                    const tm = (tips[i].t + tips[i - 1].t) / 2;
+                    const v = edge(tm, EDGE + 2, 0);
+                    ctx.quadraticCurveTo(v[0], v[1], tips[i - 1].p[0], tips[i - 1].p[1]);
+                }
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
 
-            ctx.fill();
-            ctx.stroke();
+                // light hair strands
+                ctx.strokeStyle = PAPER;
+                ctx.lineCap = 'round';
+                ctx.lineWidth = 1.1;
+                ctx.globalAlpha = .5;
+                for (let i = 0; i < NL; i++) {
+                    const root = edge(tips[i].t, EDGE + 3, 0);
+                    const tip = tips[i].p;
+                    ctx.beginPath();
+                    ctx.moveTo(root[0], root[1]);
+                    ctx.quadraticCurveTo(
+                        (root[0] + tip[0]) / 2,
+                        (root[1] + tip[1]) / 2 - 2,
+                        tip[0] + (root[0] - tip[0]) * .15,
+                        tip[1] + (root[1] - tip[1]) * .15
+                    );
+                    ctx.stroke();
+                }
+                ctx.globalAlpha = 1;
 
-
-            // Eye
-            const ex =
-                n1[0] +
-                (m[0] - n1[0]) * .32;
-
-            const ey =
-                n1[1] +
-                (m[1] - n1[1]) * .32 -
-                3;
-
-            ctx.fillStyle = '#111';
-
-            ctx.beginPath();
-            ctx.arc(
-                ex,
-                ey,
-                3,
-                0,
-                7
-            );
-            ctx.fill();
-
-
-            // Nostril
-            ctx.beginPath();
-
-            ctx.arc(
-                m[0] + 1,
-                m[1] - 2,
-                1.8,
-                0,
-                7
-            );
-
-            ctx.fill();
-
+                // forelock over the forehead
+                ctx.strokeStyle = '#111';
+                ctx.lineCap = 'round';
+                for (let j = 0; j < 3; j++) {
+                    const s = hp(3 + j * 3, -13);
+                    const e = hp(24 + j * 4 + Math.sin(now * 5 + j) * 1.5, -7 + j * 1.5);
+                    const cc = hp(12 + j * 3, -20 + j * 2);
+                    ctx.lineWidth = 4 - j * .8;
+                    ctx.beginPath();
+                    ctx.moveTo(s[0], s[1]);
+                    ctx.quadraticCurveTo(cc[0], cc[1], e[0], e[1]);
+                    ctx.stroke();
+                }
+            }
 
             // ============================================================
             // SADDLE
