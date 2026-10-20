@@ -4967,10 +4967,18 @@
             const hal = Math.hypot(hax, hay) || 1;
             const hux = hax / hal, huy = hay / hal;
             const hvx = -huy, hvy = hux;
-            const hp = (u, v) => [n1[0] + hux * u + hvx * v, n1[1] + huy * u + hvy * v];
+            // Head is intentionally smaller than the body.
+            // Keep the neck geometry unchanged.
+            const HEAD_SCALE = 0.82;
 
-            const m = hp(66, 5);
-            h.muz = [m[0] + 3, m[1] + 2];
+            const hp = (u, v) => [
+                n1[0] + hux * u * HEAD_SCALE + hvx * v * HEAD_SCALE,
+                n1[1] + huy * u * HEAD_SCALE + hvy * v * HEAD_SCALE
+            ];
+
+            // Exact rope attachment point: underside/front of muzzle
+            const m = hp(62, 13);
+            h.muz = [m[0], m[1]];
 
             // smooth closed curve through points
             const smoothClosed = pts => {
@@ -4986,12 +4994,49 @@
                 ctx.closePath();
             };
 
-            // head outline: forehead, nose bridge, round muzzle, chin, jaw, cheek, throat
+            // ============================================================
+            // HORSE HEAD
+            // Smaller, narrower and more natural profile
+            // ============================================================
+
             const headPts = [
-                hp(-2, -12), hp(14, -14), hp(34, -12), hp(52, -9), hp(63, -6),
-                hp(69, 0), hp(68, 8), hp(62, 13), hp(52, 14), hp(42, 13),
-                hp(34, 15), hp(24, 22), hp(12, 25), hp(2, 18), hp(-4, 6)
+
+                // poll / forehead
+                hp(-4, -10),
+                hp(7, -14),
+                hp(19, -13),
+                hp(30, -10),
+
+                // long smooth nasal bridge
+                hp(41, -7),
+                hp(51, -4),
+                hp(59, 0),
+
+                // nose bridge -> muzzle
+                hp(65, 5),
+                hp(67, 10),
+                hp(65, 15),
+
+                // rounded muzzle
+                hp(61, 18),
+                hp(55, 19),
+                hp(49, 18),
+
+                // mouth / lower muzzle
+                hp(43, 19),
+                hp(37, 22),
+
+                // lower jaw
+                hp(29, 27),
+                hp(20, 29),
+                hp(11, 27),
+                hp(3, 22),
+
+                // throat
+                hp(-2, 14),
+                hp(-5, 4)
             ];
+
 
             const neckP = () => {
                 ctx.beginPath();
@@ -5082,12 +5127,27 @@
             ctx.strokeStyle = '#111';
             ctx.lineCap = 'round';
 
-            // cheek / jaw curve
+            // cheek + jaw — long flowing horse profile
             ctx.lineWidth = 2.2;
-            let c0 = hp(32, 3), c1 = hp(18, 5), c2 = hp(10, 17);
+
+            const jaw0 = hp(38, 4);
+            const jaw1 = hp(30, 10);
+            const jaw2 = hp(20, 20);
+            const jaw3 = hp(8, 25);
+
             ctx.beginPath();
-            ctx.moveTo(c0[0], c0[1]);
-            ctx.quadraticCurveTo(c1[0], c1[1], c2[0], c2[1]);
+            ctx.moveTo(jaw0[0], jaw0[1]);
+
+            ctx.quadraticCurveTo(
+                jaw1[0], jaw1[1],
+                jaw2[0], jaw2[1]
+            );
+
+            ctx.quadraticCurveTo(
+                jaw2[0], jaw2[1],
+                jaw3[0], jaw3[1]
+            );
+
             ctx.stroke();
 
             // mouth line
@@ -5098,11 +5158,32 @@
             ctx.lineTo(ml1[0], ml1[1]);
             ctx.stroke();
 
-            // nostril (small curl)
-            const nos = hp(63, 0);
-            ctx.lineWidth = 2;
+            // ============================================================
+            // NOSTRIL
+            // ============================================================
+
+            const nos = hp(61, 7);
+
+            ctx.lineWidth = 1.8;
             ctx.beginPath();
-            ctx.ellipse(nos[0], nos[1], 3, 2.2, Math.atan2(huy, hux), 0, Math.PI * 1.7);
+
+            const nA = hp(59, 6);
+            const nB = hp(62, 5);
+            const nC = hp(63, 8);
+            const nD = hp(60, 10);
+
+            ctx.moveTo(nA[0], nA[1]);
+
+            ctx.quadraticCurveTo(
+                nB[0], nB[1],
+                nC[0], nC[1]
+            );
+
+            ctx.quadraticCurveTo(
+                nD[0], nD[1],
+                nA[0], nA[1]
+            );
+
             ctx.stroke();
 
             // brow line above the eye
@@ -5113,45 +5194,182 @@
             ctx.lineTo(bw1[0], bw1[1]);
             ctx.stroke();
 
-            // eye
-            const eye = hp(24, -3);
+            // ============================================================
+            // HORSE EYE
+            // ============================================================
+
+            const eye = hp(23, -4);
+
+            ctx.strokeStyle = '#111';
+            ctx.lineWidth = 2.2;
+
+            // almond-shaped upper/lower eyelid
+            ctx.beginPath();
+
+            const e1 = hp(18, -3);
+            const e2 = hp(23, -6);
+            const e3 = hp(29, -4);
+            const e4 = hp(23, 0);
+
+            ctx.moveTo(e1[0], e1[1]);
+
+            ctx.quadraticCurveTo(
+                e2[0], e2[1],
+                e3[0], e3[1]
+            );
+
+            ctx.quadraticCurveTo(
+                e4[0], e4[1],
+                e1[0], e1[1]
+            );
+
+            ctx.stroke();
+
+            // pupil
             ctx.fillStyle = '#111';
             ctx.beginPath();
-            ctx.ellipse(eye[0], eye[1], 4, 3, Math.atan2(huy, hux), 0, 7);
+            ctx.arc(
+                eye[0],
+                eye[1],
+                2.2,
+                0,
+                Math.PI * 2
+            );
             ctx.fill();
+
+            // tiny highlight
+            ctx.fillStyle = PAPER;
+            ctx.beginPath();
+            ctx.arc(
+                eye[0] + 0.8,
+                eye[1] - 0.8,
+                .65,
+                0,
+                Math.PI * 2
+            );
+            ctx.fill();
+
+
             ctx.fillStyle = PAPER;
             ctx.beginPath();
             ctx.arc(eye[0] + 1.2, eye[1] - 1.2, 1, 0, 7);
             ctx.fill();
 
-
             // ============================================================
             // BRIDLE
+            // Follows the actual shape of the smaller head
             // ============================================================
 
             ctx.strokeStyle = '#111';
-            ctx.lineWidth = 2.8;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
 
-            let a, b;
+            // ------------------------------------------------------------
+            // Brow / crown strap
+            // ------------------------------------------------------------
 
-            // noseband
-            a = hp(50, -9); b = hp(50, 12);
-            ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+            ctx.lineWidth = 2.2;
 
-            // cheekpiece
-            a = hp(10, -9); b = hp(50, 2);
-            ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+            let a = hp(7, -11);
+            let b = hp(39, -8);
 
-            // throatlatch
-            a = hp(8, -11); b = hp(12, 20);
-            ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(a[0], a[1]);
 
+            ctx.quadraticCurveTo(
+                hp(22, -13)[0],
+                hp(22, -13)[1],
+                b[0],
+                b[1]
+            );
 
+            ctx.stroke();
 
-            // ============================================================
-            // MANE: even band along the crest, tips hang outward and down
-            // ============================================================
+            // ------------------------------------------------------------
+            // Noseband — follows the muzzle
+            // ------------------------------------------------------------
 
+            ctx.lineWidth = 2.5;
+
+            const nb0 = hp(53, -5);
+            const nb1 = hp(59, 1);
+            const nb2 = hp(63, 8);
+            const nb3 = hp(61, 15);
+
+            ctx.beginPath();
+
+            ctx.moveTo(nb0[0], nb0[1]);
+
+            ctx.quadraticCurveTo(
+                nb1[0], nb1[1],
+                nb2[0], nb2[1]
+            );
+
+            ctx.quadraticCurveTo(
+                nb2[0], nb2[1],
+                nb3[0], nb3[1]
+            );
+
+            ctx.stroke();
+
+            // ------------------------------------------------------------
+            // Cheek piece
+            // ------------------------------------------------------------
+
+            ctx.lineWidth = 2.3;
+
+            a = hp(8, -9);
+            b = hp(54, 3);
+
+            ctx.beginPath();
+
+            ctx.moveTo(a[0], a[1]);
+
+            ctx.quadraticCurveTo(
+                hp(30, -5)[0],
+                hp(30, -5)[1],
+                b[0],
+                b[1]
+            );
+
+            ctx.stroke();
+
+            // ------------------------------------------------------------
+            // Throatlatch
+            // ------------------------------------------------------------
+
+            a = hp(8, -8);
+            b = hp(14, 21);
+
+            ctx.beginPath();
+
+            ctx.moveTo(a[0], a[1]);
+
+            ctx.quadraticCurveTo(
+                hp(10, 6)[0],
+                hp(10, 6)[1],
+                b[0],
+                b[1]
+            );
+
+            ctx.stroke();
+
+            // ------------------------------------------------------------
+            // Small bit/ring at mouth
+            // ------------------------------------------------------------
+
+            const bit = hp(51, 17);
+
+            ctx.lineWidth = 1.6;
+            ctx.beginPath();
+            ctx.arc(
+                bit[0],
+                bit[1],
+                2.4,
+                0,
+                Math.PI * 2
+            );
+            ctx.stroke();
 
 
 
@@ -5281,7 +5499,7 @@
                     };
                 };
 
-                const T0 = 0.04, T1 = 1.0;     // 1.0 = top of the neck, right at the head
+                const T0 = 0.04, T1 = 0.90;     // 1.0 = top of the neck, right at the head
                 const EDGE = 16;               // neck half-width
                 const TOP = 4;                 // crest line sits slightly outside the neck
                 const NL = 11;                 // number of locks (more = fuller)
@@ -5487,47 +5705,116 @@
 
             ctx.restore();
 
+
+
             // ============================================================
-            // TIED LEAD ROPE (connecting horse muzzle to the hitching post)
+            // TIED LEAD ROPE
+            // Properly attached to the lower muzzle / halter ring
             // ============================================================
+
             if (h.tied) {
-                const postSX = W / 2 + 1620 - P.x + 12; // knot position on hitch rail
-                const postSY = gy - 54;
-                const muzSX = sx + F * (h.muz ? h.muz[0] : 123) * S * HORSE_W;
-                const muzSY = gy + 4 + h.z + (h.muz ? h.muz[1] : -158) * S * HORSE_H;
+
+                const postSX =
+                    W / 2 + 1620 - P.x + 12;
+
+                const postSY =
+                    gy - 54;
+
+                // Exact muzzle attachment
+                const muzSX =
+                    sx +
+                    F * h.muz[0] * S * HORSE_W;
+
+                const muzSY =
+                    gy +
+                    4 +
+                    h.z +
+                    h.muz[1] * S * HORSE_H;
 
                 ctx.save();
+
                 ctx.lineCap = 'round';
                 ctx.lineJoin = 'round';
 
-                const midX = (postSX + muzSX) * 0.5;
-                const midY = (postSY + muzSY) * 0.5 + 18;
+                // --------------------------------------------------------
+                // Small halter ring
+                // --------------------------------------------------------
 
-                // Ground shadow of the hanging rope
-                ctx.globalAlpha = 0.15;
                 ctx.strokeStyle = '#111';
-                ctx.lineWidth = 3.2;
+                ctx.lineWidth = 1.6;
+
                 ctx.beginPath();
-                ctx.moveTo(postSX, gy + 3);
-                ctx.quadraticCurveTo(midX, gy + 4, muzSX, gy + 3);
+                ctx.arc(
+                    muzSX,
+                    muzSY,
+                    3.2,
+                    0,
+                    Math.PI * 2
+                );
                 ctx.stroke();
 
-                // Main lead rope (ink)
+                // --------------------------------------------------------
+                // Natural hanging rope
+                // --------------------------------------------------------
+
+                const dx = postSX - muzSX;
+                const dy = postSY - muzSY;
+
+                // Slight sideways sag rather than a huge U shape
+                const sag =
+                    Math.min(22, Math.abs(dx) * 0.08);
+
+                const cpX =
+                    (muzSX + postSX) * 0.5 - sag;
+
+                const cpY =
+                    (muzSY + postSY) * 0.5 + 10;
+
+                // Main ink rope
                 ctx.globalAlpha = 0.95;
                 ctx.strokeStyle = '#111';
-                ctx.lineWidth = 2.4;
+                ctx.lineWidth = 2.2;
+
                 ctx.beginPath();
-                ctx.moveTo(postSX, postSY);
-                ctx.quadraticCurveTo(midX, midY, muzSX, muzSY);
+
+                ctx.moveTo(
+                    muzSX,
+                    muzSY
+                );
+
+                ctx.quadraticCurveTo(
+                    cpX,
+                    cpY,
+                    postSX,
+                    postSY
+                );
+
                 ctx.stroke();
 
-                // Warm hemp strand highlight
-                ctx.globalAlpha = 0.7;
-                ctx.strokeStyle = 'rgba(215, 185, 120, 0.9)';
-                ctx.lineWidth = 1.2;
+                // --------------------------------------------------------
+                // Hemp highlight
+                // --------------------------------------------------------
+
+                ctx.globalAlpha = 0.55;
+                ctx.strokeStyle =
+                    'rgba(215,185,120,0.9)';
+
+                ctx.lineWidth = 0.8;
+
                 ctx.beginPath();
-                ctx.moveTo(postSX, postSY);
-                ctx.quadraticCurveTo(midX, midY, muzSX, muzSY);
+
+                ctx.moveTo(
+                    muzSX,
+                    muzSY
+                );
+
+                ctx.quadraticCurveTo(
+                    cpX,
+                    cpY,
+                    postSX,
+                    postSY
+                );
+
                 ctx.stroke();
 
                 ctx.restore();
