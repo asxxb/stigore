@@ -487,7 +487,7 @@
         // STAB_WIND..STAB_HIT : thrust forward
         // STAB_HIT..STAB_HOLD : arm holds on embedded handle (IK)
         // STAB_HOLD..STAB_DUR : arm withdraws; knife STAYS in body
-        const STAB_WIND = 0.09, STAB_HIT = 0.21, STAB_HOLD = 0.55, STAB_DUR = 0.72;
+        const STAB_WIND = 0.16, STAB_HIT = 0.30, STAB_SEAT = 0.52, STAB_HOLD = 0.88, STAB_DUR = 1.08;
         const STAB_REACH = 175;   // horizontal reach in unscaled px
         const STAB_DMG = 28;      // damage dealt per stab
         // stbStoP is computed at hit-time from e.hdp (dynamic, see stabHit)
@@ -502,6 +502,7 @@
             if (!best || bd > STAB_REACH * S * 1.8) return false;   // nobody in reach: don't stab the air
 
             P.stbk = 0.0001; P.stbHit = false;
+            P.stbPull = 0; P.stbS1 = 0; P.stbS2 = 0;
             P.idle = 0; P.fid = 0; P.abuf = 0;
             if (P.skid) endSkid();
             P.face = best.x >= P.x ? 1 : -1;
@@ -547,7 +548,7 @@
                 spray(e.x + stomachX * S, stabY, 24, 380, F);
                 impacts.push({ x: e.x + stomachX * S, y: stabY, t: 0, life: 0.2, s: 70, seed: Math.random() * 50 });
 
-                hitstop = Math.max(hitstop, 0.07); shake = Math.max(shake, 6);
+                hitstop = Math.max(hitstop, 0.10); shake = Math.max(shake, 9);
 
                 if (e.hp <= 0) {
                     e.hp = 0; e.dying = 0.5;
@@ -560,60 +561,71 @@
             }
         }
 
+        function stabSeat(t) {   // knife slide along the wound in px: + = out, - = deeper
+            if (t < STAB_HIT) return 0;
+            const u = (t - STAB_HIT) / (STAB_SEAT - STAB_HIT);
+            let p = u < 1 ? (u < .35 ? 9 * sm(u / .35) : 9 - 16 * sm((u - .35) / .65)) : -7 + 3 * sm((t - STAB_SEAT) / .25);
+            if (t > STAB_HOLD) p *= 1 - sm((t - STAB_HOLD) / (STAB_DUR - STAB_HOLD));
+            return p;
+        }
+        function seatFX(E, n, pow) {
+            if (!E || !E.stbStoP) return;
+            const S = CSc(), x = E.x + E.stbStoP[0] * S, y = E.stbStoP[1] * S;
+            spray(x, y, n, pow, -P.face); burst(x, y, 6, 160, -P.face);
+        }
+
+        function stabArmPose(sh, F, S) {
+            if (!P.stbk || P.stbk <= 0) return null;
+            const t = P.stbk;
+            if (t <= STAB_WIND) {            // coil: hand drops back by the hip, elbow cocked
+                const u = sm(t / STAB_WIND);
+                return { a0: lerp(.25, -.7, u), f0: lerp(.5, 1.35, u), a1: .45, f1: 1.8, w: sm(t / .09), useIK: false };
+            } else if (t <= STAB_HIT) {      // drive: slow start, fast finish = heavy
+                const u = Math.pow(sm((t - STAB_WIND) / (STAB_HIT - STAB_WIND)), 2.2);
+                return { a0: lerp(-.7, 1.3, u), f0: lerp(1.35, .12, u), a1: .5, f1: 1.6, w: 1, useIK: false };
+            } else if (t <= STAB_HOLD) {
+                return { w: 1, useIK: true };
+            }
+            const u = sm((t - STAB_HOLD) / (STAB_DUR - STAB_HOLD));
+            return { a0: lerp(1.3, .35, u), f0: lerp(.12, .55, u), a1: .4, f1: 1.55, w: 1 - u, useIK: false };
+        }
+
+        function stabPose(Q) {   // whole-body weight shift for the stab
+            const t = Q.stbk;
+            const coil = sm(t / STAB_WIND), lunge = Math.pow(sm((t - STAB_WIND) / (STAB_HIT - STAB_WIND)), 2), rec = sm((t - STAB_HOLD) / (STAB_DUR - STAB_HOLD));
+            const seat = (t > STAB_HIT && t < STAB_SEAT) ? Math.sin(Math.PI * (t - STAB_HIT) / (STAB_SEAT - STAB_HIT)) : 0;
+            const lean = (-.10 * coil) * (1 - lunge) + .28 * lunge + .04 * seat;
+            const hipX = -4 * coil * (1 - lunge) + 14 * lunge + 3 * seat;
+            const hipY = 10 * coil * (1 - lunge) + 12 * lunge + 4 * seat;
+            return {
+                w: Math.min(1, t / .06) * (1 - rec), a0: .35, f0: 2.8, a1: .6, f1: 2.35,
+                lean, hipX, hipY, arch: .04, hx: -3 * coil * (1 - lunge) + 6 * lunge, hy: 2 * lunge,
+                l0: [46 - hipX * .7, 0, 0], l1: [-40 - hipX * .7, 0, 0],   // feet stay planted while the hips move
+                st: STEPS[0], sw: 0, ik: 0
+            };
+        }
+
         function stabTick(dt) {
             if (P.stbk <= 0) return;
             P.stbk += dt;
             P.abuf = 0;
-            // lock lateral movement during thrust+hold and pin target in neck clinch
-            if (P.stbk < STAB_HOLD) {
+            const t = P.stbk, S = CSc(), E = P.stbTgt;
+            if (t < STAB_HOLD) {
                 P.vx *= Math.max(0, 1 - dt * 14);
-                if (P.stbTgt) {
-                    const S = CSc(), e = P.stbTgt;
-                    if (e && e.dead <= 0 && e.dying <= 0) {
-                        const targetX = P.x + P.face * 95 * S;
-                        e.x += (targetX - e.x) * Math.min(1, dt * 14);
-                        e.vx = 0;
-                        e.face = -P.face;
-                    }
+                if (E && E.dead <= 0 && E.dying <= 0) {
+                    const dist = lerp(100, 86, sm((t - STAB_WIND) / (STAB_HIT - STAB_WIND)));   // yanked onto the blade
+                    E.x += (P.x + P.face * dist * S - E.x) * Math.min(1, dt * 14);
+                    E.vx = 0; E.face = -P.face;
                 }
             }
-            if (!P.stbHit && P.stbk >= STAB_HIT) stabHit();
-            // animation done - knife stays embedded, player walks free
-            if (P.stbk >= STAB_DUR) { P.stbk = 0; P.stbHit = false; P.stbTgt = null; }
-        }
-
-        // Returns arm override during stab animation (uses IK toward handle in hold phase)
-        function stabArmPose(sh, F, S) {
-            if (!P.stbk || P.stbk <= 0) return null;
-            const t = P.stbk;
-            let w, a0, f0, a1, f1;
-
-            if (t <= STAB_WIND) {
-                // wind-up: knife arm rears back & up
-                const u = sm(t / STAB_WIND);
-                a0 = -0.45 + u * 0.5; f0 = 0.55 + u * 0.4;
-                a1 = 0.45; f1 = 1.8;
-                w = u;
-                return { a0, f0, a1, f1, w, useIK: false };
-            } else if (t <= STAB_HIT) {
-                // thrust: arm snaps forward-down to stomach level
-                const u = Math.pow(sm((t - STAB_WIND) / (STAB_HIT - STAB_WIND)), 1.6);
-                a0 = 0.05 + u * 1.30; f0 = 0.95 - u * 0.80;
-                a1 = 0.50 - u * 0.15; f1 = 1.60;
-                w = 1;
-                return { a0, f0, a1, f1, w, useIK: false };
-            } else if (t <= STAB_HOLD) {
-                // hold: both hands IK-grip the embedded handle
-                w = 1;
-                return { w, useIK: true };
-            } else {
-                // arm releases and returns; knife stays in body
-                const u = sm((t - STAB_HOLD) / (STAB_DUR - STAB_HOLD));
-                a0 = 1.35 - u * 1.0; f0 = 0.15 + u * 0.55;
-                a1 = 0.35 + u * 0.1; f1 = 1.55;
-                w = 1 - u;
-                return { a0, f0, a1, f1, w, useIK: false };
+            if (!P.stbHit && t >= STAB_HIT) stabHit();
+            if (P.stbHit && E) {
+                const pull = stabSeat(t); P.stbPull = pull;
+                for (const k of knives) if (k.st === E && k.stomachStab) k.pull = pull;
+                if (!P.stbS1 && t >= STAB_HIT + .07) { P.stbS1 = 1; seatFX(E, 10, 160) }                                   // blade slides back
+                if (!P.stbS2 && t >= STAB_HIT + .19) { P.stbS2 = 1; seatFX(E, 18, 260); shake = Math.max(shake, 4); hitstop = Math.max(hitstop, .03) }   // second shove
             }
+            if (t >= STAB_DUR) { P.stbk = 0; P.stbHit = false; P.stbTgt = null; P.stbPull = 0; P.stbS1 = 0; P.stbS2 = 0 }
         }
 
         function mkEnemy(x, hat) {
@@ -1324,6 +1336,7 @@
 
 
         function comboPose(Q) {
+            if (Q === PL && Q.stbk > 0) return stabPose(Q);
             if (Q === PL && Q.gu > 0) return guPose(Q);
             if (Q === PL && Q.yk > 0) return ykPose(Q);
             if (Q === PL && Q.fs > 0) return footStabPose(Q);
@@ -2062,7 +2075,8 @@
                         if (i === 1 && E) {
                             // off-hand clinches the opponent's neck throughout windup, thrust, and hold
                             const ox = (E.x - P.x) / S;
-                            const nx = ox + (E.hdp ? E.hdp[0] + E.face * 8 : F * 45);
+                            const yank = 7 * sm((P.stbk - STAB_WIND) / (STAB_HIT - STAB_WIND)) * (1 - sm((P.stbk - STAB_SEAT) / .2));
+                            const nx = ox + (E.hdp ? E.hdp[0] + E.face * 8 : F * 45) - F * yank;
                             const ny = (E.hdp ? E.hdp[1] + 28 : -255);
                             const ndx = nx - sh[0], ndy = ny - sh[1], ndl = Math.hypot(ndx, ndy) || 1;
                             const chokeTrem = (P.stbk > STAB_WIND && P.stbk <= STAB_HOLD) ? Math.sin(now * 38) * 0.6 : 0;
@@ -2070,11 +2084,11 @@
                             ang = ang * (1 - sp.w) + na * sp.w; flex = flex * (1 - sp.w) + nf * sp.w;
                         } else if (i === 0 && sp.useIK && E && E.stbStoP) {
                             // knife hand grips the embedded handle at stomach position
-                            const G = stuckGrip(E), ox = (E.x - P.x) / S;
+                            const G = stuckGrip(E, P.stbPull || 0), ox = (E.x - P.x) / S;
                             const px = ox + G.gx - G.ux * 2, py = G.gy - G.uy * 2;
                             const ddx = px - sh[0], ddy = py - sh[1], dl = Math.hypot(ddx, ddy) || 1;
-                            const trem = Math.sin(now * 42) * 0.8;
-                            const [a, f] = ik2(sh, px - ddx / dl * 11 + trem, py - ddy / dl * 11 + trem * .6, F);
+                            const trem = Math.sin(now * 42) * 0.8, twist = P.stbk > STAB_SEAT ? Math.sin((P.stbk - STAB_SEAT) * 15) * 1.8 : 0;
+                            const [a, f] = ik2(sh, px - ddx / dl * 11 + trem, py - ddy / dl * 11 + trem * .6 + twist, F);
                             ang = ang * (1 - sp.w) + a * sp.w; flex = flex * (1 - sp.w) + f * sp.w;
                         } else if (!sp.useIK) {
                             const sa = i ? sp.a1 : sp.a0, sf = i ? sp.f1 : sp.f0;
@@ -2189,7 +2203,7 @@
                 }
 
                 wristKick = (i === 0 && P === PL && P.gunK > .02) ? RC_WRIST * P.recoil * P.recoil + (P.rl > 0 ? rlTilt(P.rl / RELOAD_T) : 0) : 0;
-                arm(sh, ang, flex, F, (i === 0 && !P.pk) ? P.kt : 0, Math.max(pq, cb ? cb.w : 0), (i === 0 && !P.pk) ? P.tt / TOSS_T : 0);
+                arm(sh, ang, flex, F, (i === 0 && !P.pk) ? P.kt : 0, Math.max(pq, (cb && !(P === PL && P.stbk > 0)) ? cb.w : 0), (i === 0 && !P.pk) ? P.tt / TOSS_T : 0);
                 if (i === 1 && P === PL && P.rl > 0) {
                     const u = P.rl / RELOAD_T;
                     if (u > RL_GRAB - .02 && u < RL_LOADED) {
