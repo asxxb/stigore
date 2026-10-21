@@ -149,7 +149,7 @@
             if (e.code === 'KeyC') pressSmoke();
             if (e.code === 'KeyN') { const toNight = DN.d < .5; DN.t = toNight ? 0 : .5; banner.t = .8; banner.text = toNight ? 'MIDNIGHT' : 'NOON'; }
             if (e.code === 'KeyO') pressLantern();
-            if (P.sm === 1 || P.ln > 0 || P.lb > 0) return;
+            if (P.sm === 1 || P.ln > 0 || P.lb > 0 || P.stc > 0) return;
             if (P.sgp > 0) return;    // no actions mid-stomp
             if (e.code === 'KeyG') pressG();
             if (e.code === 'KeyH') pressHorse();
@@ -363,6 +363,7 @@
         function stretchEnv(u) { return u < .25 ? sm(u / .25) : u < .75 ? 1 : 1 - sm((u - .75) / .25) }
 
         function update(dt) {
+            if (P.stc > 0) { stairTick(dt); return; }
             if (typeof updateSwim === 'function' && updateSwim()) {
                 P.vz = 0; P.z = 0;
                 return;
@@ -4261,6 +4262,7 @@
 
         function pressFinish() {
             if (P.mount) { banner.t = .6; banner.text = 'DISMOUNT FIRST (H)'; return }
+            if (tryStairs()) return;
             if (P.yk > 0 || P.fin > 0 || P.cs > 0 || P.tt > 0 || P.thw > 0 || P.z < 0) return;
             if (tryPickupKnife()) return;
             if (P.gun || P.gs === 2 || P.sg) { banner.t = .6; banner.text = 'HOLSTER GUN FIRST (G)'; return }
@@ -4286,6 +4288,57 @@
             P.kn = 0; P.rv = 0;
             P.fin = .0001; P.finE = best; P.finDone = 0;
             best.fst = 1; best.fid = 0;                        // he stops tugging
+        }
+
+        // ================= STILT HOUSE STAIRS (E to climb) =================
+        const STH_WX = -7800;                       // same x as in drawBuildings()
+        P.stc = 0; P.stcD = 1; P.stcX0 = 0; P.dh = 0;   // stair timer / direction / start x / deck height
+
+        function stairGeom() {
+            const s = 3.6 * BLD;
+            return { bx: STH_WX + 192 * s, tx: STH_WX + 138 * s, x0: STH_WX - 122 * s, h: 82 * s + 4 };
+        }
+        function tryStairs() {
+            if (P.stc > 0 || P.mount || P.z < 0 || P.fin > 0 || P.cs > 0 || P.thw > 0 || P.tt > 0 || P.pk > 0 ||
+                P.stbk > 0 || P.fs > 0 || P.gu > 0 || P.yk > 0 || P.sgp > 0 || P.sm > 0 || swim.on) return false;
+            const g = stairGeom(), R = 170 * CSc();
+            let up;
+            if (!P.dh && Math.abs(P.x - g.bx) < R) up = true;
+            else if (P.dh > 0 && Math.abs(P.x - g.tx) < R) up = false;
+            else return false;
+            if (P.skid) endSkid();
+            P.stc = .0001; P.stcD = up ? 1 : -1; P.stcX0 = P.x;
+            P.face = up ? -1 : 1; P.vx = 0; P.idle = 0; P.fid = 0; P.abuf = 0; P.grabbed = null; P.clast = 0;
+            return true;
+        }
+        function stairTick(dt) {
+            const g = stairGeom(), up = P.stcD > 0, T = 1.8;
+            const target = up ? g.tx : g.bx;
+            P.stc += dt; P.abuf = 0; P.jbuf = 0; P.vz = 0; P.z = 0;
+            const u = Math.min(1, P.stc / T);
+            P.x = P.stcX0 + (target - P.stcX0) * u;
+            P.dh = Math.max(0, Math.min(1, (g.bx - P.x) / (g.bx - g.tx))) * g.h;   // follows the stair slope
+            P.face = target < P.stcX0 ? -1 : 1;
+            P.vx = P.face * 170;                                                    // walking pose
+            P.phase += 170 * dt / (280 * CSc()) * Math.PI * 2;
+            P.amp += (1 - P.amp) * Math.min(1, dt * 10);
+            P.lean += (P.face * .4 * (170 / 420) - P.lean) * Math.min(1, dt * 6);
+            if (u >= 1) { P.stc = 0; P.x = target; P.vx = 0; P.dh = up ? g.h : 0; }
+        }
+        function deckTick() {                         // keeps you on the deck, with invisible walls at both ends
+            if (!(P.dh > 0) || P.stc > 0) return;
+            const g = stairGeom();
+            P.dh = g.h; P.x = Math.max(g.x0, Math.min(g.tx, P.x));
+        }
+        function drawStairHint(gy) {
+            if (P.stc > 0) return;
+            const g = stairGeom(), S = CSc(), R = 170 * S, now = performance.now();
+            let wx = null;
+            if (!P.dh && Math.abs(P.x - g.bx) < R) wx = g.bx;
+            else if (P.dh > 0 && Math.abs(P.x - g.tx) < R) wx = g.tx;
+            if (wx === null) return;
+            ctx.save(); ctx.fillStyle = '#111'; ctx.font = 'italic bold 22px Georgia,serif'; ctx.textAlign = 'center';
+            ctx.fillText('E', W / 2 + wx - P.x, gy - (P.dh || 0) - 60 * S - 4 * Math.sin(now / 200)); ctx.restore();
         }
         function finTick(dt) {
             const e = P.finE, S = CSc();
@@ -7636,7 +7689,7 @@
 
         function lanternPos() {                        // screen position of the lantern body, for the night light
             const p = P.lnPos; if (!p) return null;
-            return [W / 2 + p[0] * CSc(), groundY() + 4 + p[1] * CSc()];
+            return [W / 2 + p[0] * CSc(), groundY() + 4 + p[1] * CSc() - (P.dh || 0)];
         }
         function lnReady() {
             return P.z >= 0 && !P.mount && !P.gun && P.gs !== 2 && !P.sg && P.kn === 0 && P.kt < .05 &&
@@ -11013,6 +11066,7 @@
             if (hitstop > 0) { hitstop -= dt0; dt = 0 }
 
             update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); sgTick(dt); sgGroundTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); waterFXTick(dt); brainTick(dt); gibTick(dt); boneTick(dt); weatherTick(dt); horseTick(dt); birdTick(dt); fowlTick(dt); frogTick(dt); crocTick(dt); bgTick(dt); dayTick(dt0); fireflyTick(dt0);
+            deckTick();
             shake = Math.max(0, shake - dt0 * 60);
             ctx.save();
             if (shake > .3) ctx.translate((Math.random() - .5) * shake * 1.6, (Math.random() - .5) * shake * 1.6);
@@ -11048,9 +11102,10 @@
             drawBGoreAir(gy);
             drawHorse(gy);
             beginSwimDraw(gy);
-            drawChar(W / 2, gy, P);
+            drawChar(W / 2, gy - P.dh, P);
             endSwimDraw();
             drawBreath(gy);
+            drawStairHint(gy);
             drawForest(gy, 1);
             drawSgProp(gy, true);
             drawSmoke(gy);
