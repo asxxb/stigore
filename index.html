@@ -7862,7 +7862,7 @@
         // POND + DOCK (centre of the forest)
         // =====================================================================
         const POND_X = 5250;                 // world x of the pond centre
-        const POND_RX = 460, POND_RY_MAX = 120;   // half-width / max depth of the water (side-view cross-section)
+        const POND_RX = 460, POND_RY_MAX = 220;   // half-width / max depth of the water (side-view cross-section)
         let POND_RY = POND_RY_MAX;                // actual depth this frame (shrinks if the screen has no room below the ground line)
         const DOCK_X0 = POND_X - POND_RX - 130, DOCK_X1 = POND_X + 150;   // dock starts on the left bank and reaches into the water
         const F_POND_WASH = 'rgba(100,140,160,.40)', F_WOOD = 'rgba(150,120,85,.6)';
@@ -7872,8 +7872,8 @@
         function drawPond(gy, mode) {
             const sx = W / 2 + POND_X - P.x;
             if (Math.abs(sx) > W / 2 + POND_RX + 300) return;
-            const cvH = ctx.canvas.clientHeight || ctx.canvas.height;
-            POND_RY = Math.max(24, Math.min(POND_RY_MAX, cvH - gy - 8));   // never draw the pond bottom off-screen
+            // Use game-world height H (accounting for ZOOM) so the pond isn't squashed
+            POND_RY = Math.max(60, Math.min(POND_RY_MAX, H - gy - 24));
             const now = performance.now() / 1000;
             ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#111'; ctx.fillStyle = '#111';
 
@@ -8016,6 +8016,11 @@
             }
             ctx.restore();
         }
+
+
+
+
+
 
         function drawForest(gy, mode) { drawForestBase(gy, mode); drawPond(gy, mode) }
 
