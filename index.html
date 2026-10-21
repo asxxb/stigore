@@ -8855,19 +8855,19 @@
 
         // ---- obstacles the horse has to jump (world x0..x1, height h). Nearby ones merge into one cluster. ----
         const HR_OBS = [];
-        (function () {
-            const add = (wx, sc, lx0, lx1, h) => HR_OBS.push({ x0: wx + lx0 * sc * BLD, x1: wx + lx1 * sc * BLD, h: h * sc * BLD });
-            HR_OBS.push({ x0: 1592, x1: 1648, h: 66 });                       // hitching post (small)
-            add(1000, 2.3, -28, 28, 26);                                      // well wall (small)
-            add(2200, 3.5, 128, 162, 22);                                     // hay bale (medium)
-            add(-950, 2.2, -66, 64, 62);                                      // wagon bed (large)
-            for (const [a, b, h] of [[-84, -56, 54], [-42, -18, 44], [0, 28, 60], [44, 68, 46]]) add(-3400, 2.2, a, b, h);   // graves
-            HR_OBS.sort((a, b) => a.x0 - b.x0);
-            for (let i = HR_OBS.length - 1; i > 0; i--) {                     // gaps too small to land in = one obstacle
-                const a = HR_OBS[i - 1], b = HR_OBS[i];
-                if (b.x0 - a.x1 < 130) { a.x1 = Math.max(a.x1, b.x1); a.h = Math.max(a.h, b.h); HR_OBS.splice(i, 1); }
-            }
-        })();
+        // (function () {
+        //     const add = (wx, sc, lx0, lx1, h) => HR_OBS.push({ x0: wx + lx0 * sc * BLD, x1: wx + lx1 * sc * BLD, h: h * sc * BLD });
+        //     HR_OBS.push({ x0: 1592, x1: 1648, h: 66 });                       // hitching post (small)
+        //     add(1000, 2.3, -28, 28, 26);                                      // well wall (small)
+        //     add(2200, 3.5, 128, 162, 22);                                     // hay bale (medium)
+        //     add(-950, 2.2, -66, 64, 62);                                      // wagon bed (large)
+        //     for (const [a, b, h] of [[-84, -56, 54], [-42, -18, 44], [0, 28, 60], [44, 68, 46]]) add(-3400, 2.2, a, b, h);   // graves
+        //     HR_OBS.sort((a, b) => a.x0 - b.x0);
+        //     for (let i = HR_OBS.length - 1; i > 0; i--) {                     // gaps too small to land in = one obstacle
+        //         const a = HR_OBS[i - 1], b = HR_OBS[i];
+        //         if (b.x0 - a.x1 < 130) { a.x1 = Math.max(a.x1, b.x1); a.h = Math.max(a.h, b.h); HR_OBS.splice(i, 1); }
+        //     }
+        // })();
         function hrsNextObs(d, fromX, maxD) {
             let best = null, bd = 1e9;
             for (const o of HR_OBS) {
