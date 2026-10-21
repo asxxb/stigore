@@ -7674,6 +7674,59 @@
             ctx.save(); ctx.globalAlpha = d; ctx.fillStyle = vigN; ctx.fillRect(0, 0, W, H); ctx.restore();   // deeper vignette
         }
 
+        // ================= FIREFLIES (night, far right) =================
+        const FF_N = 40;                    // how many fireflies
+        const FF_X0 = 4400, FF_X1 = 6000;   // world x range they live in (far right)
+        const fireflies = [];
+        (function () {
+            for (let i = 0; i < FF_N; i++) {
+                const x = FF_X0 + Math.random() * (FF_X1 - FF_X0);
+                const y = -(14 + Math.random() * 150);                 // height above the ground (game units)
+                fireflies.push({
+                    hx: x, hy: y, x, y,
+                    ph: Math.random() * 6.28, ph2: Math.random() * 6.28,
+                    sp: .5 + Math.random() * .8,                       // wander speed
+                    rad: 25 + Math.random() * 55,                      // wander radius
+                    br: .5 + Math.random() * .9,                       // blink rate
+                    bo: Math.random() * 6.28,                          // blink offset
+                    r: 1.4 + Math.random() * 1.1
+                });
+            }
+        })();
+        function fireflyTick(dt) {
+            if (DN.d < .2) return;                                     // asleep in the daytime
+            const t = performance.now() / 1000;
+            for (const f of fireflies) {
+                f.x = f.hx + Math.sin(t * f.sp + f.ph) * f.rad + Math.sin(t * f.sp * 2.3 + f.ph2) * f.rad * .3 + wind.v * .04;
+                f.y = f.hy + Math.sin(t * f.sp * 1.3 + f.ph2) * f.rad * .45;
+                if (f.y > -6) f.y = -6;                                // never below the grass
+            }
+        }
+        function drawFireflies(gy) {
+            const fa = sm((DN.d - .35) / .4);
+            if (fa < .01) return;
+            const S = CSc(), now = performance.now() / 1000;
+            ctx.save();
+            for (const f of fireflies) {
+                const sx = f.x - P.x + W / 2;
+                if (sx < -40 || sx > W + 40) continue;
+                const sy = gy + 4 + f.y * S;
+                const b = Math.pow(Math.max(0, Math.sin(now * f.br * 2.2 + f.bo)), 3);   // blink
+                const a = fa * (.12 + .88 * b);
+                if (a < .02) continue;
+                const R = (10 + 12 * b) * S;
+                const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, R);
+                g.addColorStop(0, 'rgba(255,240,150,' + (.55 * a) + ')');
+                g.addColorStop(1, 'rgba(255,230,120,0)');
+                ctx.fillStyle = g; ctx.fillRect(sx - R, sy - R, R * 2, R * 2);
+                ctx.globalAlpha = Math.min(1, a * 1.3);
+                ctx.fillStyle = '#fffbd0';
+                ctx.beginPath(); ctx.arc(sx, sy, f.r * S, 0, 7); ctx.fill();
+                ctx.globalAlpha = 1;
+            }
+            ctx.restore();
+        }
+
         function frame(now) {
 
 
@@ -7681,7 +7734,7 @@
             let dt = dt0;
             if (hitstop > 0) { hitstop -= dt0; dt = 0 }
 
-            update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); sgTick(dt); sgGroundTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); brainTick(dt); gibTick(dt); boneTick(dt); weatherTick(dt); horseTick(dt); birdTick(dt); dayTick(dt0);
+            update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); sgTick(dt); sgGroundTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); brainTick(dt); gibTick(dt); boneTick(dt); weatherTick(dt); horseTick(dt); birdTick(dt); dayTick(dt0); fireflyTick(dt0);
             shake = Math.max(0, shake - dt0 * 60);
             ctx.save();
             if (shake > .3) ctx.translate((Math.random() - .5) * shake * 1.6, (Math.random() - .5) * shake * 1.6);
@@ -7717,6 +7770,7 @@
             drawWeather(gy);
             ctx.restore();
             drawNight(gy);
+            drawFireflies(gy);
             ctx.fillStyle = vig; ctx.fillRect(0, 0, W, H);
             drawHUD();
             drawGunHUD();
