@@ -105,6 +105,7 @@
     <script>
         const cv = document.getElementById('c'), ctx = cv.getContext('2d');
         let W, H, DPR, paper, vig;
+        const BLD = 1.3;   // building size multiplier: 1 = current size, 1.3 = 30% bigger, 1.6 = much bigger
 
         let vigN;
         const nightC = document.createElement('canvas'), nctx = nightC.getContext('2d');
@@ -3599,7 +3600,7 @@
             ctx.save();
             for (const [fn, wx, sc] of list) {
                 const sx = W / 2 + wx - P.x;
-                if (sx > -500 * sc && sx < W + 500 * sc) fn(sx, gy, sc);
+                if (sx > -500 * sc * BLD && sx < W + 500 * sc * BLD) fn(sx, gy, sc * BLD);
             }
             ctx.restore();
         }
@@ -3650,9 +3651,9 @@
             {
                 const barnWorldX = 2200;   // fixed world position further to the right
                 const barnSX = W / 2 + barnWorldX - cam;
-                const barnScale = 3.5;
+                const barnScale = 3.5 * BLD;
                 // only draw when vaguely on screen (with generous margin for the barn width)
-                if (barnSX > -900 && barnSX < W + 900) {
+                if (barnSX > -900 * BLD && barnSX < W + 900 * BLD) {
                     drawBarnBG(gy, barnSX, barnScale);
                 }
             }
@@ -7093,7 +7094,7 @@
         // perch surfaces in world px: x, y (negative = up from the ground), by = bird sitting there
         const PERCH = [];
         (function () {
-            const add = (wx, sc, lx, ly) => PERCH.push({ x: wx + lx * sc, y: ly * sc, by: null });
+            const add = (wx, sc, lx, ly) => PERCH.push({ x: wx + lx * sc * BLD, y: ly * sc * BLD, by: null });
             add(2200, 3.5, -60, -170.5); add(2200, 3.5, 35, -180.3); add(2200, 3.5, 75, -164.6); add(2200, 3.5, 145, -22);   // barn roof + hay bale
             add(-1500, 2.5, -20, -168); add(-1500, 2.5, 20, -168); add(-1500, 2.5, 85, -150); add(-1500, 2.5, -90, -150);    // saloon front
             add(-2500, 2.5, -40, -82.3); add(-2500, 2.5, 40, -118);                                                         // shack roof + chimney
@@ -7465,9 +7466,9 @@
 
         // { wx: world x, sc: scale, r: [x, y, w, h, brightness, mullions] in the building's local space }
         const NIGHT_LIGHTS = [
-            { wx: -1500, sc: 2.5, r: [[-70, -100, 30, 34, 1, 1], [40, -100, 30, 34, 1, 1], [-86, -34, 26, 34, .9, 0], [-17, -46, 34, 34, .6, 0]] },   // saloon
-            { wx: -2500, sc: 2.5, r: [[-46, -52, 18, 18, 1, 1]] },                                                                                    // shack
-            { wx: 2200, sc: 3.5, r: [[-17, -152, 34, 30, 1, 1]] }                                                                                     // barn loft
+            { wx: -1500, sc: 2.5 * BLD, r: [[-70, -100, 30, 34, 1, 1], [40, -100, 30, 34, 1, 1], [-86, -34, 26, 34, .9, 0], [-17, -46, 34, 34, .6, 0]] },   // saloon
+            { wx: -2500, sc: 2.5 * BLD, r: [[-46, -52, 18, 18, 1, 1]] },                                                                                    // shack
+            { wx: 2200, sc: 3.5 * BLD, r: [[-17, -152, 34, 30, 1, 1]] }                                                                                     // barn loft
         ];
         function nPunch(x, y, R, a) {
             const g = nctx.createRadialGradient(x, y, 0, x, y, R);
