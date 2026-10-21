@@ -2333,7 +2333,7 @@
             ctx.save(); ctx.translate(cx, gy + 4); ctx.scale(S, S); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
             if (pain > 0) ctx.translate((Math.sin(now * 47) * 1.6 + Math.sin(now * 83)) * pain, Math.sin(now * 61) * 1.2 * pain - spasm * 3);
             const FLAT_DROP = 48;   // tune: bigger = body lies lower
-            const flatDrop = (P !== PL && (P.crawl || P.hsDead))
+            const flatDrop = (P !== PL && P.crawl && !P.hsDead)
                 ? FLAT_DROP * Math.min(1, Math.abs(P.rot || 0) / (Math.PI / 2)) : 0;
             if (flatDrop) ctx.translate(0, flatDrop);
             if (P.rot) {
