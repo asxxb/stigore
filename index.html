@@ -7875,7 +7875,7 @@
         const POND_X = 5250;                 // world x of the pond centre
         const POND_RX = 700, POND_RY_MAX = 520;   // half-width / max depth of the water (side-view cross-section)
         let POND_RY = POND_RY_MAX;                // actual depth this frame (shrinks if the screen has no room below the ground line)
-        const DOCK_X0 = POND_X - POND_RX - 130, DOCK_X1 = POND_X + 150;   // dock starts on the left bank and reaches into the water
+        const DOCK_X0 = POND_X - POND_RX - 80, DOCK_X1 = POND_X - 260;   // dock starts on the left bank and reaches into the water
         const F_POND_WASH = 'rgba(100,140,160,.40)', F_WOOD = 'rgba(150,120,85,.6)';
 
         function inPond(wx, m) { return Math.abs(wx - POND_X) < POND_RX + (m || 0) }
@@ -8471,36 +8471,36 @@
                 const x0 = W / 2 + DOCK_X0 - P.x, x1 = W / 2 + DOCK_X1 - P.x;
                 ctx.strokeStyle = '#111';
                 // pilings down into the water
-                for (let x = x0 + 40; x <= x1 - 10; x += 110) {
+                for (let x = x0 + 35; x <= x1 - 10; x += 95) {
                     if (x < sx - POND_RX) continue;                      // only over water
-                    ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(x, gy + 10); ctx.lineTo(x + 1, gy + POND_RY - 6); ctx.stroke();
+                    ctx.lineWidth = 3.5; ctx.beginPath(); ctx.moveTo(x, gy + 10); ctx.lineTo(x + 1, gy + POND_RY - 6); ctx.stroke();
                     const sy = surfY(top, sx, x);
                     ctx.lineWidth = .9; ctx.globalAlpha = .5;
-                    ctx.beginPath(); ctx.ellipse(x, sy + 6, 9 + Math.abs(wv[Math.round((x - (sx - POND_RX)) / WSP)] || 0) * 3, 2.5, 0, 0, 7); ctx.stroke();
+                    ctx.beginPath(); ctx.ellipse(x, sy + 6, 8 + Math.abs(wv[Math.round((x - (sx - POND_RX)) / WSP)] || 0) * 3, 2.5, 0, 0, 7); ctx.stroke();
                     ctx.globalAlpha = 1;
-                    ctx.globalAlpha = .25; ctx.lineWidth = 3; ctx.beginPath();            // wobbly reflection
+                    ctx.globalAlpha = .25; ctx.lineWidth = 2.5; ctx.beginPath();            // wobbly reflection
                     for (let k = 0; k < 6; k++) { const yy = gy + POND_RY - 4 + k * 4; ctx.lineTo(x + Math.sin(now * 2 + k) * 2, yy) }
                     ctx.stroke(); ctx.globalAlpha = 1;
                 }
                 // deck boards
-                bdShape([[x0, gy + 2], [x1, gy + 2], [x1, gy + 13], [x0, gy + 13]], F_WOOD, 1.8, 77);
+                bdShape([[x0, gy + 2], [x1, gy + 2], [x1, gy + 11], [x0, gy + 11]], F_WOOD, 1.8, 77);
                 ctx.lineWidth = .9; ctx.strokeStyle = '#111';
-                for (let x = x0 + 22; x < x1; x += 26) { ctx.beginPath(); ctx.moveTo(x, gy + 2); ctx.lineTo(x, gy + 13); ctx.stroke() }
-                ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(x0, gy + 8); ctx.lineTo(x1, gy + 8); ctx.stroke();
+                for (let x = x0 + 20; x < x1; x += 22) { ctx.beginPath(); ctx.moveTo(x, gy + 2); ctx.lineTo(x, gy + 11); ctx.stroke() }
+                ctx.lineWidth = 1.3; ctx.beginPath(); ctx.moveTo(x0, gy + 7); ctx.lineTo(x1, gy + 7); ctx.stroke();
                 // rail posts + sagging rope (over the water section only)
-                const rs = Math.max(x0 + 60, sx - POND_RX + 40);
+                const rs = Math.max(x0 + 45, sx - POND_RX + 35);
                 let prev = null;
-                for (let x = rs; x <= x1 - 10; x += 110) {
-                    ctx.lineWidth = 3.5; ctx.beginPath(); ctx.moveTo(x, gy + 3); ctx.lineTo(x, gy - 80); ctx.stroke();
-                    ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(x, gy - 82, 3.5, 0, 7); ctx.fill();
-                    if (prev !== null) { ctx.lineWidth = 1.3; ctx.beginPath(); ctx.moveTo(prev, gy - 74); ctx.quadraticCurveTo((prev + x) / 2, gy - 52, x, gy - 74); ctx.stroke() }
+                for (let x = rs; x <= x1 - 10; x += 95) {
+                    ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x, gy + 3); ctx.lineTo(x, gy - 62); ctx.stroke();
+                    ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(x, gy - 64, 3, 0, 7); ctx.fill();
+                    if (prev !== null) { ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(prev, gy - 58); ctx.quadraticCurveTo((prev + x) / 2, gy - 42, x, gy - 58); ctx.stroke() }
                     prev = x;
                 }
                 // lantern on the end post
                 if (prev !== null) {
-                    ctx.fillStyle = 'rgba(255,225,140,.30)'; ctx.beginPath(); ctx.arc(prev, gy - 100, 34, 0, 7); ctx.fill();
-                    ctx.fillStyle = PAPER; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.rect(prev - 7, gy - 108, 14, 18); ctx.fill(); ctx.stroke();
-                    ctx.beginPath(); ctx.moveTo(prev - 9, gy - 108); ctx.lineTo(prev, gy - 116); ctx.lineTo(prev + 9, gy - 108); ctx.stroke();
+                    ctx.fillStyle = 'rgba(255,225,140,.30)'; ctx.beginPath(); ctx.arc(prev, gy - 78, 26, 0, 7); ctx.fill();
+                    ctx.fillStyle = PAPER; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.rect(prev - 6, gy - 85, 12, 15); ctx.fill(); ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(prev - 8, gy - 85); ctx.lineTo(prev, gy - 92); ctx.lineTo(prev + 8, gy - 85); ctx.stroke();
                 }
             } else {
                 // foreground reeds on both banks, swaying
