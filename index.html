@@ -404,7 +404,13 @@
                 else P.jbuf = Math.max(0, P.jbuf - dt);
             }
             const g = GRAV * (P.vz < 0 && !keys.Space ? CUT_MULT : 1);
-            if (P.vz !== 0 || P.z < 0) { P.vz += g * dt; P.z += P.vz * dt; if (P.z >= 0) { P.z = 0; P.vz = 0 } }
+            if (P.vz !== 0 || P.z < 0) {
+                P.vz += g * dt; P.z += P.vz * dt;
+                if (P.z >= 0) {
+                    if (typeof splash === 'function' && inPond(P.x)) splash(P.x, 10, 14);
+                    P.z = 0; P.vz = 0;
+                }
+            }
 
             const sp = Math.abs(P.vx);
 
@@ -7869,6 +7875,74 @@
 
         function inPond(wx, m) { return Math.abs(wx - POND_X) < POND_RX + (m || 0) }
 
+        // ---------- water physics: a row of coupled spring columns ----------
+        const WN = 160, WSP = (2 * POND_RX) / WN;           // column count / spacing
+        const wh = new Float32Array(WN + 1), wv = new Float32Array(WN + 1);   // height + velocity
+        const wL = new Float32Array(WN + 1), wR = new Float32Array(WN + 1);
+        const W_K = 0.02, W_DAMP = 0.018, W_SPREAD = 0.24, W_MAX = 18;
+        const wSpray = [];
+        let wAcc = 0, wLast = 0, rainT = 0, lastPX = null, stepT = 0;
+
+        function stepWater() {
+            for (let i = 0; i <= WN; i++) { wv[i] += -W_K * wh[i] - W_DAMP * wv[i]; wh[i] += wv[i]; }
+            for (let p = 0; p < 6; p++) {                     // spread waves to neighbours
+                for (let i = 0; i <= WN; i++) {
+                    wL[i] = i > 0 ? W_SPREAD * (wh[i] - wh[i - 1]) : 0;
+                    wR[i] = i < WN ? W_SPREAD * (wh[i] - wh[i + 1]) : 0;
+                }
+                for (let i = 0; i <= WN; i++) {
+                    if (i > 0) { wv[i - 1] += wL[i]; wh[i - 1] += wL[i]; }
+                    if (i < WN) { wv[i + 1] += wR[i]; wh[i + 1] += wR[i]; }
+                }
+            }
+            for (let i = 0; i <= WN; i++) wh[i] = Math.max(-W_MAX, Math.min(W_MAX, wh[i]));
+            wh[0] = wh[WN] = 0; wv[0] = wv[WN] = 0;           // banks are fixed
+        }
+
+        // world x -> push the water down there and throw some droplets
+        function splash(wx, power, drops) {
+            const t = (wx - (POND_X - POND_RX)) / WSP, c = Math.round(t);
+            for (let k = -3; k <= 3; k++) {
+                const i = c + k;
+                if (i > 1 && i < WN - 1) wv[i] += power * Math.exp(-k * k / 4);
+            }
+            for (let d = 0; d < (drops || 0); d++)
+                wSpray.push({ wx: wx + (Math.random() - .5) * 14, y: 0, vx: (Math.random() - .5) * 90, vy: -(120 + Math.random() * 160) * Math.min(1, power / 6 + .3), r: 1.5 + Math.random() * 1.8, fresh: true });
+        }
+
+        // water surface height (screen y) at a screen x
+        function surfY(top, sx, x) {
+            const t = Math.max(0, Math.min(WN - .001, (x - (sx - POND_RX)) / WSP)), i = Math.floor(t), f = t - i;
+            return top + wh[i] * (1 - f) + wh[i + 1] * f;
+        }
+
+        function updateWater(top, sx, now) {
+            const dt = Math.min(.05, wLast ? now - wLast : 1 / 60); wLast = now;
+            // player walking on the dock disturbs the water
+            if (lastPX !== null && inPond(P.x, -40)) {
+                const sp = Math.abs(P.x - lastPX) / Math.max(dt, .001);
+                stepT -= dt;
+                if (sp > 60 && stepT <= 0) { splash(P.x, Math.min(5, sp * .012), 0); stepT = .25; }
+            }
+            lastPX = P.x;
+            // ambient raindrops
+            rainT -= dt;
+            if (rainT <= 0) { splash(POND_X + (Math.random() - .5) * POND_RX * 1.8, 1.2 + Math.random() * 1.5, 0); rainT = .6 + Math.random() * 1.6; }
+            // wind pushes the water a little
+            if (typeof wind !== 'undefined') for (let i = 1; i < WN; i += 6) wv[i] += (wind.v / 400) * .01 * Math.sin(now * 1.5 + i);
+
+            wAcc += dt;
+            while (wAcc >= 1 / 60) { stepWater(); wAcc -= 1 / 60; }
+
+            // droplets
+            for (let i = wSpray.length - 1; i >= 0; i--) {
+                const s = wSpray[i];
+                if (s.fresh) { s.y = surfY(top, sx, sx + s.wx - POND_X); s.fresh = false; }
+                s.vy += 900 * dt; s.y += s.vy * dt; s.wx += s.vx * dt;
+                if (s.vy > 0 && s.y >= surfY(top, sx, sx + s.wx - POND_X)) { splash(s.wx, 1, 0); wSpray.splice(i, 1); }
+            }
+        }
+
         function drawPond(gy, mode) {
             const sx = W / 2 + POND_X - P.x;
             if (Math.abs(sx - W / 2) > W / 2 + POND_RX + 300) return;
@@ -7880,15 +7954,25 @@
             if (mode === 0) {
                 // paper bank + water body (flat top on the ground line, bowl below)
                 ctx.fillStyle = PAPER; ctx.beginPath(); ctx.ellipse(sx, gy + 4, POND_RX + 14, POND_RY + 8, 0, 0, Math.PI); ctx.closePath(); ctx.fill();
+                const top = gy + 4;
+                updateWater(top, sx, now);
+                function waterPath() {
+                    ctx.beginPath();
+                    ctx.moveTo(sx - POND_RX, top);
+                    for (let i = 0; i <= WN; i++) ctx.lineTo(sx - POND_RX + i * WSP, top + wh[i]);
+                    ctx.ellipse(sx, top, POND_RX, POND_RY, 0, 0, Math.PI);   // bowl from right to left
+                    ctx.closePath();
+                }
+
                 // water: pale at the surface, dark and teal at the bottom
                 const wg = ctx.createLinearGradient(0, gy + 4, 0, gy + 4 + POND_RY);
                 wg.addColorStop(0, 'rgba(160,200,210,.32)'); wg.addColorStop(.5, 'rgba(85,130,150,.50)'); wg.addColorStop(1, 'rgba(35,70,95,.68)');
-                ctx.fillStyle = wg; ctx.beginPath(); ctx.ellipse(sx, gy + 4, POND_RX, POND_RY, 0, 0, Math.PI); ctx.closePath(); ctx.fill();
+                ctx.fillStyle = wg; waterPath(); ctx.fill();
 
                 // ---- underwater scene, clipped to the water ----
                 ctx.save();
-                ctx.beginPath(); ctx.ellipse(sx, gy + 4, POND_RX - 2, POND_RY - 1, 0, 0, Math.PI); ctx.closePath(); ctx.clip();
-                const top = gy + 4, dep = POND_RY, ds = dep / 120;
+                waterPath(); ctx.clip();
+                const dep = POND_RY, ds = dep / 120;
                 const by = rx => top + dep * (.8 + .04 * Math.sin(rx * .02) + .03 * Math.sin(rx * .07));   // pond-bed height at pond-relative x
                 // light shafts from the surface
                 ctx.fillStyle = 'rgba(255,255,225,.10)';
@@ -7939,9 +8023,14 @@
                 }
                 ctx.globalAlpha = 1;
                 ctx.restore();
-                ctx.strokeStyle = '#111'; ctx.fillStyle = '#111';
-                ctx.lineWidth = 1.7; ctx.beginPath(); ctx.ellipse(sx, gy + 4, POND_RX, POND_RY, 0, .06, Math.PI - .06); ctx.stroke();
-                ctx.lineWidth = .8; ctx.globalAlpha = .5; ctx.beginPath(); ctx.ellipse(sx, gy + 4, POND_RX * .8, POND_RY * .68, 0, .3, Math.PI - .5); ctx.stroke();
+                ctx.strokeStyle = '#111';
+                ctx.lineWidth = 1.7; ctx.beginPath(); ctx.ellipse(sx, top, POND_RX, POND_RY, 0, .06, Math.PI - .06); ctx.stroke();
+                ctx.lineWidth = 1.4; ctx.beginPath();                       // live surface line
+                for (let i = 0; i <= WN; i++) { const x = sx - POND_RX + i * WSP; i ? ctx.lineTo(x, top + wh[i]) : ctx.moveTo(x, top + wh[i]); }
+                ctx.stroke();
+                ctx.lineWidth = 1; ctx.fillStyle = 'rgba(190,220,230,.8)';
+                for (const s of wSpray) { const dx = sx + s.wx - POND_X; ctx.beginPath(); ctx.arc(dx, s.y, s.r, 0, 7); ctx.fill(); ctx.stroke(); }
+                ctx.lineWidth = .8; ctx.globalAlpha = .5; ctx.beginPath(); ctx.ellipse(sx, top, POND_RX * .8, POND_RY * .68, 0, .3, Math.PI - .5); ctx.stroke();
                 ctx.globalAlpha = 1;
 
                 // shimmer dashes
@@ -7953,20 +8042,16 @@
                     ctx.globalAlpha = .25 + .25 * Math.sin(now * 1.4 + i * 2);
                     ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 14 + hash(i * 7.7) * 22, y); ctx.stroke();
                 }
-                // slow expanding ripples
-                ctx.lineWidth = .9;
-                for (let i = 0; i < 4; i++) {
-                    const ph = (now * .22 + i / 4) % 1;
-                    ctx.globalAlpha = .5 * (1 - ph);
-                    ctx.beginPath(); ctx.ellipse(sx + POND_RX * .26 + (hash(i * 3.3) - .3) * POND_RX * .9, gy + 20 + hash(i * 7.1) * 16, 8 + ph * 40, 2 + ph * 9, 0, 0, 7); ctx.stroke();
-                }
-                ctx.globalAlpha = 1;
 
                 // lily pads
                 for (let i = 0; i < 9; i++) {
-                    const x = sx + POND_RX * .12 + i * POND_RX * .09 + hash(i * 9.2) * POND_RX * .04, y = gy + 18 + hash(i * 4.4) * 18 + Math.sin(now * .8 + i) * 1.2, r = 9 + hash(i * 1.9) * 7;
+                    const x = sx + POND_RX * .12 + i * POND_RX * .09 + hash(i * 9.2) * POND_RX * .04, r = 9 + hash(i * 1.9) * 7;
+                    const y = surfY(top, sx, x) + 14 + hash(i * 4.4) * 4;
+                    const tilt = (surfY(top, sx, x + 8) - surfY(top, sx, x - 8)) / 16;
+                    ctx.save(); ctx.translate(x, y); ctx.rotate(Math.atan(tilt));
                     ctx.fillStyle = 'rgba(95,130,80,.6)'; ctx.lineWidth = 1;
-                    ctx.beginPath(); ctx.ellipse(x, y, r * 1.6, r * .5, 0, .35, Math.PI * 2 - .35); ctx.lineTo(x, y); ctx.closePath(); ctx.fill(); ctx.stroke();
+                    ctx.beginPath(); ctx.ellipse(0, 0, r * 1.6, r * .5, 0, .35, Math.PI * 2 - .35); ctx.lineTo(0, 0); ctx.closePath(); ctx.fill(); ctx.stroke();
+                    ctx.restore();
                 }
 
                 // ---- dock ----
@@ -7976,7 +8061,10 @@
                 for (let x = x0 + 40; x <= x1 - 10; x += 110) {
                     if (x < sx - POND_RX) continue;                      // only over water
                     ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(x, gy + 10); ctx.lineTo(x + 1, gy + POND_RY - 6); ctx.stroke();
-                    ctx.lineWidth = .9; ctx.globalAlpha = .5; ctx.beginPath(); ctx.ellipse(x, gy + 16, 9 + Math.sin(now * 1.6 + x) * 1.5, 2.5, 0, 0, 7); ctx.stroke(); ctx.globalAlpha = 1;
+                    const sy = surfY(top, sx, x);
+                    ctx.lineWidth = .9; ctx.globalAlpha = .5;
+                    ctx.beginPath(); ctx.ellipse(x, sy + 6, 9 + Math.abs(wv[Math.round((x - (sx - POND_RX)) / WSP)] || 0) * 3, 2.5, 0, 0, 7); ctx.stroke();
+                    ctx.globalAlpha = 1;
                     ctx.globalAlpha = .25; ctx.lineWidth = 3; ctx.beginPath();            // wobbly reflection
                     for (let k = 0; k < 6; k++) { const yy = gy + POND_RY - 4 + k * 4; ctx.lineTo(x + Math.sin(now * 2 + k) * 2, yy) }
                     ctx.stroke(); ctx.globalAlpha = 1;
