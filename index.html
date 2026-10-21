@@ -9713,6 +9713,366 @@
             ctx.restore();
         }
 
+
+
+
+        // ================= CROCODILE (lives in the pond) =================
+        // States: IDLE_FLOAT -> SLOW_SWIM -> NOTICE_PLAYER -> TURN -> CHASE -> LOSE_PLAYER -> RETURN_TO_IDLE
+        const CR_N = 12, CR_SEG = 36, CR_X0 = 120;
+        const CR_W = [30, 38, 44, 48, 49, 47, 43, 37, 29, 21, 13, 5];   // body thickness along the spine (head end -> tail)
+        const CR_NOTICE = 950;      // how far away it can notice a swimming player (grows if you splash around)
+        const CR_LOSE = 1900;       // beyond this distance it gives up the chase
+        const CR_CLOSE = 520;       // inside this distance the chase speeds up
+        const CR_SNAP = 150;        // inside this distance it lunges and snaps
+        const CR_SLOW = 34, CR_CHASE = 130, CR_BOOST = 330;   // px/s
+        const CR_SHOVE = true;      // the snap throws you away from it (set false for a purely visual snap)
+
+        const croc = {
+            x: POND_X + 500, vx: 0, dir: -1, fv: -1, st: 'IDLE_FLOAT', stT: 0, nextT: 5, goal: POND_X + 500, blocked: false,
+            cy: 14, pitch: 0, jaw: 0, alert: 0, rise: 0, eyeUp: 6, amp: .12, ph: 0, boost: 0, spd: 0, legPh: 0,
+            sy: new Array(CR_N + 1).fill(22), lk: [1, 0], gl: 0, glT: 6, eo: 0, eoT: 8,
+            snap: 0, snapHit: false, snapCd: 0, wakeT: 0, fishT: 0, rips: [], out: 0
+        };
+
+        function crocOK(x, K) {                      // deep enough under head, body and tail?
+            const need = 62 * Math.min(1, POND_RY / 520);
+            if (Math.abs(x - POND_X) > POND_RX - 420 * K) return false;
+            for (const o of [-230, 0, 230]) if (pondDepth(x + o * K - POND_X) < need) return false;
+            return true;
+        }
+        function crocPick(K) {
+            for (let i = 0; i < 10; i++) {
+                const x = POND_X + (Math.random() * 2 - 1) * POND_RX * .85;
+                if (crocOK(x, K) && Math.abs(x - croc.x) > 500) return x;
+            }
+            return croc.x;
+        }
+        function crocSet(s, K) {
+            croc.st = s; croc.stT = 0;
+            if (s === 'IDLE_FLOAT') croc.nextT = 3 + Math.random() * 6;
+            if (s === 'RETURN_TO_IDLE') { croc.goal = crocPick(K || CSc()); croc.dir = croc.goal >= croc.x ? 1 : -1; }
+        }
+        function crocRip(x, r0, grow, life) {
+            if (croc.rips.length > 40) croc.rips.shift();
+            croc.rips.push({ x, t: 0, life, r0, grow, seed: Math.random() * 100 });
+        }
+
+        function crocTick(dt) {
+            if (!(dt > 0)) return;
+            const c = croc, S = CSc(), K = S, R_ = Math.random;
+            c.stT += dt; c.snapCd = Math.max(0, c.snapCd - dt);
+            const inW = swim.on && inPond(P.x, 0);
+            const py = swim.on ? swim.cy : -140 * S + Math.min(0, P.z);          // player height relative to the waterline
+            const dx = P.x - c.x, dist = Math.hypot(dx, py - c.cy * K);
+            const R = CR_NOTICE * (1 + .5 * Math.min(1, Math.abs(swim.vx || 0) / 200));
+            c.out = inW ? 0 : c.out + dt;
+            const sees = inW && dist < R && (c.snapCd < 3 || dist < R * .5);
+            const wander = c.st === 'IDLE_FLOAT' || c.st === 'SLOW_SWIM';
+            let spdT = 0, alT = 0, riseT = 0, ampT = .12, boostT = 0;
+
+            if (wander) {                                                          // random glances + "eyes only" moments
+                c.glT -= dt; if (c.glT <= 0) { c.gl = 2.5 + R_() * 2.5; c.glT = 7 + R_() * 9; }
+                c.eoT -= dt; if (c.eoT <= 0) { c.eo = 3 + R_() * 4; c.eoT = 9 + R_() * 10; }
+            }
+            c.gl = Math.max(0, c.gl - dt); c.eo = Math.max(0, c.eo - dt);
+
+            switch (c.st) {
+                case 'IDLE_FLOAT': {
+                    ampT = .1;
+                    if (sees) crocSet('NOTICE_PLAYER', K);
+                    else if (c.stT > c.nextT) { c.goal = crocPick(K); c.dir = c.goal >= c.x ? 1 : -1; crocSet('SLOW_SWIM', K); }
+                    break;
+                }
+                case 'SLOW_SWIM': {
+                    spdT = CR_SLOW; ampT = .5;
+                    const gd = c.goal - c.x;
+                    if (sees) crocSet('NOTICE_PLAYER', K);
+                    else if (Math.abs(gd) < 40 || c.stT > 24 || c.blocked) {
+                        c.blocked = false;
+                        if (R_() < .5) crocSet('IDLE_FLOAT', K);
+                        else { c.goal = crocPick(K); c.dir = c.goal >= c.x ? 1 : -1; c.stT = 0; }
+                    } else c.dir = Math.sign(gd) || c.dir;
+                    break;
+                }
+                case 'NOTICE_PLAYER': {                                            // freezes, head lifts, eyes lock on
+                    alT = 1; riseT = .7; ampT = .2;
+                    if (!inW && c.stT > .6) crocSet('LOSE_PLAYER', K);
+                    else if (c.stT > 1.0) crocSet((dx >= 0 ? 1 : -1) === c.dir ? 'CHASE' : 'TURN', K);
+                    break;
+                }
+                case 'TURN': {                                                     // slow roll round to face the player
+                    alT = 1; riseT = .6; ampT = .35; spdT = 10; c.dir = dx >= 0 ? 1 : -1;
+                    if (Math.abs(c.fv - c.dir) < .2 && c.stT > .45) crocSet('CHASE', K);
+                    else if (!inW && c.stT > 1.2) crocSet('LOSE_PLAYER', K);
+                    break;
+                }
+                case 'CHASE': {
+                    const near = clampN((CR_CLOSE - dist) / CR_CLOSE, 0, 1);
+                    boostT = inW ? near : 0;
+                    alT = 1; riseT = .45 + .5 * boostT; ampT = .6 + .5 * boostT;
+                    spdT = inW ? lerp(CR_CHASE, CR_BOOST, boostT) : CR_CHASE * .6;
+                    if (Math.abs(dx) > 140 * K) c.dir = dx >= 0 ? 1 : -1;
+                    if (Math.abs(dx) < 90 * K) spdT *= .3;                         // hovers right under the target
+                    if (c.snap > 0) spdT = 0;
+                    if (inW && c.snap === 0 && c.snapCd <= 0 && Math.abs(dx) < CR_SNAP * K && Math.abs(py - c.cy * K) < 170 * K
+                        && Math.abs(c.fv) > .8 && (dx >= 0 ? 1 : -1) === c.dir) { c.snap = .0001; c.snapHit = false; }
+                    if (c.out > 3 || dist > CR_LOSE) crocSet('LOSE_PLAYER', K);
+                    break;
+                }
+                case 'LOSE_PLAYER': {                                              // interest fades, sinks to eyes only
+                    alT = Math.max(0, .6 - c.stT * .18); spdT = CR_SLOW * 1.1; ampT = .4;
+                    if (c.snapCd > 5) c.dir = dx >= 0 ? -1 : 1;                    // just snapped: backs off
+                    if (c.stT > 3.8) crocSet('RETURN_TO_IDLE', K);
+                    else if (sees && c.stT > 1.6 && dist < R * .6 && c.snapCd < 3) crocSet('NOTICE_PLAYER', K);
+                    break;
+                }
+                case 'RETURN_TO_IDLE': {
+                    spdT = CR_SLOW * .85; ampT = .4;
+                    const gd = c.goal - c.x; c.dir = Math.sign(gd) || c.dir;
+                    if (sees && dist < R * .7 && c.snapCd < 3) crocSet('NOTICE_PLAYER', K);
+                    else if (Math.abs(gd) < 60 || c.stT > 7 || c.blocked) { c.blocked = false; crocSet('IDLE_FLOAT', K); }
+                    break;
+                }
+            }
+            if (c.gl > 0 && wander && Math.hypot(dx, py) < 2000) { alT = Math.max(alT, .5); riseT = Math.max(riseT, .15); }
+            const eoWant = (wander && c.eo > 0) || (c.st === 'LOSE_PLAYER' && c.stT > 1.2) || (c.st === 'RETURN_TO_IDLE' && c.stT < 2);
+
+            // ---- smooth every pose value (no popping between states) ----
+            const kk = f => Math.min(1, dt * f);
+            c.boost += (boostT - c.boost) * kk(2.5);
+            c.alert += (alT - c.alert) * kk(3.5);
+            c.rise += (riseT - c.rise) * kk(3);
+            c.amp += (ampT - c.amp) * kk(2.5);
+            c.spd += (spdT - c.spd) * kk(1.8);
+            c.eyeUp += ((eoWant ? 16 : 6) - c.eyeUp) * kk(4);
+            let cyT = eoWant ? 26 : 14 - 12 * riseT - 6 * c.boost;
+            if (c.st === 'CHASE' && inW) cyT += clampN((py / K - 22) * .12, 0, 18);    // follows you down if you dive
+            if (c.snap > 0 && c.snap < .55) cyT = -12;
+            c.cy += (cyT - c.cy) * kk(3);
+
+            // turn = the whole body rolls round (squashes through the middle), never a hard flip
+            const rate = c.st === 'TURN' ? 1.6 : 2.6, df = c.dir - c.fv;
+            c.fv += clampN(df, -dt * rate, dt * rate);
+            const mf = clampN((c.fv * c.dir - .25) / .75, 0, 1);
+            c.vx += (c.dir * c.spd * mf - c.vx) * kk(4);
+            const nx = c.x + c.vx * dt;
+            if (crocOK(nx, K) || !crocOK(c.x, K)) c.x = nx; else { c.vx = 0; c.blocked = true; }
+
+            // ---- snap: open, lunge, slam, splash ----
+            if (c.snap > 0) {
+                c.snap += dt;
+                if (c.snap < .22 && crocOK(c.x + c.dir * 30, K)) c.x += c.dir * 320 * dt;
+                if (!c.snapHit && c.snap >= .3) {
+                    c.snapHit = true;
+                    const hwx = c.x + c.fv * (CR_X0 + 150) * K;
+                    splash(hwx, 5.5, 10); shake = Math.max(shake, 8); hitstop = Math.max(hitstop, .05);
+                    if (CR_SHOVE && swim.on && Math.abs(P.x - hwx) < 240 * K) { swim.vx += Math.sign(P.x - c.x) * 320; swim.vy = Math.min(swim.vy, 0) - 220; }
+                    c.snapCd = 7.5; crocSet('LOSE_PLAYER', K);
+                }
+                if (c.snap > .8) c.snap = 0;
+            }
+
+            // ---- body wave: every segment lags the one in front, tail lags most ----
+            c.ph += dt * (.9 + .03 * Math.abs(c.vx) + 2.2 * c.boost + (c.snap > 0 ? 4 : 0));
+            c.legPh += dt * (1.2 + .015 * Math.abs(c.vx));
+            for (let i = 0; i <= CR_N; i++) {
+                const f = i / CR_N, tgt = c.cy + 8 * sm(i / 3) + f * 5 + c.amp * Math.sin(c.ph - i * .6) * Math.pow(f, 1.3) * 16;
+                c.sy[i] += (tgt - c.sy[i]) * Math.min(1, dt * (20 - i * 1.3));
+            }
+
+            // ---- head pitch + eye focus ----
+            const hwx = c.x + c.fv * (CR_X0 + 60) * K, hy = c.cy * K, tdx = P.x - hwx, tdy = py - hy;
+            let pT = clampN(-Math.atan2(tdy, Math.max(160, Math.abs(tdx))) * .55 * c.alert, -.3, .3) + c.rise * .1 + c.boost * .1;
+            if (c.snap > 0 && c.snap < .5) pT += .35;
+            c.pitch += (pT - c.pitch) * kk(4);
+            const lx = tdx * (Math.sign(c.fv) || 1), m = Math.hypot(lx, tdy) || 1;
+            c.lk[0] += (lx / m - c.lk[0]) * kk(5); c.lk[1] += (tdy / m - c.lk[1]) * kk(5);
+            let jT = .02 + (c.st === 'CHASE' ? .25 * c.boost : 0);
+            if (c.snap > 0) { const t = c.snap; jT = t < .22 ? .85 * sm(t / .22) : t < .34 ? .85 * (1 - sm((t - .22) / .12)) : 0; }
+            c.jaw += (jT - c.jaw) * kk(c.snap > 0 ? 25 : 6);
+
+            // ---- water: wake, ripples, small disturbances, scared fish ----
+            const sp = Math.abs(c.vx), snoutX = c.x + c.fv * (CR_X0 + 170) * K;
+            c.wakeT -= dt;
+            if (c.wakeT <= 0 && (sp > 14 || c.st === 'IDLE_FLOAT')) {
+                c.wakeT = sp > 14 ? .22 - .13 * c.boost : 1.2;
+                const bigR = 1 + 1.6 * c.boost;
+                crocRip(snoutX, (8 + 6 * R_()) * K, (26 + 30 * R_()) * K * bigR, 1.3 + R_() * .8);                   // snout
+                crocRip(c.x + c.fv * -10 * K, (14 + 8 * R_()) * K, (36 + 30 * R_()) * K * bigR, 1.6 + R_() * .9);    // back
+                if (c.eyeUp > 12) crocRip(c.x + c.fv * (CR_X0 + 40) * K, 6 * K, 22 * K, 1.4);                          // eyes-only rings
+                splash(snoutX, .15 + 2.3 * c.boost * Math.min(1, sp / 200), 0);
+                if (sp > 14) splash(c.x, .08 + .5 * c.boost, 0);
+            }
+            if (c.st === 'CHASE') { c.fishT -= dt; if (c.fishT <= 0) { c.fishT = .35; shockFish(snoutX, c.cy * K + 10, 240); } }
+            if (sp > 40 && R_() < dt * 3 && bubs.length < 40) bubs.push({ wx: snoutX, y: c.cy * K + 6, r: 1.4 + R_() * 2, ph: R_() * 6 });
+            for (let i = c.rips.length - 1; i >= 0; i--) { c.rips[i].t += dt; if (c.rips[i].t > c.rips[i].life) c.rips.splice(i, 1); }
+        }
+
+        // ---- offscreen buffer: draw the whole croc once, then show it twice (above water solid, under water faint) ----
+        let crocCan = null, crocG = null;
+        function crocBuf() {
+            const rt = DPR * ZOOM, w = Math.ceil(1200 * rt), h = Math.ceil(640 * rt);
+            if (!crocCan) { crocCan = document.createElement('canvas'); crocG = crocCan.getContext('2d'); }
+            if (crocCan.width !== w || crocCan.height !== h) { crocCan.width = w; crocCan.height = h; }
+            return rt;
+        }
+
+        // local space: +x = forward, y down, y = 0 is the waterline
+        function crocShape(g, c, now) {
+            const INK = '#151515', PP = '#e6e4e0', N = CR_N, sy = c.sy, amp01 = Math.min(1, c.amp);
+            const jt = (i, s) => (hash(i * 3.17 + s) - .5) * 2.4;                  // hand-drawn wobble
+            const pts = [];
+            for (let i = 0; i <= N; i++) {
+                const wf = 1 + .2 * Math.cos(c.ph - i * .6) * amp01 * (i / N);    // width pulses = the tail swinging side to side
+                pts.push({ x: CR_X0 - i * CR_SEG, y: sy[i], w: i === N ? 1.5 : CR_W[i] * wf });
+            }
+            const Ts = pts.map((p, i) => [p.x, p.y - p.w / 2 + jt(i, 1)]);
+            const Bs = pts.map((p, i) => [p.x, p.y + p.w * .45 + jt(i, 2)]).reverse();
+            const curve = arr => {
+                for (let i = 1; i < arr.length - 1; i++) g.quadraticCurveTo(arr[i][0], arr[i][1], (arr[i][0] + arr[i + 1][0]) / 2, (arr[i][1] + arr[i + 1][1]) / 2);
+                const l = arr[arr.length - 1]; g.lineTo(l[0], l[1]);
+            };
+            g.lineJoin = 'round'; g.lineCap = 'round';
+
+            // paddling legs (behind the body)
+            const leg = (i, ph) => {
+                const p = pts[i], sw = Math.sin(c.legPh + ph), yb = p.y + p.w * .35, x0 = p.x;
+                g.strokeStyle = INK; g.lineWidth = 8; g.beginPath(); g.moveTo(x0, yb); g.lineTo(x0 + 6 + 10 * sw, yb + 20); g.stroke();
+                g.lineWidth = 5.5; g.beginPath(); g.moveTo(x0 + 6 + 10 * sw, yb + 20); g.lineTo(x0 + 18 + 14 * sw, yb + 25); g.stroke();
+            };
+            leg(3, 0); leg(8, Math.PI);
+
+            // body + tapering tail: one big ink silhouette
+            g.beginPath(); g.moveTo(Ts[0][0], Ts[0][1]); curve(Ts); g.lineTo(Bs[0][0], Bs[0][1]); curve(Bs); g.closePath();
+            g.fillStyle = INK; g.fill(); g.strokeStyle = INK; g.lineWidth = 2.4; g.stroke();
+
+            // ridged back
+            g.fillStyle = INK;
+            for (let i = 1; i < N; i++) for (const t of [.3, .75]) {
+                const bx = lerp(Ts[i][0], Ts[i + 1][0], t), by = lerp(Ts[i][1], Ts[i + 1][1], t);
+                const h = (3.5 + 4.5 * Math.sin(Math.PI * (i + t) / (N + .5))) * (.8 + hash(i * 5 + t * 9) * .5);
+                g.beginPath(); g.moveTo(bx - 3.4, by + 2); g.lineTo(bx - 2.2, by - h); g.lineTo(bx + 3.2, by + 2); g.closePath(); g.fill();
+            }
+            // a few internal strokes only
+            g.strokeStyle = PP; g.globalAlpha = .3; g.lineWidth = 1.2;
+            g.beginPath(); for (let i = 1; i < N; i++) { const x = Ts[i][0], y = Ts[i][1] + 3.5; i === 1 ? g.moveTo(x, y) : g.lineTo(x, y); } g.stroke();
+            g.globalAlpha = .26; g.lineWidth = 1.4;
+            for (const i of [2, 3, 4, 5, 6, 7, 8]) { const p = pts[i]; g.beginPath(); g.moveTo(p.x + 4, p.y - p.w * .22); g.lineTo(p.x - 7, p.y - p.w * .05); g.stroke(); }
+            g.globalAlpha = .16; g.beginPath(); for (let i = 2; i < 10; i++) { const p = pts[i]; i === 2 ? g.moveTo(p.x, p.y + p.w * .28) : g.lineTo(p.x, p.y + p.w * .28); } g.stroke();
+            g.globalAlpha = 1;
+
+            // ---------- head ----------
+            g.save(); g.translate(CR_X0, sy[0]); g.rotate(-c.pitch);
+            const hx0 = 6, hy0 = 8, ja = c.jaw, cs = Math.cos(ja), sn = Math.sin(ja);
+            const rj = (x, y) => [hx0 + (x - hx0) * cs - (y - hy0) * sn, hy0 + (x - hx0) * sn + (y - hy0) * cs];
+            const teethK = clampN(ja * 5 + c.boost * .8 + (c.alert > .8 ? .25 : 0), 0, 1);
+            const LJ = [[-10, 6], [-2, 14], [38, 16], [88, 14], [128, 11], [146, 7], [148, 2], [104, 5], [52, 6.5], [0, 5]].map(p => rj(p[0], p[1]));
+            if (ja > .05) {                                                        // open mouth: pale interior for contrast
+                g.fillStyle = '#cfcac0'; g.globalAlpha = Math.min(1, ja * 6);
+                g.beginPath(); g.moveTo(6, 6); g.lineTo(148, 4);
+                for (let i = 6; i < LJ.length; i++) g.lineTo(LJ[i][0], LJ[i][1]);
+                g.closePath(); g.fill(); g.globalAlpha = 1;
+            }
+            g.beginPath(); g.moveTo(LJ[0][0], LJ[0][1]); curve(LJ); g.closePath();   // lower jaw
+            g.fillStyle = INK; g.fill(); g.strokeStyle = INK; g.lineWidth = 2.2; g.stroke();
+            if (teethK > .05) {                                                    // lower teeth
+                g.fillStyle = PP; g.strokeStyle = INK; g.lineWidth = .8; g.globalAlpha = teethK;
+                for (const x of [64, 82, 100, 118, 134]) {
+                    const a = rj(x - 2, 6.5), b = rj(x, 6.5 - 4.5), d = rj(x + 2, 6.5);
+                    g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.lineTo(d[0], d[1]); g.closePath(); g.fill(); g.stroke();
+                }
+                g.globalAlpha = 1;
+            }
+            const U = [[-16, -8], [-6, -15], [16, -16], [44, -13], [70, -11], [100, -12], [120, -15], [136, -14], [148, -9], [153, -1], [149, 5], [100, 6], [56, 6.5], [12, 5.5], [-14, 6]]
+                .map((p, i) => [p[0] + jt(i, 5) * .5, p[1] + jt(i, 6) * .5]);
+            g.beginPath(); g.moveTo(U[0][0], U[0][1]); curve(U); g.closePath();     // upper head + snout
+            g.fillStyle = INK; g.fill(); g.strokeStyle = INK; g.lineWidth = 2.4; g.stroke();
+            if (teethK > .05) {                                                    // jagged upper teeth
+                g.fillStyle = PP; g.strokeStyle = INK; g.lineWidth = .9; g.globalAlpha = teethK;
+                let k = 0;
+                for (let x = 146; x > 50; x -= 12, k++) {
+                    const h = (k % 2 ? 4.5 : 7) * teethK;
+                    g.beginPath(); g.moveTo(x - 2.6, 5.3); g.lineTo(x - .6, 5.3 + h); g.lineTo(x + 2.6, 5.3); g.closePath(); g.fill(); g.stroke();
+                }
+                g.globalAlpha = 1;
+            }
+            g.beginPath(); g.ellipse(140, -14, 5, 3.5, 0, 0, 7); g.fillStyle = INK; g.fill(); g.stroke();   // nostril bump
+            g.strokeStyle = PP; g.lineWidth = 1.2; g.globalAlpha = .3;
+            g.beginPath(); g.moveTo(-8, -13); g.quadraticCurveTo(40, -16, 80, -9); g.lineTo(118, -12); g.stroke();   // skull highlight
+            g.globalAlpha = .2; for (const x of [84, 98, 112]) { g.beginPath(); g.moveTo(x, -8); g.lineTo(x + 1, -1); g.stroke(); }
+            g.globalAlpha = .6; g.lineWidth = 1.4; g.beginPath(); g.moveTo(139, -15.5); g.lineTo(143, -15); g.stroke(); g.globalAlpha = 1;
+
+            // eyes: bumps rise higher when it is "eyes only"; pupils follow the player
+            const eu = c.eyeUp, look = Math.min(1, c.alert * 1.4);
+            const lxv = lerp(.9, c.lk[0], look), lyv = lerp(0, c.lk[1], look);
+            for (const [ex, sc] of [[24, .85], [38, 1]]) {
+                const bcy = -14 - eu * .4, ry = (3.5 + eu * .62) * sc, rx = 8 * sc;
+                g.beginPath(); g.ellipse(ex, bcy, rx, ry, 0, 0, 7); g.fillStyle = INK; g.fill(); g.strokeStyle = INK; g.lineWidth = 2.2; g.stroke();
+                const ey = bcy - ry * .1, ew = 4.3 * sc, eh = 3.6 * sc;
+                g.beginPath(); g.ellipse(ex + 2.5, ey, ew, eh, 0, 0, 7); g.fillStyle = '#ece8dc'; g.fill(); g.strokeStyle = INK; g.lineWidth = 1; g.stroke();
+                g.save(); g.beginPath(); g.ellipse(ex + 2.5, ey, ew, eh, 0, 0, 7); g.clip();
+                g.fillStyle = INK;
+                g.beginPath(); g.ellipse(ex + 2.5 + lxv * 1.8 * sc, ey + lyv * 1.3 * sc, Math.max(.5, 1.4 - .8 * c.alert) * sc, 3.1 * sc, 0, 0, 7); g.fill();   // slit pupil narrows when focused
+                g.fillRect(ex - 6, ey - eh - 1, 14, 2 * eh * (1 - c.alert * .92) * .55 + 1);                                                              // heavy lid, opens when alert
+                g.restore();
+                if (c.alert > .3) { g.fillStyle = PP; g.globalAlpha = c.alert; g.beginPath(); g.arc(ex + 2.5 + 1.2, ey - 1.2, .8, 0, 7); g.fill(); g.globalAlpha = 1; }
+            }
+            g.restore();
+        }
+
+        function drawCroc(gy) {
+            const c = croc, K = CSc(), top = gy + 4, sxp = W / 2 + POND_X - P.x, sx = W / 2 + c.x - P.x, now = performance.now() / 1000;
+            if (Math.abs(sx - W / 2) > W / 2 + 560) return;
+            const rt = crocBuf(), g = crocG, fvD = Math.abs(c.fv) < .14 ? .14 * (Math.sign(c.fv) || 1) : c.fv;
+            g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, crocCan.width, crocCan.height);
+            g.setTransform(rt * K * fvD, 0, 0, rt * K, 600 * rt, 330 * rt);
+            crocShape(g, c, now);
+
+            const bobY = top + (surfY(top, sxp, sx) - top) * .85;
+            // 1) above the water surface: solid ink
+            ctx.save(); ctx.beginPath();
+            const xa = sx - 640, xb = sx + 640; ctx.moveTo(xa, top - 800);
+            for (let x = xa; x <= xb; x += 16) ctx.lineTo(x, surfY(top, sxp, x));
+            ctx.lineTo(xb, top - 800); ctx.closePath(); ctx.clip();
+            ctx.drawImage(crocCan, sx - 600, bobY - 330, 1200, 640); ctx.restore();
+            // 2) under the water: only a dim shape you can still see approaching
+            ctx.save(); waterShape(sxp, top); ctx.clip();
+            ctx.globalAlpha = clampN(.42 - (c.cy - 14) / 140, .14, .42);
+            ctx.drawImage(crocCan, sx - 600, bobY - 330, 1200, 640); ctx.restore();
+
+            // wake behind the snout + irregular ink ripples on the surface
+            const v = Math.min(1, Math.abs(c.vx) / 180), dirT = -(Math.sign(c.fv) || 1), hx = sx + c.fv * (CR_X0 + 165) * K;
+            ctx.save(); ctx.lineCap = 'round'; ctx.strokeStyle = '#111';
+            if (v > .12) {
+                const Ln = (50 + 200 * v) * K;
+                for (let i = 0; i < 3; i++) {
+                    ctx.globalAlpha = (.6 - i * .16) * v; ctx.lineWidth = 1.8 - i * .4; ctx.beginPath();
+                    for (let j = 0; j <= 12; j++) {
+                        const x = hx + dirT * Ln * j / 12, wob = (hash(i * 7.7 + j * 1.3 + Math.floor(now * 6)) - .5) * 2.2;
+                        const y = surfY(top, sxp, x) - 1 - i * 3 - (5 + 9 * v) * Math.sin(Math.PI * j / 12) * (1 - i * .22) + wob;
+                        j ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+                    }
+                    ctx.stroke();
+                }
+                ctx.globalAlpha = .5 * v; ctx.lineWidth = 1.4;
+                for (let k = 0; k < 7; k++) {
+                    const x = hx + dirT * (14 + k * Ln / 7 + 4 * Math.sin(now * 5 + k)), y = surfY(top, sxp, x) - 1 - hash(k + Math.floor(now * 7)) * 4;
+                    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + dirT * 7, y); ctx.stroke();
+                }
+            }
+            ctx.lineWidth = 1.3;
+            for (const r of c.rips) {
+                const rx = r.x - P.x + W / 2; if (rx < -200 || rx > W + 200) continue;
+                const k = r.t / r.life, rad = r.r0 + r.grow * k, ry = Math.max(1.5, rad * .14), y = surfY(top, sxp, rx) + 1;
+                ctx.globalAlpha = .55 * (1 - k);
+                for (let j = 0; j < 4; j++) {                                      // broken arcs = hand-drawn, never a perfect circle
+                    const a0 = hash(r.seed + j * 2.3) * 6.28, len = .9 + hash(r.seed + j * 5.1) * 1.4;
+                    ctx.beginPath(); ctx.ellipse(rx, y, rad * (.9 + hash(r.seed + j) * .2), ry, 0, a0, a0 + len); ctx.stroke();
+                }
+            }
+            ctx.restore();
+        }
+
         function frame(now) {
 
 
@@ -9720,7 +10080,7 @@
             let dt = dt0;
             if (hitstop > 0) { hitstop -= dt0; dt = 0 }
 
-            update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); sgTick(dt); sgGroundTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); waterFXTick(dt); brainTick(dt); gibTick(dt); boneTick(dt); weatherTick(dt); horseTick(dt); birdTick(dt); fowlTick(dt); bgTick(dt); dayTick(dt0); fireflyTick(dt0);
+            update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); sgTick(dt); sgGroundTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); waterFXTick(dt); brainTick(dt); gibTick(dt); boneTick(dt); weatherTick(dt); horseTick(dt); birdTick(dt); fowlTick(dt); crocTick(dt); bgTick(dt); dayTick(dt0); fireflyTick(dt0);
             shake = Math.max(0, shake - dt0 * 60);
             ctx.save();
             if (shake > .3) ctx.translate((Math.random() - .5) * shake * 1.6, (Math.random() - .5) * shake * 1.6);
@@ -9751,6 +10111,7 @@
             drawWaterFX(gy);
             drawBirds(gy);
             drawFowl(gy);
+            drawCroc(gy);
             drawBGoreAir(gy);
             drawHorse(gy);
             beginSwimDraw(gy);
