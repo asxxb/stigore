@@ -4591,6 +4591,7 @@
                 }
                 if (best) { if (!legShot(b, best.e, best.h, S)) gunHit(b, best.e, best.h, S); bullets.splice(i, 1); continue }
                 if (birdsHit(px, py, b.x, b.y, b.F, 20) || fowlHit(px, py, b.x, b.y, b.F, 20)) { bullets.splice(i, 1); continue }
+                if (crocHit(b, px, py)) { bullets.splice(i, 1); continue }
                 if (waterStep(b, px, py, dt)) { bullets.splice(i, 1); continue }
                 if (!b.m && b.y > 0 && !inPond(b.x)) { burst(b.x, -2, 6, 180, b.F); bullets.splice(i, 1); continue }
                 if (b.m ? b.age > 8 : (Math.abs(b.x - b.x0) > GUN_RANGE || b.age > 1.2)) bullets.splice(i, 1);
@@ -4923,6 +4924,7 @@
                 }
                 if (best) { pelletHit(p, best.e, best.h); pellets.splice(i, 1); continue }
                 if (birdsHit(px, py, p.x, p.y, p.F, 22) || fowlHit(px, py, p.x, p.y, p.F, 22)) { pellets.splice(i, 1); continue }
+                if (crocHit(p, px, py)) { pellets.splice(i, 1); continue }
                 if (waterStep(p, px, py, dt)) { pellets.splice(i, 1); continue }
                 if (!p.m && p.y > 0 && !inPond(p.x)) { burst(p.x, -2, 2, 140, p.F); pellets.splice(i, 1); continue }
                 if (p.m ? p.age > 6 : (Math.abs(p.x - p.x0) > SG_RANGE || p.age > .6)) pellets.splice(i, 1);
@@ -7783,18 +7785,7 @@
             ctx.restore();
         }
 
-        // =====================================================================
-        // INK FOREST v2 (sparser, calmer)
-        //
-        // HOW TO INSTALL (same 3 edits in Ink Walker):
-        //   1. Paste this whole file inside your <script>, right above  `function frame(now) {`
-        //   2. In drawWorld(), right after   drawBuildings(gy);   add:   drawForest(gy, 0);
-        //   3. In frame(), right after       drawChar(W / 2, gy, P);   add:   drawForest(gy, 1);
-        //
-        // Reuses: hash, sm, bdShape, bdLine, wind, P, W, PAPER, ctx.
-        //
-        // TUNING KNOBS (top of file): F_SPACING, F_MAX_DENSITY, F_ROUND_BLOBS
-        // =====================================================================
+
 
         const FOREST_X0 = 4500;
         const FOREST_RAMP = 1400;           // slower thickening
@@ -9759,6 +9750,7 @@
 
         function crocTick(dt) {
             if (!(dt > 0)) return;
+            if (crocGoreTick(dt)) return;
             const c = croc, S = CSc(), K = S, R_ = Math.random;
             c.stT += dt; c.snapCd = Math.max(0, c.snapCd - dt);
             const inW = swim.on && inPond(P.x, 0);
@@ -10018,9 +10010,11 @@
                 if (c.alert > .3) { g.fillStyle = PP; g.globalAlpha = c.alert; g.beginPath(); g.arc(ex + 2.5 + 1.2, ey - 1.2, .8, 0, 7); g.fill(); g.globalAlpha = 1; }
             }
             g.restore();
+            crocWounds(g, c, pts, INK, PP);
         }
 
         function drawCroc(gy) {
+            if (croc.dead) return;
             const c = croc, K = CSc(), top = gy + 4, sxp = W / 2 + POND_X - P.x, sx = W / 2 + c.x - P.x, now = performance.now() / 1000;
             if (Math.abs(sx - W / 2) > W / 2 + 560) return;
             const rt = crocBuf(), g = crocG, fvD = Math.abs(c.fv) < .14 ? .14 * (Math.sign(c.fv) || 1) : c.fv;
@@ -10073,6 +10067,232 @@
             ctx.restore();
         }
 
+
+
+
+
+        // ================= CROCODILE GORE =================
+        Object.assign(croc, { hp: 100, dead: 0, deadT: 0, wounded: 0, wd: [], bar: 0, lastBlast: -1, bt: 0 });
+        const cg = { ch: [], cv: [] };          // flying chunks, hanging veins
+        const crocFv = () => { const f = croc.fv; return Math.abs(f) < .14 ? .14 * (Math.sign(f) || 1) : f };
+        function crocPt(lx, ly) { const x = croc.x + crocFv() * lx * CSc(); return [x, waterSurfaceY(x) * .85 + ly * CSc()] }
+
+        // ---- hit test (call from the bullet / pellet loops) ----
+        function crocHit(p, px, py) {
+            const c = croc; if (c.dead) return false;
+            const K = CSc(), dx = p.x - px, dy = p.y - py, l2 = dx * dx + dy * dy || 1; let best = null;
+            const test = (lx, ly, r, head) => {
+                const q = crocPt(lx, ly); let t = ((q[0] - px) * dx + (q[1] - py) * dy) / l2; t = Math.max(0, Math.min(1, t));
+                const x = px + dx * t, y = py + dy * t;
+                if ((x - q[0]) ** 2 + (y - q[1]) ** 2 < (r * K) ** 2 && (!best || t < best.t)) best = { t, x, y, lx, head };
+            };
+            for (let i = 0; i < CR_N; i++) test(CR_X0 - i * CR_SEG, c.sy[i], CR_W[i] / 2 + 6, false);
+            for (const lx of [60, 100, 138]) test(lx, c.sy[0] - 4, 17, true);
+            if (!best) return false;
+            crocDamage(p, best, p.id !== undefined);   // pellets have .id, revolver bullets don't
+            return true;
+        }
+
+        function crocDamage(p, h, sg) {
+            const c = croc, K = CSc(), F = p.F, R = Math.random;
+            if (sg) { if (c.lastBlast === p.id) return; c.lastBlast = p.id }          // one blast = one hit
+            const dmg = sg ? 50 : (h.head ? 18 : 9);                                   // shotgun = 50%
+            c.hp = Math.max(0, c.hp - dmg); c.bar = 2.5;
+            combo.n++; combo.dmg += dmg; combo.t = 1.8; combo.pop = 1.3;
+            const i = Math.max(0, Math.min(CR_N - 1, Math.round((CR_X0 - h.lx) / CR_SEG)));
+            if (c.wd.length < 6) c.wd.push({ i, dx: h.lx - (CR_X0 - i * CR_SEG), dy: Math.max(-14, Math.min(8, (h.y - waterSurfaceY(h.x) * .85) / K - c.sy[i])), r: sg ? 15 : 8, bone: false, seed: R() * 99 });
+            for (let k = 0; k < (sg ? 40 : 14); k++) bgDrop(h.x, Math.min(h.y, -2), F * (60 + R() * 400) + (R() - .5) * 200, -(80 + R() * 400), 1 + R() * 2);
+            for (let k = 0; k < (sg ? 6 : 2); k++) wClouds.push({ x: h.x, y: Math.max(4, h.y), r: 5, g: 22 + R() * 20, t: 0, life: 2 + R(), k: 0 });
+            burst(h.x, h.y, sg ? 18 : 8, 260, F); splash(h.x, sg ? 5 : 2, sg ? 8 : 3);
+            impacts.push({ x: h.x, y: h.y, t: 0, life: .22, s: sg ? 110 : 60, seed: R() * 50 });
+            hitstop = Math.max(hitstop, sg ? .08 : .04); shake = Math.max(shake, sg ? 10 : 4);
+            if (c.hp <= 0) return crocScatter(F);
+            if (sg) { for (let k = 0; k < 4; k++) mkCh('bone', h.x, h.y, F, 320, { s: (6 + R() * 6) * K }); for (let k = 0; k < 3; k++) mkCh('bit', h.x, h.y, F, 300, { o: 'bit', r: 4 * K }) }
+            if (!c.wounded && c.hp <= 50) crocWound(F);
+            else { banner.t = .7; banner.text = 'CROC HIT!' }
+            c.snapCd = Math.max(c.snapCd, c.wounded ? 14 : 3);
+            if (c.wounded) crocSet('LOSE_PLAYER', K); else if (c.st === 'IDLE_FLOAT' || c.st === 'SLOW_SWIM') crocSet('NOTICE_PLAYER', K);
+        }
+
+        function crocVeinAt(get, N, rest, w, col) {
+            const a = get(), vx = (Math.random() - .5) * 120, vy = 20 + Math.random() * 60;
+            cg.cv.push({ p: Array.from({ length: N }, () => ({ x: a[0], y: a[1], ox: a[0] - vx / 60, oy: a[1] - vy / 60 })), rest, w, col, get });
+        }
+        function crocWound(F) {                       // 50%: bones out, veins hanging
+            const c = croc, K = CSc(), cols = ['#b3141c', '#8c0d14', '#6b2a5a', '#eadfcf'];
+            c.wounded = 1; banner.t = 1.2; banner.text = 'BONES EXPOSED!';
+            for (const w of c.wd) {
+                w.bone = true; w.r *= 1.25;
+                const get = () => c.dead ? null : crocPt(CR_X0 - w.i * CR_SEG + w.dx, c.sy[w.i] + w.dy);
+                for (let k = 0; k < 3; k++) crocVeinAt(get, 5 + (Math.random() * 4 | 0), (5 + Math.random() * 3) * K, (1.6 + Math.random() * 1.2) * K, cols[(Math.random() * 4) | 0]);
+            }
+        }
+
+        function mkCh(k, x, y, F, pw, o) {
+            const R = Math.random;
+            cg.ch.push(Object.assign({ k, x, y, vx: F * pw * (.2 + R()) + (R() - .5) * pw, vy: -(pw * .3 + R() * pw * .9), rot: R() * 6, vr: (R() - .5) * 14, r: 6 * CSc(), t: 0, wet: false, landed: false, bn: 0, bl: 0, seed: R() * 99, f: crocFv() > 0 ? 1 : -1 }, o));
+        }
+
+        function crocScatter(F) {                      // 2nd shotgun blast: total dismemberment
+            const c = croc, K = CSc(), R = Math.random;
+            c.dead = 1; c.deadT = 0; c.hp = 0; c.bar = 0; cg.cv.length = 0;
+            const at = i => crocPt(CR_X0 - i * CR_SEG, c.sy[Math.max(0, Math.min(CR_N, Math.round(i)))]);
+            const a = crocPt(CR_X0 + 20, c.sy[0]);
+            mkCh('skull', a[0], a[1], F, 650, { r: 16 * K }); mkCh('jaw', a[0], a[1], -F, 560, { r: 12 * K });
+            const bodies = [];
+            for (const [i0, i1] of [[1, 3], [3, 5], [5, 7]]) { const m = at((i0 + i1) / 2); bodies.push(mkCh('body', m[0], m[1], F, 600, { L: (i1 - i0) * CR_SEG, T: CR_W[i0] * .9, tp: .95, r: CR_W[i0] * K * .35 })) }
+            for (const [i0, T, tp] of [[8, CR_W[8], .45], [10, CR_W[10], .1]]) { const m = at(i0 + 1); mkCh('body', m[0], m[1], F, 600, { L: 72, T, tp, r: 8 * K }) }
+            for (const i of [3, 8]) { const m = at(i); mkCh('leg', m[0], m[1], F, 700, { r: 8 * K }) }
+            const e = crocPt(CR_X0 + 30, c.sy[0] - 14);
+            for (let k = 0; k < 2; k++) mkCh('eye', e[0], e[1], F, 450, { r: 5.5 * K, tr: Array.from({ length: 7 }, () => [e[0], e[1]]) });   // eyes pop out on nerves
+            const kinds = ['heart', 'lung', 'lung', 'liver', 'liver', 'gizzard', 'kidney', 'kidney', 'bit', 'bit', 'bit', 'bit', 'bit', 'bit'];
+            for (const o of kinds) { const m = at(2 + R() * 6); mkCh('organ', m[0], m[1], F, 520, { o, r: (6 + R() * 5) * K }) }
+            for (let k = 0; k < 14; k++) { const m = at(R() * 11); mkCh('bone', m[0], m[1], F, 700, { s: (6 + R() * 9) * K, rib: k < 5 }) }
+            for (let k = 0; k < 10; k++) mkCh('tooth', a[0] + F * R() * 60, a[1], F, 600, { r: 3 * K });
+            const chs = cg.ch.filter(h => h.k === 'body' || h.k === 'skull');
+            for (let k = 0; k < 11; k++) {                                   // veins + two intestines hanging from the chunks
+                const ch = chs[(R() * chs.length) | 0], ox = (R() - .5) * 30 * K, gut = k < 2;
+                crocVeinAt(() => cg.ch.includes(ch) ? [ch.x + ox, ch.y] : null, gut ? 14 : 5 + (R() * 4 | 0), (gut ? 7 : 5 + R() * 3) * K, (gut ? 5.5 : 1.6 + R() * 1.2) * K, gut ? '#e9786c' : ['#b3141c', '#8c0d14', '#6b2a5a', '#eadfcf'][(R() * 4) | 0]);
+                cg.cv[cg.cv.length - 1].gut = gut;
+            }
+            for (let k = 0; k < 130; k++) bgDrop(a[0] + (R() - .5) * 500 * K, -(R() * 40), (R() - .5) * 900, -(100 + R() * 700), 1 + R() * 2.4);
+            for (let k = 0; k < 16; k++) { const m = at(R() * 11); wClouds.push({ x: m[0], y: Math.max(6, m[1]), r: 10, g: 60 + R() * 40, t: 0, life: 4 + R() * 2, k: 0 }) }
+            splash(c.x, 12, 24); impacts.push({ x: c.x, y: -20, t: 0, life: .4, s: 260, seed: R() * 50 });
+            hitstop = Math.max(hitstop, .16); shake = Math.max(shake, 20);
+            banner.t = 1.4; banner.text = 'OBLITERATED!';
+        }
+        function crocRespawn() {
+            Object.assign(croc, { dead: 0, hp: 100, wounded: 0, wd: [], bar: 0, lastBlast: -1, cy: 14, vx: 0, snap: 0, snapCd: 0, x: crocPick(CSc()) });
+            crocSet('IDLE_FLOAT', CSc()); cg.cv.length = 0;
+        }
+
+        // ---- physics: chunks, hanging veins, bleeding. Returns true while dead ----
+        function stepCV(v, dt) {
+            const Q = v.p, N = Q.length, K = CSc(), sub = 2, h = dt / sub, a0 = v.get();
+            for (let s = 0; s < sub; s++) {
+                for (let i = a0 ? 1 : 0; i < N; i++) {
+                    const p = Q[i], wet = inPond(p.x, 0) && p.y > waterSurfaceY(p.x) * .85, d = wet ? .9 : .985;
+                    const vx = (p.x - p.ox) * d, vy = (p.y - p.oy) * d; p.ox = p.x; p.oy = p.y; p.x += vx; p.y += vy + (wet ? 120 : 1800) * h * h;
+                }
+                for (let it = 0; it < 5; it++) {
+                    const a = v.get(); if (a) { Q[0].x = a[0]; Q[0].y = a[1]; Q[0].ox = a[0]; Q[0].oy = a[1] }
+                    for (let i = 0; i < N - 1; i++) {
+                        const A = Q[i], B = Q[i + 1], dx = B.x - A.x, dy = B.y - A.y, d = Math.hypot(dx, dy) || .001, k = (d - v.rest) / d * .5;
+                        if (i === 0 && a) { B.x -= dx * k * 2; B.y -= dy * k * 2 } else { A.x += dx * k; A.y += dy * k; B.x -= dx * k; B.y -= dy * k }
+                    }
+                    for (const p of Q) { const fl = inPond(p.x, -6) ? pondDepth(p.x - POND_X) - 3 : -2 * K; if (p.y > fl) { p.y = fl; p.ox += (p.x - p.ox) * .5 } }
+                }
+            }
+        }
+        function crocGoreTick(dt) {
+            const c = croc, K = CSc(), R = Math.random;
+            c.bar = Math.max(0, c.bar - dt);
+            for (let i = cg.ch.length - 1; i >= 0; i--) {
+                const h = cg.ch[i]; h.t += dt;
+                const inP = inPond(h.x, -6), wet = inP && h.y > waterSurfaceY(h.x);
+                if (wet && !h.wet && h.t > .15) { splash(h.x, Math.min(9, 1.5 + Math.abs(h.vy) / 160), 5); for (let k = 0; k < 3; k++) addBubble(h.x, h.y) }
+                h.wet = wet;
+                if (!h.landed) {
+                    if (wet) { h.vy += 240 * dt; const d = Math.exp(-2.4 * dt); h.vx *= d; h.vy *= d; h.vr *= d } else h.vy += 1500 * dt;
+                    h.x += h.vx * dt; h.y += h.vy * dt; h.rot += h.vr * dt;
+                    const fl = inP ? pondDepth(h.x - POND_X) - h.r * .5 : -h.r * .4;
+                    if (h.y >= fl) { h.y = fl; if (!inP && !h.bn && Math.abs(h.vy) > 220) { h.vy *= -.3; h.bn = 1 } else { h.landed = true; h.vx = h.vy = h.vr = 0 } }
+                    h.bl -= dt;
+                    if (h.t < 5 && h.bl <= 0 && h.k !== 'tooth' && h.k !== 'bone') { h.bl = .07; if (wet) wClouds.push({ x: h.x, y: h.y, r: 3, g: 9, t: 0, life: 1.4, k: 0 }); else bgDrop(h.x, h.y, h.vx * .08 + (R() - .5) * 30, 10 + R() * 30, 1 + R() * 1.4) }
+                }
+                if (h.tr) {                                                          // eye on its optic nerve
+                    h.tr[0] = [h.x, h.y];
+                    for (let j = 1; j < h.tr.length; j++) {
+                        const A = h.tr[j - 1], B = h.tr[j]; B[1] += wet ? .4 : 2.2; const d = Math.hypot(B[0] - A[0], B[1] - A[1]) || 1, L = 6 * K;
+                        if (d > L) { B[0] = A[0] + (B[0] - A[0]) * L / d; B[1] = A[1] + (B[1] - A[1]) * L / d }
+                    }
+                }
+                if (h.t > 50) cg.ch.splice(i, 1);
+            }
+            for (const v of cg.cv) stepCV(v, dt);
+            if (c.wounded && !c.dead && (c.bt -= dt) <= 0) {                         // wounds keep bleeding
+                c.bt = .12;
+                for (const w of c.wd) { const q = crocPt(CR_X0 - w.i * CR_SEG + w.dx, c.sy[w.i] + w.dy); if (q[1] < waterSurfaceY(q[0])) bgDrop(q[0], q[1], (R() - .5) * 30, 10 + R() * 30, 1.2 + R() * 1.4); else wClouds.push({ x: q[0], y: q[1], r: 3, g: 9, t: 0, life: 1.6, k: 0 }) }
+            }
+            if (c.dead && (c.deadT += dt) > 24) crocRespawn();
+            return !!c.dead;
+        }
+
+        // ---- drawing ----
+        function crocWounds(g, c, pts, INK, PP) {        // inside the croc buffer (local space)
+            for (const w of c.wd) {
+                const p = pts[w.i], r = w.r; g.save(); g.translate(p.x + w.dx, p.y + w.dy); g.lineJoin = 'round'; g.lineCap = 'round';
+                if (w.bone) for (let k = 0; k < 3; k++) {                       // ribs / spine sticking out
+                    const bx = (k - 1) * r * .5, tx = bx + (k - 1) * 5, ty = -r * (1.2 + .5 * hash(w.seed + k));
+                    g.strokeStyle = INK; g.lineWidth = 6; g.beginPath(); g.moveTo(bx, 0); g.lineTo(tx, ty); g.stroke();
+                    g.strokeStyle = '#efe9da'; g.lineWidth = 3.2; g.stroke();
+                }
+                g.beginPath();
+                for (let j = 0; j < 10; j++) { const a = j / 10 * 6.283, rr = r * (j % 2 ? .6 : 1.05) * (.8 + .4 * hash(w.seed + j)); const x = Math.cos(a) * rr * 1.2, y = Math.sin(a) * rr * .85; j ? g.lineTo(x, y) : g.moveTo(x, y) }
+                g.closePath(); g.fillStyle = '#7a0b11'; g.fill(); g.strokeStyle = '#4a0508'; g.lineWidth = 1.6; g.stroke();
+                g.fillStyle = '#d4443a'; g.beginPath(); g.ellipse(0, 0, r * .6, r * .4, 0, 0, 7); g.fill();
+                g.strokeStyle = '#8c0d14'; g.lineWidth = 3; g.beginPath(); g.moveTo(0, r * .5); g.lineTo(2, r * .5 + 12); g.stroke();
+                g.restore();
+            }
+        }
+        function drawChunk(h) {
+            const K = CSc(); ctx.scale(h.f, 1); ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.strokeStyle = '#111'; ctx.lineWidth = 2;
+            const poly = (pts, col) => { ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath(); ctx.fillStyle = col; ctx.fill(); ctx.stroke() };
+            const cut = (x, ry) => {
+                ctx.fillStyle = '#8c0d14'; ctx.beginPath(); ctx.ellipse(x, 0, 5, ry, 0, 0, 7); ctx.fill(); ctx.stroke();
+                ctx.fillStyle = '#d4443a'; ctx.beginPath(); ctx.ellipse(x, 0, 3, ry * .6, 0, 0, 7); ctx.fill();
+                ctx.fillStyle = '#efe9da'; ctx.beginPath(); ctx.arc(x, 0, 3, 0, 7); ctx.fill();
+            };
+            if (h.k === 'body') {
+                ctx.scale(K, K); const L = h.L / 2, T = h.T / 2, T2 = T * h.tp;
+                poly([[-L, -T], [0, -T * .95 - 3], [L, -T2], [L, T2], [-L, T]], '#151515');
+                ctx.fillStyle = '#151515'; for (let x = -L + 8; x < L - 6; x += 14) { ctx.beginPath(); ctx.moveTo(x - 3, -T - 1); ctx.lineTo(x, -T - 7); ctx.lineTo(x + 3, -T - 1); ctx.fill() }
+                cut(-L, T); cut(L, T2);
+            } else if (h.k === 'skull' || h.k === 'jaw') {
+                ctx.scale(K, K); const up = h.k === 'skull';
+                poly(up ? [[0, -10], [20, -16], [60, -13], [100, -12], [140, -10], [152, -2], [148, 5], [0, 6]] : [[0, 6], [40, 15], [100, 13], [146, 7], [100, 5], [0, 5]], '#151515');
+                ctx.fillStyle = '#efe9da'; ctx.lineWidth = 1;
+                for (let x = 140; x > 56; x -= 14) { ctx.beginPath(); ctx.moveTo(x - 3, up ? 5.5 : 6); ctx.lineTo(x, up ? 12 : -1); ctx.lineTo(x + 3, up ? 5.5 : 6); ctx.closePath(); ctx.fill(); ctx.stroke() }
+                if (up) { ctx.fillStyle = '#4a0508'; ctx.beginPath(); ctx.ellipse(32, -12, 5, 4, 0, 0, 7); ctx.fill(); ctx.stroke(); ctx.fillStyle = '#d4443a'; ctx.beginPath(); ctx.ellipse(32, -12, 2.5, 2, 0, 0, 7); ctx.fill() }   // empty socket
+                cut(0, 9);
+            } else if (h.k === 'leg') {
+                ctx.scale(K, K); ctx.strokeStyle = '#151515'; ctx.lineWidth = 9; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(10, 20); ctx.lineTo(28, 25); ctx.stroke();
+                ctx.fillStyle = '#8c0d14'; ctx.beginPath(); ctx.arc(0, 0, 5, 0, 7); ctx.fill(); ctx.fillStyle = '#efe9da'; ctx.beginPath(); ctx.arc(0, 0, 2.2, 0, 7); ctx.fill();
+            } else if (h.k === 'organ') { bgOrgan(h.o, h.r, h.seed) }
+            else if (h.k === 'bit') { bgOrgan('bit', h.r, h.seed) }
+            else if (h.k === 'tooth') { poly([[-h.r, 0], [0, -h.r * 2.4], [h.r, 0]], '#efe9da') }
+            else if (h.k === 'bone') {
+                const s = h.s; ctx.fillStyle = '#efe9da'; ctx.lineWidth = 1.6;
+                if (h.rib) { ctx.strokeStyle = '#111'; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(0, 0, s * 1.2, .2, 2.6); ctx.stroke(); ctx.strokeStyle = '#efe9da'; ctx.lineWidth = 2.6; ctx.stroke() }
+                else poly([[-s, 0], [-s * .25, -s * .24], [s, -s * .06], [s * .35, s * .22]], '#efe9da');
+            } else if (h.k === 'eye') {
+                ctx.fillStyle = '#ece8dc'; ctx.beginPath(); ctx.arc(0, 0, h.r, 0, 7); ctx.fill(); ctx.stroke();
+                ctx.fillStyle = '#111'; ctx.beginPath(); ctx.ellipse(h.r * .3, 0, h.r * .22, h.r * .65, 0, 0, 7); ctx.fill();
+            }
+        }
+        function drawCrocGore(gy) {
+            const c = croc, K = CSc(), X = x => x - P.x + W / 2, Y = y => gy + 4 + y;
+            ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+            for (const v of cg.cv) {                                                 // hanging veins / intestines
+                const p = v.p; if (Math.abs(p[0].x - P.x) > W / 2 + 500) continue;
+                const pass = (w, col, a) => { ctx.globalAlpha = a; ctx.strokeStyle = col; ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(X(p[0].x), Y(p[0].y)); for (let i = 1; i < p.length; i++) ctx.lineTo(X(p[i].x), Y(p[i].y)); ctx.stroke() };
+                pass(v.w + 2.6, '#111', 1); pass(v.w, v.col, 1); pass(v.w * .35, '#fbd5cc', .6);
+                const t = p[p.length - 1]; ctx.globalAlpha = 1; ctx.fillStyle = '#8c0d14'; ctx.beginPath(); ctx.arc(X(t.x), Y(t.y), v.w * .55 + 1, 0, 7); ctx.fill();
+            }
+            for (const h of cg.ch) {                                                 // chunks, organs, bones, eyes
+                const sx = X(h.x); if (sx < -300 || sx > W + 300) continue;
+                if (h.tr) { ctx.globalAlpha = .95; for (const [w, col] of [[4.5, '#111'], [2.2, '#d4443a']]) { ctx.strokeStyle = col; ctx.lineWidth = w * K; ctx.beginPath(); h.tr.forEach((q, i) => i ? ctx.lineTo(X(q[0]), Y(q[1])) : ctx.moveTo(X(q[0]), Y(q[1]))); ctx.stroke() } }
+                ctx.save(); ctx.globalAlpha = Math.min(1, (50 - h.t) / 6) * (h.wet ? .8 : 1);
+                ctx.translate(sx, Y(h.y)); ctx.rotate(h.rot); drawChunk(h); ctx.restore();
+            }
+            if (c.bar > 0 && !c.dead) {                                              // health bar
+                const q = crocPt(100, c.sy[0] - 55), bx = X(q[0]) - 40, by = Y(q[1]);
+                ctx.globalAlpha = Math.min(1, c.bar); ctx.strokeStyle = '#111'; ctx.fillStyle = '#111'; ctx.lineWidth = 2;
+                ctx.strokeRect(bx, by, 80, 9); ctx.fillRect(bx + 2, by + 2, 76 * c.hp / 100, 5);
+            }
+            ctx.restore();
+        }
+
         function frame(now) {
 
 
@@ -10111,7 +10331,7 @@
             drawWaterFX(gy);
             drawBirds(gy);
             drawFowl(gy);
-            drawCroc(gy);
+            drawCroc(gy); drawCrocGore(gy);
             drawBGoreAir(gy);
             drawHorse(gy);
             beginSwimDraw(gy);
