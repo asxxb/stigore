@@ -7081,7 +7081,37 @@
                 t: 0, life: 2.2 + Math.random() * 1.5, seed: Math.random() * 6, dark: Math.random() < .65
             });
         }
+        // perch surfaces in world px: x, y (negative = up from the ground), by = bird sitting there
+        const PERCH = [];
+        (function () {
+            const add = (wx, sc, lx, ly) => PERCH.push({ x: wx + lx * sc, y: ly * sc, by: null });
+            add(2200, 3.5, -60, -170.5); add(2200, 3.5, 35, -180.3); add(2200, 3.5, 75, -164.6); add(2200, 3.5, 145, -22);   // barn roof + hay bale
+            add(-1500, 2.5, -20, -168); add(-1500, 2.5, 20, -168); add(-1500, 2.5, 85, -150); add(-1500, 2.5, -90, -150);    // saloon front
+            add(-2500, 2.5, -40, -82.3); add(-2500, 2.5, 40, -118);                                                         // shack roof + chimney
+            add(1000, 2.3, 0, -100); add(1000, 2.3, 24, -85);                                                               // well roof
+            add(700, 2.4, 1, -90); add(700, 2.4, -30, -84);                                                                 // signpost
+            add(4100, 2.7, 0, -222); add(4100, 2.7, -30, -100);                                                             // water tower
+            add(-1220, 2.2, -30, -40); add(-1220, 2.2, 28, -52); add(-1220, 2.2, -4, -38);                                  // barrels + crates
+            add(-950, 2.2, -10, -99);                                                                                       // wagon cover
+            add(-3400, 2.2, -30, -44); add(-3400, 2.2, 56, -46); add(-3400, 2.2, -70, -54); add(-3400, 2.2, 14, -60);       // graves
+            PERCH.push({ x: 1602, y: -72, by: null }, { x: 1638, y: -72, by: null });                                       // hitching post
+        })();
+        function freePerch(b) { if (b.perch) { if (b.perch.by === b) b.perch.by = null; b.perch = null } }
+        function pickPerch(b) {
+            let best = null, bd = 1e9;
+            for (const sp of PERCH) { if (sp.by) continue; const d = Math.abs(sp.x - b.x); if (d < bd) { bd = d; best = sp } }
+            if (best) { best.by = b; b.perch = best }
+            return best;
+        }
+        function wakeBird(b) {
+            freePerch(b);
+            b.st = 0; b.F = Math.random() < .5 ? -1 : 1; b.vx = b.F * (90 + Math.random() * 120);
+            b.by = b.y - Math.sin(b.t * 1.7 + b.seed) * 16; b.up = H * .12;          // hop up, then fly off
+            puffFeathers(b.x, b.y, 2, b.F);
+        }
+
         function killBird(b, F) {
+            freePerch(b);
             b.st = 1; b.t = 0; b.vy = -120;
             b.vx = F * 220 + b.vx * .3;
             b.vr = (Math.random() < .5 ? -1 : 1) * (7 + Math.random() * 6);
@@ -7094,7 +7124,7 @@
         function birdsHit(x0, y0, x1, y1, F, rad) {
             const S = CSc();
             for (const b of birds) {
-                if (b.st !== 0) continue;
+                if (b.st !== 0 && b.st !== 3 && b.st !== 4) continue;
                 const r = rad * S * b.s, dx = x1 - x0, dy = y1 - y0, l2 = dx * dx + dy * dy || 1;
                 let t = ((b.x - x0) * dx + (b.y - y0) * dy) / l2; t = Math.max(0, Math.min(1, t));
                 const cx = x0 + dx * t, cy = y0 + dy * t;
@@ -7103,21 +7133,34 @@
             return false;
         }
         function birdTick(dt) {
-            const S = CSc();
+            const S = CSc(), night = DN.d > .45, dawn = DN.d < .25;
             let flying = 0; for (const b of birds) if (b.st === 0) flying++;
-            if (flying < BIRD_MAX) { birdT -= dt; if (birdT <= 0) { spawnBirdGroup(); birdT = 3 + Math.random() * 5; } }
+            if (DN.d < .35 && flying < BIRD_MAX) { birdT -= dt; if (birdT <= 0) { spawnBirdGroup(); birdT = 3 + Math.random() * 5; } }
             for (let i = birds.length - 1; i >= 0; i--) {
                 const b = birds[i]; b.t += dt;
-                if (b.st === 0) {
+                if (b.st === 0) {                                           // flying
                     b.x += b.vx * dt; b.ph += dt * (10 + 2 * Math.sin(b.seed));
+                    if (b.up > 0) { const d = Math.min(b.up, 120 * dt); b.by -= d; b.up -= d }
                     b.y = b.by + Math.sin(b.t * 1.7 + b.seed) * 16;
+                    if (night && pickPerch(b)) { b.st = 3; continue }
                     if (Math.abs(b.x - P.x) > W / 2 + 550) birds.splice(i, 1);
+                } else if (b.st === 3) {                                    // gliding in to land
+                    const sp = b.perch, tx = sp.x, ty = sp.y - 7 * S * b.s, dx = tx - b.x, dy = ty - b.y, d = Math.hypot(dx, dy);
+                    if (Math.abs(dx) > 8) b.F = Math.sign(dx);
+                    const v = Math.max(30, Math.min(170, d * 1.3));
+                    b.ph += dt * (10 + 7 * (1 - clamp01(d / 160)));         // flaps harder as it brakes
+                    if (d <= 3 || d < v * dt) {
+                        b.x = tx; b.y = ty; b.st = 4; b.t = 0; b.vx = 0; b.wake = Math.random() * 10;
+                        puffFeathers(b.x, b.y, 3, b.F);
+                    } else { b.x += dx / d * v * dt; b.y += dy / d * v * dt; b.vx = dx / d * v }
+                } else if (b.st === 4) {                                    // perched, asleep
+                    if (dawn) { b.wake -= dt; if (b.wake <= 0) wakeBird(b) }
                 } else if (b.st === 1) {
                     b.vy += 1500 * dt; b.vx *= Math.max(0, 1 - 1.2 * dt);
                     b.x += b.vx * dt; b.y += b.vy * dt; b.rot += b.vr * dt;
                     if (b.y >= -7 * S * b.s) {
                         b.y = -7 * S * b.s; b.st = 2; b.t = 0; b.vx = 0;
-                        b.rot = Math.PI + (b.F > 0 ? .15 : -.15);        // lies belly up
+                        b.rot = Math.PI + (b.F > 0 ? .15 : -.15);
                         burst(b.x, -3, 6, 160, b.F); shake = Math.max(shake, 1.5);
                         puffFeathers(b.x, -8, 6, b.F);
                         if (splats.length < 160) splats.push({ x: b.x, w: 12 * S, h: 3 * S, t: 0 });
@@ -7126,7 +7169,7 @@
             }
             for (let i = feathers.length - 1; i >= 0; i--) {
                 const f = feathers[i]; f.t += dt;
-                f.vy = Math.min(70, f.vy + 300 * dt);                      // floats down slowly
+                f.vy = Math.min(70, f.vy + 300 * dt);
                 f.vx += Math.sin(f.t * 6 + f.seed) * 120 * dt; f.vx *= Math.max(0, 1 - 1.2 * dt);
                 f.x += f.vx * dt; f.y += f.vy * dt; f.rot += f.vr * dt;
                 if (f.y >= -2) { f.y = -2; f.vx = 0; f.vy = 0; f.vr = 0; }
@@ -7147,17 +7190,17 @@
             ctx.globalAlpha = 1;
             for (const b of birds) {
                 const sx = b.x - P.x + W / 2; if (sx < -80 || sx > W + 80) continue;
-                const dead = b.st !== 0;
+                const dead = b.st === 1 || b.st === 2, asleep = b.st === 4;
                 const flap = dead ? (b.st === 2 ? 1.6 : 1.2 + Math.sin(b.t * 25) * .6 * Math.exp(-b.t * 3)) : null;
                 const wing = (ph, far) => {
-                    const phi = dead ? flap : .8 + 1.2 * Math.sin(ph);
+                    const phi = dead ? flap : asleep ? -1.05 + .03 * Math.sin(b.t * 1.5) : .8 + 1.2 * Math.sin(ph);
                     ctx.save(); ctx.translate(2, -4); ctx.rotate(phi); if (far) ctx.scale(.85, .85);
                     ctx.globalAlpha = far ? .7 : 1;
                     ctx.beginPath(); ctx.moveTo(5, 0); ctx.quadraticCurveTo(2, -20, -16, -32);
                     ctx.quadraticCurveTo(-8, -16, -12, 0); ctx.closePath(); ctx.fill(); ctx.stroke();
                     ctx.restore();
                 };
-                ctx.save(); ctx.translate(sx, gy + 4 + b.y); ctx.scale(S * b.s * b.F, S * b.s); ctx.rotate(b.rot);
+                ctx.save(); ctx.translate(sx, gy + 4 + b.y + (asleep ? Math.sin(b.t * 1.8 + b.seed) * .8 : 0)); ctx.scale(S * b.s * b.F, S * b.s); ctx.rotate(b.rot);
                 ctx.fillStyle = '#111'; ctx.strokeStyle = '#111'; ctx.lineWidth = 2;
                 wing(b.ph + .5, true);
                 ctx.beginPath(); ctx.ellipse(0, 0, 13, 6.5, 0, 0, 7); ctx.fill(); ctx.stroke();           // body
@@ -7166,10 +7209,16 @@
                 ctx.fillStyle = '#c99a3a'; ctx.beginPath(); ctx.moveTo(17, -4.5); ctx.lineTo(25, -2); ctx.lineTo(17, -.5); ctx.closePath(); ctx.fill();   // beak
                 ctx.fillStyle = PAPER; ctx.globalAlpha = .55; ctx.beginPath(); ctx.ellipse(1, 2.5, 8, 2.8, 0, 0, 7); ctx.fill(); ctx.globalAlpha = 1;   // pale belly
                 if (dead) { ctx.strokeStyle = PAPER; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(13, -6); ctx.lineTo(16, -3); ctx.moveTo(16, -6); ctx.lineTo(13, -3); ctx.stroke(); }
+                else if (asleep) { ctx.strokeStyle = PAPER; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(13, -4.3); ctx.lineTo(16, -4.3); ctx.stroke(); }
                 else { ctx.fillStyle = PAPER; ctx.beginPath(); ctx.arc(14.5, -4.3, 1.2, 0, 7); ctx.fill(); }
                 ctx.fillStyle = '#111'; ctx.strokeStyle = '#111';
                 wing(b.ph, false);
                 ctx.restore();
+                if (asleep && b.t > 1.5) {
+                    const zt = (b.t * .45 + b.seed) % 1;
+                    ctx.save(); ctx.globalAlpha = Math.sin(Math.PI * zt) * .7; ctx.fillStyle = '#111'; ctx.font = 'italic bold ' + Math.round(13 * S * b.s) + 'px Georgia,serif';
+                    ctx.fillText('z', sx + b.F * 12 * S + zt * 8, gy + 4 + b.y - 14 * S - zt * 26); ctx.restore();
+                }
             }
             ctx.restore();
         }
@@ -7189,6 +7238,7 @@
             DN.d = sm((.1 - DN.sunH) / .6);                                  // 0 = day, 1 = full night
             DN.dusk = Math.max(0, 1 - Math.abs(DN.sunH - .02) / .3);         // warm tint at sunrise / sunset
             lanternTick(dt);
+            meteorTick(dt);
         }
         function skyBody() {
             const cam = P.x, t = DN.t, out = { sun: null, moon: null };
@@ -7465,6 +7515,42 @@
                 ctx.restore();
             }
         }
+        const meteors = []; let meteorT = 4;
+        function spawnMeteor(delay) {
+            const dir = Math.random() < .5 ? 1 : -1, a = .35 + Math.random() * .4, sp = 750 + Math.random() * 450;
+            meteors.push({
+                x: W * (dir > 0 ? .05 + Math.random() * .55 : .4 + Math.random() * .55), y: H * (.04 + Math.random() * .22),
+                vx: dir * Math.cos(a) * sp, vy: Math.sin(a) * sp, t: -(delay || 0), life: .7 + Math.random() * .6, len: 130 + Math.random() * 110, w: 2.6 + Math.random() * 1.4
+            });
+        }
+        function meteorTick(dt) {
+            if (DN.d > .55) {
+                meteorT -= dt;
+                if (meteorT <= 0) { meteorT = 3.5 + Math.random() * 7; spawnMeteor(0); if (Math.random() < .25) spawnMeteor(.25 + Math.random() * .4) }
+            }
+            for (let i = meteors.length - 1; i >= 0; i--) {
+                const m = meteors[i]; m.t += dt;
+                if (m.t < 0) continue;
+                m.x += m.vx * dt; m.y += m.vy * dt;
+                if (m.t > m.life || m.y > groundY() - 80) meteors.splice(i, 1);
+            }
+        }
+        function drawMeteors(d) {
+            const fa = sm((d - .45) / .4); if (fa < .01) return;
+            ctx.save(); ctx.lineCap = 'round'; ctx.strokeStyle = '#f4f1e4'; ctx.fillStyle = '#f4f1e4';
+            for (const m of meteors) {
+                if (m.t < 0) continue;
+                const k = m.t / m.life, env = Math.sin(Math.PI * Math.min(1, k)) * fa, sp = Math.hypot(m.vx, m.vy), ux = m.vx / sp, uy = m.vy / sp, N = 14;
+                for (let s = 0; s < N; s++) {                                   // tapered tail, fading out
+                    const k0 = s / N, k1 = (s + 1) / N, L = m.len * (.4 + .6 * Math.min(1, k * 3));
+                    ctx.globalAlpha = env * Math.pow(1 - k0, 1.7); ctx.lineWidth = Math.max(.6, m.w * (1 - k0));
+                    ctx.beginPath(); ctx.moveTo(m.x - ux * L * k0, m.y - uy * L * k0); ctx.lineTo(m.x - ux * L * k1, m.y - uy * L * k1); ctx.stroke();
+                }
+                ctx.globalAlpha = env; ctx.beginPath(); ctx.arc(m.x, m.y, m.w * .8, 0, 7); ctx.fill();               // bright head
+                ctx.lineWidth = .9; ctx.globalAlpha = env * .7; ctx.beginPath(); ctx.moveTo(m.x - 7, m.y); ctx.lineTo(m.x + 7, m.y); ctx.moveTo(m.x, m.y - 7); ctx.lineTo(m.x, m.y + 7); ctx.stroke();   // sparkle
+            }
+            ctx.restore();
+        }
         function drawNight(gy) {
             if (DN.dusk > .01) { ctx.save(); ctx.globalAlpha = .15 * DN.dusk; ctx.fillStyle = '#c8783c'; ctx.fillRect(0, 0, W, H); ctx.restore(); }   // warm dawn/dusk wash
             const d = DN.d; if (d < .01) return;
@@ -7493,6 +7579,7 @@
             for (const L of lights) nGlow(L[0], L[1], L[2] * .8, L[4] * d);     // warm tint
 
             drawStars(gy, d, now);
+            drawMeteors(d);
             if (sb.moon) drawMoon(sb.moon, d);
 
             ctx.save(); ctx.globalAlpha = d; ctx.fillStyle = vigN; ctx.fillRect(0, 0, W, H); ctx.restore();   // deeper vignette
