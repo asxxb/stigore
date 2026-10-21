@@ -1718,7 +1718,7 @@
 
         // ---- clinch tuning ----
         const CLD = 158;                       // distance between the fighters while clinched (px before scale)
-        const CL_HIPX = 30, CL_LEAN = .14;     // attacker steps in and leans into the hold
+        const CL_HIPX = 30, CLINCH_LEAN = .14;     // attacker steps in and leans into the hold
         let lastArm = null;
         function ik2(sh, tx, ty, F) {          // two-bone arm IK -> [ang, flex] for arm()
             const A = 58, B = 56, x = (tx - sh[0]) * F, y = ty - sh[1];
@@ -7949,12 +7949,18 @@
             }
         }
 
-        // ---------- swimming / wading (SWIM v2) ----------
+        // ============================================================================
+        // SWIM v3 : continuous land<->water transitions (replaces swim-v2.js)
+        // ============================================================================
         const PL_H = () => 277 * CSc();
+        const CLIMB_MAX = .7;                 // tallest bank (fraction of body height) that can be climbed
+        const STEP_UP = 330;                  // max px/s the feet may rise when the floor slopes up (wading)
+        const BANK_EXTRA = { L: 0, R: 0 };    // extra px of bank height per rim: raise it to make a rim "too high"
         const swim = {
-            on: false, cy: 0, vy: 0, vx: 0, tilt: 0, h: 0, pw: 0, sp: 0, kp: 0, ef: 0, out: 0, breath: 1,
-            df: 1, tf: 1, turn: 0, lock: 0, cd: 0, bt: 0, st: 0, wk: 0, dPrev: false, uPrev: false, drawing: false,
-            y: 0, in: false, sub: 0, ext: 0, th: 0, headY: 0, pHY: 0, gnd: false, dive: 0
+            on: false, cy: 0, vy: 0, vx: 0, tilt: 0, h: 0, lean: 0, vl: 0, pw: 0, gk: 0, sp: 0, kp: 0, ef: 0, out: 0, breath: 1,
+            df: 1, tf: 1, turn: 0, lock: 0, cd: 0, bt: 0, st: 0, wk: 0, dPrev: false, uPrev: false, drawing: false, y: 0,
+            in: false, fin: false, sub: 0, ext: 0, th: 0, headY: 0, pHY: 0, gnd: false, dv: 0, wall: 0, msg: 0,
+            cl: 0, clD: 1, clX0: 0, clCy0: 0, clL: 0, clLn0: 0, clF: 0
         };
         const swimHooks = { start() { }, end() { }, drown() { } };
         const swimKeys = {}, bubs = [];
@@ -7962,6 +7968,11 @@
         addEventListener('keyup', e => swimKeys[e.code] = false);
         let sLast = 0, swimSx = 0, swimTop = 0;
         const cl01 = v => Math.max(0, Math.min(1, v));
+        function kf(t, K) {                                                    // smooth keyframes [[time, value], ...]
+            if (t <= K[0][0]) return K[0][1];
+            for (let i = 1; i < K.length; i++) if (t <= K[i][0]) { const a = K[i - 1], b = K[i]; return a[1] + (b[1] - a[1]) * sm((t - a[0]) / (b[0] - a[0])) }
+            return K[K.length - 1][1];
+        }
 
         function floorDepth(wx) {
             const rx = wx - POND_X, rel = Math.min(1, Math.abs(rx) / POND_RX);
@@ -7975,36 +7986,86 @@
             ctx.ellipse(sx, top, POND_RX, POND_RY, 0, 0, Math.PI); ctx.closePath();
         }
 
-        // body geometry: th = body angle from upright (0 = standing, PI/2 = flat), ext = half vertical extent,
-        // sub = how submerged the body is (0..1), headY = head depth below the surface
+        // th = body angle from upright (tilt toward horizontal + extra lean), ext = half vertical extent,
+        // sub = submersion 0..1, headY = actual head depth below the surface
         function swimGeom(H0, S) {
-            const s = swim, th = s.tilt * (Math.PI / 2 + s.h), c = Math.abs(Math.cos(th));
+            const s = swim, th = s.tilt * (Math.PI / 2 + s.h) + s.lean, c = Math.abs(Math.cos(th));
             s.th = th; s.ext = H0 / 2 * c + 14 * S * (1 - c);
             s.sub = cl01((s.cy + s.ext) / (2 * s.ext));
             s.headY = s.cy - H0 / 2 * Math.cos(th);
         }
-        function swimExit(out, vx) {
+        function swimExit(vx, dir, out) {
             const s = swim;
-            s.out = out; s.on = false; s.cd = .6; s.tilt = 0; s.pw = 0; s.turn = 0; s.gnd = false;
-            P.vx = vx * .6; P.lean = 0; P.amp = 0; splash(P.x, 4, 6); swimHooks.end();
+            s.on = false; s.cd = .6; s.tilt = 0; s.h = 0; s.lean = 0; s.vl = 0; s.pw = 0; s.gk = 0; s.turn = 0; s.gnd = false; s.cl = 0; s.clF = 0;
+            s.out = out || 0; P.vx = vx; P.vz = 0; P.z = 0; P.face = dir || s.df; swimHooks.end();
+        }
+
+        // ---------- ledge climb: reach -> pull -> leg lift -> weight shift -> stand ----------
+        const CL_END = 2.9;
+        const CL_R = [[0, 0], [.5, .08], [1.2, .6], [1.8, .82], [2, .8], [2.25, .9], [2.9, 1]];          // body rise
+        const CL_P = [[0, 0], [.5, .1], [1.2, .3], [1.8, .55], [2.25, .85], [2.9, 1]];                    // travel onto land
+        const CL_LEAN = [[0, 0], [.5, .18], [1.2, .8], [1.8, 1], [2.25, .72], [2.9, 0]];                  // torso lean toward the bank
+        const CL_A = [[0, 2.35], [.5, 2.5], [1.2, 1.15], [1.8, .55], [2.25, .4], [2.9, .1]];              // arm angle (reach up, push down)
+        const CL_F = [[0, .25], [.5, .2], [1.2, .8], [1.8, .35], [2.25, .3], [2.9, .15]];                 // elbow flex
+        const CL_L0X = [[0, 8], [1.2, 20], [1.55, 75], [1.8, 95], [2.25, 44], [2.9, 28]];                 // leg that goes up on the bank
+        const CL_L0Y = [[0, -6], [1.2, -8], [1.55, -85], [1.8, -30], [2.25, 0], [2.9, 0]];
+        const CL_L1X = [[0, -8], [1.8, -20], [2.25, -18], [2.9, -16]];
+        const CL_L1Y = [[0, -10], [1.2, -24], [1.8, -10], [2.25, 0], [2.9, 0]];
+
+        function startClimb(dir, landX) {
+            const s = swim;
+            Object.assign(s, { cl: .0001, clD: dir, clX0: P.x, clCy0: s.cy, clL: landX, clLn0: s.lean, clF: 0, df: dir, turn: 0, dv: 0, vy: 0 });
+            P.face = dir; banner.t = .7; banner.text = 'CLIMBING OUT';
+        }
+        function climbTick(dt, H0, S) {
+            const s = swim; s.cl += dt; const t = s.cl, dir = s.clD;
+            s.cy = s.clCy0 + (-H0 / 2 - s.clCy0) * kf(t, CL_R);
+            const nx = s.clX0 + (s.clL - s.clX0) * kf(t, CL_P); s.vx = (nx - P.x) / Math.max(dt, .001); P.x = nx;
+            s.lean = kf(t, CL_LEAN) + s.clLn0 * (1 - sm(t / .3)); s.vl = 0;
+            s.tilt *= Math.max(0, 1 - dt * 6); s.h *= Math.max(0, 1 - dt * 6); s.vy = 0; s.gnd = false; s.turn = 0;
+            swimGeom(H0, S);
+            if (!s.clF && t >= 1.5) { s.clF = 1; splash(P.x - dir * 14 * S, 3.5, 6) }         // hips clear the water
+            if (t >= CL_END) { P.x = s.clL; swimExit(dir * 70, dir) }
+        }
+        function climbPose() {
+            const s = swim, t = s.cl, a = kf(t, CL_A), f = kf(t, CL_F), w = 1 - sm((t - 2.55) / .35);
+            return {
+                w, a0: a, f0: f, a1: a - .15, f1: f + .1, lean: 0, hipX: 0, hipY: 0, arch: -.03, hx: 4, hy: -2,
+                l0: [kf(t, CL_L0X), kf(t, CL_L0Y), 0], l1: [kf(t, CL_L1X), kf(t, CL_L1Y), 0], st: STEPS[0], sw: 0, ik: 0
+            };
+        }
+
+        // keep the regular run/walk animation continuous: it fades out only as the swim pose fades in
+        function swimSync(dt, S) {
+            const sw = swim, sp = Math.abs(sw.vx), cl = sw.cl > 0;
+            sw.pw += ((cl ? 1 : (1 - sw.gk) * cl01(sw.sub * 4)) - sw.pw) * Math.min(1, dt * (cl ? 10 : 4));
+            P.vx = cl ? 0 : sw.vx * (1 - sw.pw);
+            P.phase += sp * dt / (((1 - Rf()) * 280 + Rf() * RUN_LC) * S) * Math.PI * 2 * (1 - sw.pw);
+            P.amp += (Math.min(1, sp / 200) * (1 - sw.pw) - P.amp) * Math.min(1, dt * 10);
+            P.lean += (Math.max(-1, Math.min(1, P.vx / 420)) * .4 - P.lean) * Math.min(1, dt * 6);
+            sw.y = Math.max(0, sw.cy);
         }
 
         function updateSwim() {
             const now = performance.now() / 1000, dt = Math.min(.05, sLast ? now - sLast : 1 / 60); sLast = now;
             const S = CSc(), H0 = PL_H(), k = swimKeys, sw = swim;
-            for (let i = bubs.length - 1; i >= 0; i--) {                       // exhaled bubbles
+            for (let i = bubs.length - 1; i >= 0; i--) {
                 const b = bubs[i]; b.y -= 55 * dt; b.wx += Math.sin(now * 3 + b.ph) * 8 * dt;
-                if (b.y <= 0) { const c = Math.round((b.wx - (POND_X - POND_RX)) / WSP); if (c > 1 && c < WN - 1) wv[c] += .5; bubs.splice(i, 1); }
+                if (b.y <= 0) { const c = Math.round((b.wx - (POND_X - POND_RX)) / WSP); if (c > 1 && c < WN - 1) wv[c] += .5; bubs.splice(i, 1) }
             }
-            sw.out = Math.max(0, sw.out - 320 * dt); sw.cd = Math.max(0, sw.cd - dt);
+            sw.out = Math.max(0, sw.out - 320 * dt); sw.cd = Math.max(0, sw.cd - dt); sw.msg -= dt;
             const L = k.ArrowLeft || k.KeyA, R = k.ArrowRight || k.KeyD, U = k.ArrowUp || k.KeyW || k.Space, D = k.ArrowDown || k.KeyS;
             const dPress = D && !sw.dPrev, uPress = U && !sw.uPrev; sw.dPrev = !!D; sw.uPrev = !!U;
             const onDock = P.x >= DOCK_X0 && P.x <= DOCK_X1;
 
-            // ---------- entry: starts UPRIGHT with the run's momentum, then sinks / pitches over ----------
+            // ---------- entry: the real body state (feet height, fall speed, run speed, lean) carries straight in ----------
             if (!sw.on) {
-                if (sw.cd <= 0 && P.z >= 0 && inPond(P.x, -20) && (!onDock || dPress)) {
-                    Object.assign(sw, { on: true, lock: 0, cy: -H0 / 2, vy: dPress ? 420 : 40, vx: P.vx * .8, tilt: 0, h: 0, pw: 0, ef: 0, turn: 0, df: P.face || 1, in: false, gnd: false, dive: dPress ? 1 : 0, wk: 0, pHY: -99 });
+                const air = P.z < 0;
+                if (sw.cd <= 0 && !P.mount && inPond(P.x, -10) && (air ? !onDock : (!onDock || dPress))) {
+                    Object.assign(sw, {
+                        on: true, lock: 0, cy: air ? P.z - H0 / 2 : -H0 / 2, vy: air ? P.vz : (dPress ? 420 : 0), vx: P.vx, tilt: 0, h: 0, lean: 0, vl: P.vx * .0012,
+                        pw: 0, gk: 0, ef: 0, turn: 0, df: P.face || 1, in: false, fin: false, gnd: false, dv: dPress ? 1.2 : 0, wk: 0, pHY: -99, cl: 0, wall: 0
+                    });
                     if (P.skid) endSkid(); swimHooks.start();
                 } else return false;
             }
@@ -8013,130 +8074,157 @@
             const ax = locked ? 0 : (R ? 1 : 0) - (L ? 1 : 0), d = floorDepth(P.x);
             swimGeom(H0, S);
 
-            // ---------- facing / smooth turn (body rolls through a narrow edge-on frame) ----------
-            if (ax && (sw.gnd || sw.tilt <= .5)) sw.df = ax;
+            if (sw.cl > 0) { climbTick(dt, H0, S); if (sw.on) swimSync(dt, S); return sw.on }
+
+            // ---------- facing: instant on foot / in the air, a rolling turn when afloat ----------
+            if (ax && (sw.gnd || sw.sub < .05)) { sw.df = ax; sw.turn = 0 }
             else if (ax && ax !== sw.df && !sw.turn) { sw.turn = .0001; sw.tf = ax }
             if (sw.turn > 0) { sw.turn += dt; if (sw.turn >= .14 && sw.df !== sw.tf) sw.df = sw.tf; if (sw.turn >= .28) sw.turn = 0 }
             P.face = sw.df;
 
-            // ---------- posture: upright -> horizontal once submerged & deep enough; stands back up in shallows ----------
-            let tt = 0;
-            if (d >= H0 * .9) tt = sw.sub < .3 ? (sw.dive ? .5 : .1) : ((ax || U || D || Math.abs(sw.vx) > 30) ? 1 : .8);
-            if (sw.sub > .3) sw.dive = 0;
-            sw.tilt += (tt - sw.tilt) * Math.min(1, dt * (tt > sw.tilt ? 2.6 : 4));
-            const hT = sw.sub < .3 ? 0 : D ? .9 : U ? -.75 : Math.max(-.5, Math.min(.5, sw.vy * .004));
+            // ---------- posture: horizontal ONLY while the head is under; upright whenever it is at the surface ----------
+            sw.dv = (D && sw.sub > .2 && !locked) ? 1.2 : Math.max(0, sw.dv - dt);
+            const under = cl01((sw.headY - 4 * S) / (26 * S));
+            const intent = !sw.wall && (sw.dv > 0 || (sw.tilt > .5 && (ax || U || Math.abs(sw.vx) > 40)));
+            const tt = (d >= H0 * .9 && intent) ? under : 0;
+            sw.tilt += (tt - sw.tilt) * Math.min(1, dt * (tt > sw.tilt ? 3.2 : 4));
+            const hT = sw.tilt < .3 ? 0 : D ? .8 : U ? -.7 : Math.max(-.5, Math.min(.5, sw.vy * .004));
             sw.h += (hT - sw.h) * Math.min(1, dt * 4);
+            // lean = real rotational inertia: free in the air, spring + damping in the water (pikes forward when ducking under)
+            let lt = 0; if (sw.tilt < .5) { lt = ax * .1; if (D && sw.sub > .2) lt = .55 }
+            sw.vl += (38 * sw.sub * (lt - sw.lean) - (.3 + 7 * sw.sub) * sw.vl) * dt; sw.lean += sw.vl * dt;
+            if (sw.gnd) { sw.lean *= Math.exp(-6 * dt); sw.vl *= Math.exp(-6 * dt) }
+            sw.lean = Math.max(-1.3, Math.min(1.3, sw.lean));
             swimGeom(H0, S);
             const swimming = sw.tilt > .5;
 
-            // ---------- vertical: gravity, buoyancy (lung air), water drag, dive / resurface ----------
+            // ---------- vertical: gravity, buoyancy, drag. Impact momentum carries you under, buoyancy brings you back ----------
             if (!sw.gnd) {
-                let bf = .9 + .32 * sw.breath, ay = 1100;
-                if (D && sw.sub > .3 && !locked) { bf *= .3; ay += 420 }
+                let bf = 1 + .5 * sw.breath, ay = 1100;
+                if (D && sw.sub > .2 && !locked) { bf *= .35; ay += 520 }
                 ay -= sw.sub * 1100 * bf;
-                if (U && sw.sub > .15 && !locked) ay -= 650 * Math.max(.5, sw.sub);
+                if (U && sw.sub > .15 && !locked) ay -= 520 * Math.max(.5, sw.sub);
                 if (locked) ay = -700;
-                sw.vy += ay * dt; sw.vy *= Math.exp(-(.25 + 3.4 * sw.sub) * dt); sw.cy += sw.vy * dt;
+                sw.vy += ay * dt; sw.vy *= Math.exp(-(.12 + 3.6 * sw.sub) * dt); sw.cy += sw.vy * dt;
                 swimGeom(H0, S);
             }
-            // seabed: stand on it when upright, otherwise just don't sink through
-            const low = sw.cy + sw.ext;
-            sw.gnd = low >= d - 1.5 && sw.vy >= 0 && sw.tilt < .5;
-            if (low > d) { sw.cy = d - sw.ext; if (sw.vy > 0) sw.vy = 0; swimGeom(H0, S) }
+            if (sw.cy + sw.ext > d) { sw.cy = d - sw.ext; if (sw.vy > 0) sw.vy = 0; swimGeom(H0, S) }
+            sw.gnd = sw.tilt < .5 && sw.cy + sw.ext >= d - 1.5 && sw.vy >= -5;
+            sw.gk += ((sw.gnd ? 1 : 0) - sw.gk) * Math.min(1, dt * 7);
 
-            // ---------- horizontal: thrust pulses with arm pulls, linear + quadratic drag, real momentum ----------
-            const ef0 = (swimming && sw.sub > .2 && (ax || U || D)) ? 1 : 0;
+            // ---------- shoreline: find the steep wall (floor slope 3) and the real bank height there ----------
+            const xs = POND_RX * 3 * POND_RX / Math.hypot(POND_RY, 3 * POND_RX), dx0 = P.x - POND_X, side = Math.sign(dx0) || 1;
+            const hb = Math.max(0, sw.cy + sw.ext) + BANK_EXTRA[side > 0 ? 'R' : 'L'];
+            const walkRim = floorDepth(POND_X + side * xs) < H0 * .1;          // shallow rim: just wade out
+            if (!locked && sw.tilt < .5 && sw.headY < 20 * S && sw.cd <= 0) {
+                if (sw.wall && (ax === side || U) && !walkRim) {
+                    if (hb <= CLIMB_MAX * H0) startClimb(side, POND_X + side * (POND_RX + 34 * S));
+                    else if (sw.msg <= 0) { sw.msg = 2; banner.t = .8; banner.text = 'BANK TOO HIGH' }
+                } else if (U && sw.sub > .2 && sw.headY < 8 * S && P.x >= DOCK_X0 && P.x <= DOCK_X1 + 70 * S) {   // pull up onto the dock
+                    const lx = Math.min(P.x, DOCK_X1 - 45 * S); startClimb(lx < P.x - 4 ? -1 : sw.df, lx);
+                }
+            }
+            if (sw.cl > 0) { if (sw.on) swimSync(dt, S); return sw.on }
+            if (sw.gnd && uPress && !locked) { sw.vy = -420; sw.gnd = false }   // push off the bottom
+
+            // ---------- horizontal: wading is heavy; afloat, thrust pulses with the strokes against real drag ----------
+            const oldX = P.x, ef0 = (sw.tilt > .3 || sw.sub > .2) && sw.sub > .2 && (ax || U || D) ? 1 : 0;
             sw.ef += (ef0 - sw.ef) * Math.min(1, dt * 5);
-            if (sw.gnd) {                                                      // wading: slow, heavy, gradual accel
+            if (sw.gnd) {
                 const spd = 150 - 85 * sw.sub;
-                sw.vx += (ax * spd - sw.vx) * Math.min(1, dt * (ax ? 3.5 : 5));
-                if (uPress && !locked) { sw.vy = -380; sw.gnd = false }       // hop off the bottom
+                sw.vx += (ax * spd - sw.vx) * Math.min(1, dt * (ax ? 3.5 : 5) * (.35 + sw.sub));
             } else {
                 const pulse = .55 + .9 * Math.abs(Math.cos(sw.sp - 1.73));
-                const thrust = sw.sub > .25 ? ax * (swimming ? 360 * pulse * (.6 + .4 * sw.ef) : 170) : 0;
-                sw.vx += thrust * dt;
-                const wet = sw.sub > .05 ? 1 : 0;
-                sw.vx -= sw.vx * (wet ? 1.1 : .05) * dt + Math.sign(sw.vx) * sw.vx * sw.vx * .004 * sw.sub * dt;
+                const thr = sw.sub > .25 ? ax * (swimming ? 360 * pulse * (.6 + .4 * sw.ef) : 190 * (.5 + .5 * pulse * .8)) : 0;
+                sw.vx += thr * dt;
+                sw.vx -= sw.vx * (.05 + 1.05 * cl01(sw.sub * 4)) * dt + Math.sign(sw.vx) * sw.vx * sw.vx * .004 * sw.sub * dt;
             }
             P.x += sw.vx * dt;
-            const dx1 = P.x - POND_X;
-            if (sw.gnd && Math.abs(dx1) >= POND_RX * .985) { P.x = POND_X + Math.sign(dx1) * (POND_RX + 8); swimExit(sw.cy + sw.ext, sw.vx); return false }
-            if (onDock && U && !locked && sw.cy < 14 * S && sw.vy > -400) { swimExit(H0 * .45, 0); return false }   // haul out onto the dock
-            if (!sw.gnd) { const lim = POND_RX - 14; P.x = POND_X + Math.max(-lim, Math.min(lim, P.x - POND_X)) }
+            const pen = sw.cy + sw.ext - floorDepth(P.x);                      // floor rising into the feet: step up at a limited rate
+            if (pen > 0) { if (pen > STEP_UP * S * dt + .8) { P.x = oldX; sw.vx *= .85 } else sw.cy -= pen }
+            const dx1 = P.x - POND_X; sw.wall = 0;
+            if (walkRim) { if (Math.abs(dx1) >= POND_RX * .995) { swimExit(sw.vx, Math.sign(dx1), Math.max(0, sw.cy + sw.ext)); return false } }
+            else if (Math.abs(dx1) > xs) { P.x = POND_X + Math.sign(dx1) * xs; if (sw.vx * Math.sign(dx1) > 0) sw.vx *= Math.max(0, 1 - dt * 16); sw.wall = 1 }
+            swimGeom(H0, S);
 
-            // ---------- stroke / kick clocks ----------
+            // ---------- stroke / kick clocks, hand slaps ----------
             const f0 = Math.floor(sw.sp / (2 * Math.PI)), f1 = Math.floor((sw.sp + Math.PI) / (2 * Math.PI));
             sw.sp += dt * (1.6 + 5.2 * sw.ef); sw.kp += dt * (5 + 11 * sw.ef);
             const nearSurf = sw.sub > .05 && sw.cy < sw.ext + 40 * S;
             if (nearSurf && sw.ef > .2 && (Math.floor(sw.sp / (2 * Math.PI)) !== f0 || Math.floor((sw.sp + Math.PI) / (2 * Math.PI)) !== f1))
-                splash(P.x + sw.df * H0 * .48 * sw.tilt, 1.6 + sw.ef * 1.4, 2);          // hand slaps in
+                splash(P.x + sw.df * (H0 * .48 * sw.tilt + 22 * S * (1 - sw.tilt)), 1.2 + sw.ef * 1.2, 2);
 
-            // ---------- splashes, wake, breath ----------
-            if (!sw.in && sw.sub > .04) {                                      // surface impact
-                sw.in = true; const pw = Math.min(14, 3 + Math.abs(sw.vy) / 50 + Math.abs(sw.vx) / 70);
-                splash(P.x, pw, 8 + (pw | 0));
+            // ---------- splashes: feet first, then the body; head breaking the surface; wake ----------
+            const low = sw.cy + sw.ext;
+            if (!sw.fin && low > 2) { sw.fin = true; const pw = Math.min(12, 2.5 + Math.abs(sw.vy) / 70 + Math.abs(sw.vx) / 110); splash(P.x + sw.df * 14 * S, pw, 5 + (pw | 0)) }
+            else if (sw.fin && low < -4) sw.fin = false;
+            if (!sw.in && sw.sub > .5 && sw.vy > 120) {
+                sw.in = true; splash(P.x, Math.min(10, 2 + sw.vy / 90), 6 + (sw.vy / 120 | 0));
                 for (let i = 0; i < 6; i++) bubs.push({ wx: P.x + (Math.random() - .5) * 40, y: 10 + Math.random() * 40, r: 2 + Math.random() * 2.5, ph: Math.random() * 6 });
-            } else if (sw.in && sw.sub < .01) sw.in = false;
-            if (sw.in && sw.pHY > 10 * S && sw.headY <= 10 * S && sw.vy < -80) splash(P.x + sw.df * H0 * .4 * sw.tilt, Math.min(6, 2 - sw.vy / 80), 6);   // head breaks surface
+            } else if (sw.in && sw.sub < .2) sw.in = false;
+            if (sw.pHY > 10 * S && sw.headY <= 10 * S && sw.vy < -80) splash(P.x + sw.df * H0 * .4 * sw.tilt, Math.min(6, 2 - sw.vy / 80), 6);
             sw.pHY = sw.headY;
             sw.wk -= dt;
             if (nearSurf && Math.abs(sw.vx) > 45 && sw.wk <= 0) { splash(P.x + sw.df * H0 * .38 * sw.tilt, Math.min(3.4, Math.abs(sw.vx) * .014), 0); sw.wk = .12 }
-            const under = sw.headY > 10 * S && sw.sub > .5;
-            sw.breath = under ? Math.max(0, sw.breath - dt / 18) : Math.min(1, sw.breath + dt / 2.5);
+            const dive = sw.headY > 10 * S && sw.sub > .5;
+            sw.breath = dive ? Math.max(0, sw.breath - dt / 18) : Math.min(1, sw.breath + dt / 2.5);
             if (sw.breath <= 0 && !locked) { sw.lock = 1; swimHooks.drown() }
-            if (under) {
+            if (dive) {
                 sw.bt -= dt;
                 if (sw.bt <= 0 && bubs.length < 40) { bubs.push({ wx: P.x + sw.df * H0 / 2 * Math.sin(sw.th), y: sw.headY, r: 2 + Math.random() * 2.5, ph: Math.random() * 6 }); sw.bt = sw.breath < .3 ? .12 : .4 + Math.random() * .3 }
             }
-
-            // ---------- feed the normal run/walk animation while wading, fade it out while swimming ----------
-            if (sw.gnd) {
-                const sp = Math.abs(sw.vx);
-                P.phase += sp * dt / (280 * S) * Math.PI * 2;
-                P.amp += (Math.min(1, sp / 200) - P.amp) * Math.min(1, dt * 10);
-                P.lean += (Math.max(-1, Math.min(1, sw.vx / 420)) * .4 - P.lean) * Math.min(1, dt * 6);
-                sw.st -= dt; if (sp > 10 && sw.sub < .8 && sw.st <= 0) { splash(P.x, 1.3, 0); sw.st = .3 }
-            } else { P.amp += (0 - P.amp) * Math.min(1, dt * 10); P.lean *= Math.max(0, 1 - dt * 8) }
-            sw.pw += (sm((sw.tilt - .2) / .5) - sw.pw) * Math.min(1, dt * 8);
-            sw.y = Math.max(0, sw.cy);                                         // read by the fish AI
+            sw.st -= dt; if (sw.gnd && Math.abs(sw.vx) > 10 && sw.sub < .8 && sw.st <= 0) { splash(P.x, 1.3, 0); sw.st = .3 }
+            swimSync(dt, S);
             return true;
         }
 
-        // Crawl stroke + flutter kick, fed to drawChar through comboPose (blends in via pw)
+        // Swim pose: upright treading (head above water) <-> crawl stroke (head under), blended by tilt;
+        // airborne tuck while the feet are above the water; ledge-climb keyframes while climbing out.
         function swimPose() {
-            const s = swim; if (!s.on || s.pw < .01) return null;
-            const T = Math.PI * 2, A0 = Math.PI * .96;
-            const arm = p => {                                                 // pull under the body, recover high over the back
+            const s = swim; if (!s.on) return null;
+            if (s.cl > 0) return climbPose();
+            const wAir = s.sub < .03 ? cl01((-(s.cy + s.ext) - 6) / 18) : 0, w = Math.max(s.pw, wAir);
+            if (w < .01) return null;
+            const T = Math.PI * 2, A0 = Math.PI * .96, ti = sm(s.tilt), wl = (a, b, k) => a + wrapA(b - a) * k, lp = (a, b, k) => a + (b - a) * k;
+            const arm = p => {
                 const u = (((p / T) % 1) + 1) % 1;
                 if (u < .55) { const k = u / .55; return [A0 - k * (A0 - .35), .25 + .5 * Math.sin(Math.PI * k)] }
                 const k = (u - .55) / .45; return [.35 - k * (.35 - (A0 - T)), .25 + 1.5 * Math.sin(Math.PI * k)];
             };
-            const mixA = (i) => {
+            const arms = [0, 1].map(i => {
                 const a = arm(s.sp + i * Math.PI), G = A0 - .1 + .05 * Math.sin(s.sp * .7 + i * 2);
-                return [G + wrapA(a[0] - G) * s.ef, a[1] * s.ef + .12 * (1 - s.ef)];
-            };
-            const m0 = mixA(0), m1 = mixA(1);
-            const foot = i => {
-                const q = Math.sin(s.kp + i * Math.PI), a = .4 + .6 * s.ef;
-                return [8 + (10 + 8 * s.ef) * q, -(4 + 12 * (.5 + .5 * Math.sin(s.kp + i * Math.PI - .9))) * a, 0];
-            };
+                const hor = [wl(G, a[0], s.ef), a[1] * s.ef + .12 * (1 - s.ef)];
+                const A = .35 + .65 * s.ef, f = s.sp * 1.1 + i * Math.PI, tr = [.62 + .5 * A * Math.sin(f), .95 + .45 * A * Math.cos(f)];
+                let ang = wl(tr[0], hor[0], ti), fl = lp(tr[1], hor[1], ti);
+                if (wAir > .01) { const air = i ? [2.1, .3] : [2.4, .3]; ang = wl(ang, air[0], wAir); fl = lp(fl, air[1], wAir) }
+                return [ang, fl];
+            });
+            const legs = [0, 1].map(i => {
+                const q = s.kp + i * Math.PI, a = .4 + .6 * s.ef;                                   // flutter (horizontal)
+                const hz = [8 + (10 + 8 * s.ef) * Math.sin(q), -(4 + 12 * (.5 + .5 * Math.sin(q - .9))) * a];
+                const q2 = s.kp * .9 + i * Math.PI, b = .5 + .5 * s.ef;                             // eggbeater (vertical)
+                const tr = [10 + 13 * b * Math.cos(q2), -(22 + 9 * b * Math.sin(q2))];
+                let x = lp(tr[0], hz[0], ti), y = lp(tr[1], hz[1], ti);
+                if (wAir > .01) { const air = i ? [-14, -26] : [30, -10]; x = lp(x, air[0], wAir); y = lp(y, air[1], wAir) }
+                return [x, y, 0];
+            });
             return {
-                w: s.pw, a0: m0[0], f0: m0[1], a1: m1[0], f1: m1[1],
-                lean: .06 + .05 * Math.sin(s.sp) * s.ef, hipX: 0, hipY: 0, arch: .02, hx: 4, hy: -2,
-                l0: foot(0), l1: foot(1), st: STEPS[0], sw: 0, ik: 0
+                w, a0: arms[0][0], f0: arms[0][1], a1: arms[1][0], f1: arms[1][1],
+                lean: .05 * ti + .05 * Math.sin(s.sp) * s.ef * ti, hipX: 0, hipY: 0, arch: .02, hx: 2 + 2 * ti, hy: -2,
+                l0: legs[0], l1: legs[1], st: STEPS[0], sw: 0, ik: 0
             };
         }
 
-        // Wrap the player draw: rotates the whole body about its centre so the waterline cuts through it
+        // Wrap the player draw: rotate about the body centre so the waterline cuts through the body
         function beginSwimDraw(gy) {
             const top = gy + 4, sx = W / 2 + POND_X - P.x; swimTop = top; swimSx = sx;
-            if (!swim.on) { if (swim.out > .5) { swim.drawing = true; ctx.save(); ctx.translate(0, swim.out); } return; }
+            if (!swim.on) { if (swim.out > .5) { swim.drawing = true; ctx.save(); ctx.translate(0, swim.out) } return }
             swim.drawing = true; ctx.save();
             const H0 = PL_H(), s = swim, wave = surfY(top, sx, W / 2) - top;
-            const bob = wave * cl01(1 - (s.cy - s.ext) / 70) * (s.sub > .01 ? 1 : 0);
+            const bob = wave * cl01(1 - (s.cy - s.ext) / 70) * ((s.sub > .01 && !s.gnd && !(s.cl > 0)) ? 1 : 0) + Math.sin(s.kp * 2) * 2 * s.ef * (1 - s.tilt) * cl01(s.sub * 3);
             ctx.translate(W / 2, top + s.cy + bob);
             if (s.turn > 0) ctx.scale(Math.max(.2, Math.abs(Math.cos(Math.PI * s.turn / .28))), 1);
-            ctx.rotate(s.df * s.tilt * (Math.PI / 2 + s.h));
+            ctx.rotate(s.df * (s.tilt * (Math.PI / 2 + s.h) + s.lean));
             ctx.translate(0, H0 / 2); ctx.translate(-W / 2, -top);
         }
 
@@ -8145,18 +8233,24 @@
             ctx.restore(); swim.drawing = false;
             if (!swim.on) return;
             const s = swim, H0 = PL_H(), top = swimTop, sx = swimSx, cy = top + s.cy, now = performance.now() / 1000;
-            // water tint on the submerged part of the body
-            ctx.save(); waterShape(sx, top); ctx.clip();
+            ctx.save(); waterShape(sx, top); ctx.clip();                                  // water tint on the submerged part
             const g = ctx.createRadialGradient(W / 2, cy, 0, W / 2, cy, H0 * .8);
             g.addColorStop(0, 'rgba(60,110,140,.4)'); g.addColorStop(1, 'rgba(60,110,140,.06)');
             ctx.fillStyle = g; ctx.fillRect(W / 2 - H0, cy - H0, H0 * 2, H0 * 2); ctx.restore();
             if (s.sub > .02 && s.cy < s.ext + 60) {
-                const R = H0 * .62, v = Math.min(1, Math.abs(s.vx) / 200), hx = W / 2 + s.df * H0 * .45 * s.tilt;
+                const R = H0 * .62, v = Math.min(1, Math.abs(s.vx) / 200), hx = W / 2 + s.df * H0 * .45 * s.tilt, ys = surfY(top, sx, W / 2);
                 ctx.save(); ctx.lineCap = 'round'; ctx.strokeStyle = '#111';
-                ctx.globalAlpha = .75; ctx.lineWidth = 2.2; ctx.beginPath();            // waterline drawn across the body
+                ctx.globalAlpha = .75; ctx.lineWidth = 2.2; ctx.beginPath();                // waterline across the body
                 for (let x = -R; x <= R; x += 8) { const y = surfY(top, sx, W / 2 + x); x === -R ? ctx.moveTo(W / 2 + x, y) : ctx.lineTo(W / 2 + x, y) }
                 ctx.stroke();
-                if (v > .1) {                                                           // bow wave + foam trailing behind the head
+                if (s.sub < .98 && Math.abs(s.cy) < s.ext + 10) {                           // expanding ripple rings where the body cuts the surface
+                    ctx.lineWidth = 1.3;
+                    for (let i = 0; i < 2; i++) {
+                        const ph = ((now * .9 + i * .5) % 1);
+                        ctx.globalAlpha = .45 * (1 - ph); ctx.beginPath(); ctx.ellipse(W / 2, ys, 22 + 46 * ph + i * 6, 3 + 2 * ph, 0, 0, 7); ctx.stroke();
+                    }
+                }
+                if (v > .1) {                                                                // bow wave + foam behind the leading edge
                     const Ln = 40 + 110 * v;
                     for (let i = 0; i < 4; i++) {
                         ctx.globalAlpha = (.55 - i * .12) * v; ctx.lineWidth = 1.7 - i * .3; ctx.beginPath();
