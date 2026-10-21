@@ -119,15 +119,24 @@
             for (let i = 0; i < 260; i++) { g.beginPath(); const x = Math.random() * 512, y = Math.random() * 512; g.moveTo(x, y); g.lineTo(x + Math.random() * 10 - 5, y + Math.random() * 10 - 5); g.stroke() }
             paper = ctx.createPattern(p, 'repeat');
         }
+
+
+
+        let ZOOM = 0.3;   // 1 = current size, 0.5 = same as browser zoom 50%, 0.75 = in between
         function resize() {
-            DPR = Math.min(devicePixelRatio || 1, 2); W = innerWidth; H = innerHeight;
-            cv.width = W * DPR; cv.height = H * DPR; ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+            DPR = Math.min(devicePixelRatio || 1, 2);
+            W = innerWidth / ZOOM; H = innerHeight / ZOOM;                    // game units: bigger world on screen
+            cv.width = innerWidth * DPR; cv.height = innerHeight * DPR;       // real pixels stay the same
+            ctx.setTransform(DPR * ZOOM, 0, 0, DPR * ZOOM, 0, 0);
             vig = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * .35, W / 2, H / 2, Math.max(W, H) * .8);
             vig.addColorStop(0, 'rgba(0,0,0,0)'); vig.addColorStop(1, 'rgba(60,50,40,.28)');
-            nightC.width = W * DPR; nightC.height = H * DPR; nctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+            nightC.width = innerWidth * DPR; nightC.height = innerHeight * DPR; nctx.setTransform(DPR * ZOOM, 0, 0, DPR * ZOOM, 0, 0);
             vigN = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * .22, W / 2, H / 2, Math.max(W, H) * .75);
             vigN.addColorStop(0, 'rgba(0,0,0,0)'); vigN.addColorStop(1, 'rgba(4,5,12,.6)');
         }
+
+
+
         makePaper(); resize(); addEventListener('resize', resize);
 
         const keys = {};
