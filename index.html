@@ -2569,7 +2569,11 @@
                 drawHolster(P.hol, F, holGrip);
             }
             if (P === PL) P.sgBelt = rot(F * 6, -16);
-            if (P === PL) P.lnB = rot(-F * 13, -12);       // belt hook, behind the hip
+            if (P === PL) {                                 // belt across the hips, hook ring at the back edge
+                P.lnB = rot(-F * 7, -12);
+                P.lnBA = rot(F * 7, -12);
+                drawBelt(P.lnBA, P.lnB);
+            }
             const sh = rot(0, -T + 10), swing = (.015 + .9 * R) * P.amp * ARM_SWING, up = z < 0 ? -.9 : 0;
             const sTilt = (P === PL) ? smokeTilt() : [0, 0];
             const mA = (P === PL && P.sm) ? (() => { const h = rot(-F * 7 + F * sTilt[0], -T - 24 + sTilt[1]); return [h[0] + F * 19, h[1] + 8] })() : null;
@@ -7166,6 +7170,9 @@
         P.ln = 0; P.lnB = null; P.lnPos = null;
         P.lb = 0; P.lbOut = 0; P.lbW = 0;          // blow-out animation timer / blown flag / wisp timer
         DN.hung = 1; DN.lit = 0; DN.litK = 0;      // lantern always hangs on the belt, unlit
+        const LN_NR = 6;                      // rope points (the last point is the lantern handle)
+        const LNR = { p: null, rest: 0 };     // rope + lantern chain, world space
+        P.lnHand = null; P.lnGrab = null;     // hand position while carrying / where the handle was hanging
 
         function lanternPos() {                        // screen position of the lantern body, for the night light
             const p = P.lnPos; if (!p) return null;
@@ -7191,17 +7198,88 @@
             else P.ln = .0001;                                     // take it and light it
         }
 
-        function lbPivotAt(t, B, H) {
-            if (t < LB_RAISE0) return B;
-            if (t < LB_RAISE1) { const k = sm((t - LB_RAISE0) / (LB_RAISE1 - LB_RAISE0)); return [B[0] + (H[0] - B[0]) * k, B[1] + (H[1] - B[1]) * k] }
+        function lnRopeInit(belt, S) {
+            const base = 4.5 * S, link = 15 * S, R = [];
+            for (let i = 0; i <= LN_NR; i++) {
+                const y = belt[1] + (i < LN_NR ? i * base : (LN_NR - 1) * base + link);
+                R.push({ x: belt[0], y, ox: belt[0], oy: y });
+            }
+            LNR.p = R; LNR.rest = base;
+        }
+
+        function lanternPhys(dt) {
+            const S = CSc(), Bc = P.lnB;
+            if (!Bc || dt <= 0) return;
+            const N = LN_NR, base = 4.5 * S, link = 15 * S;               // base = rope segment length, link = handle to lantern bottom
+            const belt = [P.x + Bc[0] * S, Bc[1] * S];
+            if (!LNR.p || Math.hypot(LNR.p[1].x - belt[0], LNR.p[1].y - belt[1]) > 140 * S) lnRopeInit(belt, S);   // teleport / first frame
+            const R = LNR.p;
+            const hand = P.lnHand ? [P.x + P.lnHand[0] * S, P.lnHand[1] * S] : null;
+
+            // while carried, the rope stretches (with some slack) to reach the hand; afterwards it shrinks back
+            let target = base;
+            if (hand) target = Math.max(base, Math.hypot(hand[0] - belt[0], hand[1] - belt[1]) * 1.12 / (N - 1));
+            LNR.rest += (target - LNR.rest) * Math.min(1, dt * 6);
+            const rest = LNR.rest;
+
+            const sub = 3, h = dt / sub, floor = -2 * S, vmax = 60 * S;
+            const wa = Math.max(-300, Math.min(300, wind.v)) * 1.6;      // gentle sideways air push
+            for (let s = 0; s < sub; s++) {
+                for (let i = 1; i <= N; i++) {                            // verlet integrate (gravity + wind)
+                    const p = R[i];
+                    const vx = Math.max(-vmax, Math.min(vmax, (p.x - p.ox) * .985));
+                    const vy = Math.max(-vmax, Math.min(vmax, (p.y - p.oy) * .985));
+                    p.ox = p.x; p.oy = p.y; p.x += vx + wa * h * h; p.y += vy + 1800 * h * h;
+                }
+                for (let it = 0; it < 8; it++) {
+                    R[0].x = belt[0]; R[0].y = belt[1]; R[0].ox = belt[0]; R[0].oy = belt[1];            // tied to the belt
+                    if (hand) { const q = R[N - 1]; q.x = hand[0]; q.y = hand[1]; q.ox = hand[0]; q.oy = hand[1] }   // gripped by the hand
+                    for (let i = 0; i < N; i++) {
+                        const a = R[i], b = R[i + 1], len = i < N - 1 ? rest : link;
+                        const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || .0001, k = (d - len) / d * .5;
+                        const aPin = i === 0 || (hand && i === N - 1), bPin = hand && i + 1 === N - 1;
+                        if (aPin) { b.x -= dx * k * 2; b.y -= dy * k * 2 }
+                        else if (bPin) { a.x += dx * k * 2; a.y += dy * k * 2 }
+                        else { a.x += dx * k; a.y += dy * k; b.x -= dx * k; b.y -= dy * k }
+                    }
+                    {   // soft bend resistance so the lantern doesn't fold back on the rope
+                        const a = R[N - 2], c = R[N], dx = c.x - a.x, dy = c.y - a.y, d = Math.hypot(dx, dy) || .0001, min = (rest + link) * .85;
+                        if (d < min) { const k = (min - d) / d * .15; a.x -= dx * k; a.y -= dy * k; c.x += dx * k; c.y += dy * k }
+                    }
+                    for (let i = 1; i <= N; i++) { const p = R[i]; if (p.y > floor) { p.y = floor; p.ox += (p.x - p.ox) * .5 } }   // ground
+                }
+            }
+        }
+
+        function lnPivotAt(t, B, H, G) {
+            G = G || B;
+            if (t >= LN_END) return B;
+            if (t < LN_REACH) return G;
+            if (t < LN_RAISE) { const k = sm((t - LN_REACH) / (LN_RAISE - LN_REACH)); return [G[0] + (H[0] - G[0]) * k, G[1] + (H[1] - G[1]) * k] }
+            if (t < LN_HANG) return H;
+            const k = sm((t - LN_HANG) / (LN_END - LN_HANG)); return [H[0] + (B[0] - H[0]) * k, H[1] + (B[1] - H[1]) * k];
+        }
+        function lnArm(i, sh, F) {
+            const t = P.ln, B = P.lnB, G = P.lnGrab || B, H = [sh[0] + F * 42, sh[1] + 44];
+            if (i === 1) {
+                const pv = lnPivotAt(t, B, H, G), w = t < LN_END ? sm(t / .3) : 1 - sm((t - LN_END) / (LN_DONE - LN_END));
+                const [a, f] = ikTo(sh, pv[0], pv[1], F); return [a, f, w];
+            }
+            const w = sm((t - .5) / .4) * (1 - sm((t - 2.1) / .3)), tr = (t > LN_OPEN && t < LN_FLAME1) ? Math.sin(t * 40) * .7 : 0;
+            const [a, f] = ikTo(sh, H[0] + F + tr, H[1] + 40 + tr * .5, F); return [a, f, w];
+        }
+        function lbPivotAt(t, B, H, G) {
+            G = G || B;
+            if (t < LB_RAISE0) return G;
+            if (t < LB_RAISE1) { const k = sm((t - LB_RAISE0) / (LB_RAISE1 - LB_RAISE0)); return [G[0] + (H[0] - G[0]) * k, G[1] + (H[1] - G[1]) * k] }
             if (t < LB_HANG0) return H;
             if (t < LB_END) { const k = sm((t - LB_HANG0) / (LB_END - LB_HANG0)); return [H[0] + (B[0] - H[0]) * k, H[1] + (B[1] - H[1]) * k] }
             return B;
         }
-        function lbArm(i, sh, F) {                 // -> [ang, flex, weight]; only the lantern hand (arm 1)
+        function lbArm(i, sh, F) {
             if (i !== 1) return [0, 0, 0];
-            const t = P.lb, B = P.lnB, H = [sh[0] + F * 38, sh[1] - 14];   // hold point just below the mouth
-            const pv = lbPivotAt(t, B, H), w = t < LB_END ? sm(t / .3) : 1 - sm((t - LB_END) / (LB_DONE - LB_END));
+            const t = P.lb, B = P.lnB, G = P.lnGrab || B, H = [sh[0] + F * 38, sh[1] - 14];
+            const pv = lbPivotAt(t, B, H, G), w = t < LB_END ? sm(t / .3) : 1 - sm((t - LB_END) / (LB_DONE - LB_END));
             const [a, f] = ikTo(sh, pv[0], pv[1], F); return [a, f, w];
         }
 
@@ -7229,21 +7307,19 @@
                 if (P.lb >= LB_DONE) { P.lb = 0; P.lbOut = 0; DN.hung = 1 }
             }
             DN.litK += ((DN.lit ? 1 : 0) - DN.litK) * Math.min(1, dt * 6);
+            lanternPhys(dt);
         }
-        function lnPivotAt(t, B, H) {                  // where the lantern handle is, in character space
-            if (t < LN_REACH || t >= LN_END) return B;
-            if (t < LN_RAISE) { const k = sm((t - LN_REACH) / (LN_RAISE - LN_REACH)); return [B[0] + (H[0] - B[0]) * k, B[1] + (H[1] - B[1]) * k] }
-            if (t < LN_HANG) return H;
-            const k = sm((t - LN_HANG) / (LN_END - LN_HANG)); return [H[0] + (B[0] - H[0]) * k, H[1] + (B[1] - H[1]) * k];
-        }
-        function lnArm(i, sh, F) {                     // -> [ang, flex, weight]; arm 1 holds the lantern, arm 0 works the lighter
-            const t = P.ln, B = P.lnB, H = [sh[0] + F * 42, sh[1] + 44];
-            if (i === 1) {
-                const pv = lnPivotAt(t, B, H), w = t < LN_END ? sm(t / .3) : 1 - sm((t - LN_END) / (LN_DONE - LN_END));
-                const [a, f] = ikTo(sh, pv[0], pv[1], F); return [a, f, w];
-            }
-            const w = sm((t - .5) / .4) * (1 - sm((t - 2.1) / .3)), tr = (t > LN_OPEN && t < LN_FLAME1) ? Math.sin(t * 40) * .7 : 0;
-            const [a, f] = ikTo(sh, H[0] + F + tr, H[1] + 40 + tr * .5, F); return [a, f, w];
+
+
+
+        function drawBelt(a, b) {                       // character space: a = front (buckle), b = back (hook ring)
+            ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+            ctx.strokeStyle = '#111'; ctx.lineWidth = 7.5; ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();   // ink outline
+            ctx.strokeStyle = '#7a5230'; ctx.lineWidth = 4; ctx.stroke();                                                                      // leather
+            ctx.fillStyle = '#c99a3a'; ctx.strokeStyle = '#111'; ctx.lineWidth = 1.4;                                                          // buckle
+            ctx.beginPath(); ctx.rect(a[0] - 3, a[1] - 3.5, 6, 7); ctx.fill(); ctx.stroke();
+            ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(b[0], b[1], 3.4, 0, 7); ctx.stroke();                                                  // hook ring
+            ctx.restore();
         }
         function drawLantern(x, y, rotA, lit, now) {   // character space, pivot at the handle
             ctx.save(); ctx.translate(x, y); ctx.rotate(rotA);
@@ -7261,15 +7337,31 @@
             ctx.restore();
         }
         function drawLanternProps(F, S, now) {         // called from drawChar, after the head
-            const B = P.lnB;
-            if (!B || !(P.ln > 0 || P.lb > 0 || DN.hung)) { P.lnPos = null; return }
+            const B = P.lnB, R = LNR.p;
+            if (!B || !R) { P.lnPos = null; P.lnHand = null; return }
             const t = P.ln, A = P.armPts || [];
             const hc = i => { const a = A[i]; if (!a) return null; const dx = a[1][0] - a[0][0], dy = a[1][1] - a[0][1], dl = Math.hypot(dx, dy) || 1; return [a[1][0] + dx / dl * 12, a[1][1] + dy / dl * 12] };
             const h0 = hc(0), h1 = hc(1);
-            const inHand = h1 && ((t >= LN_REACH && t < LN_END) || (P.lb >= .3 && P.lb < LB_END)), pv = inHand ? h1 : B;
-            const sway = Math.sin(now * 2.1) * .05 + Math.sign(P.vx) * clamp01(Math.abs(P.vx) / 600) * .35 * (inHand ? .3 : 1);
-            P.lnPos = [pv[0], pv[1] + 8];
-            drawLantern(pv[0], pv[1], sway, DN.litK, now);
+            const inHand = !!h1 && ((t >= LN_REACH && t < LN_END) || (P.lb >= .3 && P.lb < LB_END));
+            P.lnHand = inHand ? h1 : null;                                        // physics pins the handle here
+            const pt = q => [(q.x - P.x) / S, q.y / S];                           // world -> character space
+            const hd = pt(R[LN_NR - 1]), bt = pt(R[LN_NR]);
+            if (!inHand) P.lnGrab = [hd[0], hd[1]];                               // where the hand should reach for it
+            P.lnPos = [(hd[0] + bt[0]) / 2, (hd[1] + bt[1]) / 2];                 // lantern centre (night light follows it)
+
+            // rope, tied to the belt
+            ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+            ctx.beginPath();
+            for (let i = 0; i < LN_NR; i++) { const p = pt(R[i]); i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]) }
+            ctx.strokeStyle = '#111'; ctx.lineWidth = 3; ctx.stroke();
+            ctx.strokeStyle = 'rgba(215,185,120,.9)'; ctx.lineWidth = 1; ctx.stroke();
+            const k0 = pt(R[0]); ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(k0[0], k0[1], 2.6, 0, 7); ctx.fill();   // knot at the belt
+            ctx.restore();
+
+            // lantern hangs along the last link, so it tilts and swings with the rope
+            const ang = Math.atan2(-(bt[0] - hd[0]), bt[1] - hd[1]);
+            drawLantern(hd[0], hd[1], ang, DN.litK, now);
+
             if (inHand && FIST.complete && P.fistInfo && P.fistInfo[1]) {          // fist back on top so it grips the handle
                 const f = P.fistInfo[1]; ctx.save(); ctx.translate(f.x, f.y); ctx.scale(f.F, 1); ctx.rotate(f.a - Math.PI / 2); ctx.drawImage(FIST, -FIST.naturalWidth / 2, -4); ctx.restore();
             }
