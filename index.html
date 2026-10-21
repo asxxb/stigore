@@ -5565,13 +5565,17 @@
                 else {
                     if (jp === 'APPROACH' || jp === 'TAKEOFF') { dir = h.jdir; max = Math.max(max, Math.abs(h.vx) * .985) }   // committed: keep momentum
                     if (dir) {
-                        if (dir !== h.face && Math.abs(h.vx) > 60) { h.vx -= Math.sign(h.vx) * 1800 * dt; braking = true }
-                        else { h.face = dir; h.vx += dir * (run ? 560 : 800) * dt }
+                        hrsFace(dir);
+                        const mv = Math.sign(h.vx);
+                        if (mv && dir !== mv && Math.abs(h.vx) > 60) { h.vx -= mv * 1500 * dt; braking = true }   // plants and skids to a stop
+                        else h.vx += dir * (run ? 560 : 800) * dt * hrsTurnGo();                                     // accelerates once he has turned
                     } else if (grounded) { const f = 900 * dt; h.vx = Math.abs(h.vx) <= f ? 0 : h.vx - Math.sign(h.vx) * f }
                     if (Math.abs(h.vx) > max) h.vx += (Math.sign(h.vx) * max - h.vx) * Math.min(1, dt * (grounded ? 2.5 : .6));
                 }
                 if (braking && h.z >= 0 && Math.abs(h.vx) > 200 && Math.random() < dt * 40)
                     flecks.push({ x: h.x + Math.sign(h.vx) * 30 * S, y: -2, vx: -Math.sign(h.vx) * (40 + Math.random() * 80), vy: -(40 + Math.random() * 90), r: 1.2 + Math.random() * 1.8, t: 0, life: .35 });
+                if (braking && h.z >= 0 && Math.abs(h.vx) > 200 && Math.random() < dt * 14)
+                    puff(h.x + Math.sign(h.vx) * 40 * S, -8, 2, -Math.sign(h.vx) * 50, -20, 8, 24, 1.2, .45);
             } else if (st === 0) {                                            // ---- free horse: wanders, grazes, rears
                 if (h.tied) {
                     h.vx = 0;
@@ -5584,8 +5588,8 @@
                 } else {
                     let dir = 0;
                     if (h.wait > 0) h.wait -= dt;
-                    else { const gd = h.goal - h.x; if (Math.abs(gd) > 14) { dir = Math.sign(gd); h.face = dir } else { h.wait = 3 + Math.random() * 5; h.goal = h.home + (Math.random() * 2 - 1) * 380 } }
-                    if (dir) h.vx += (dir * 105 - h.vx) * Math.min(1, dt * 3);
+                    else { const gd = h.goal - h.x; if (Math.abs(gd) > 14) { dir = Math.sign(gd); hrsFace(dir) } else { h.wait = 3 + Math.random() * 5; h.goal = h.home + (Math.random() * 2 - 1) * 380 } }
+                    if (dir) h.vx += (dir * 105 * hrsTurnGo() - h.vx) * Math.min(1, dt * 3);
                     else { const f = 700 * dt; h.vx = Math.abs(h.vx) <= f ? 0 : h.vx - Math.sign(h.vx) * f }
                 }
             } else h.vx *= Math.max(0, 1 - dt * (st === 3 ? 6 : 10));         // mounting / dismounting: he stands still
@@ -5611,6 +5615,7 @@
                 }
             }
 
+            hrsTurnTick(dt, braking);
             h.x += h.vx * dt;
             horseJumpTick(dt, S);                       // jump phases, vertical motion, hooves, obstacle collision
             const sp = Math.abs(h.vx);
@@ -5704,13 +5709,45 @@
             return [ax + Math.cos(ang) * A1, ay + Math.sin(ang) * A1, ax + ux * dm, ay + uy * dm];
         }
 
+        // ================= HORSE TURNING (head -> neck -> shoulders -> torso -> hips -> tail) =================
+        // base = facing at yaw 0, q = turn progress 0..1 (towards the opposite facing), qt = target, tf = wanted facing
+        Object.assign(HRS, { base: -1, tf: -1, q: 0, qt: 0, qv: 0, Y: null, brk: 0, muzS: 0 });
 
-
-
-
+        function hrsFace(d) { if (!d) return; HRS.tf = d; HRS.qt = d === HRS.base ? 0 : 1; }
+        function hrsTurnGo() {                               // 0..1: how much the horse may accelerate towards the new direction
+            const h = HRS; if (h.q <= 0 && h.qt === 0) return 1;
+            return sm(((h.qt ? h.q : 1 - h.q) - .5) / .4);
+        }
+        function hrsTurnLift(i) {                            // corrective steps: front legs first, hind legs last
+            const h = HRS; if (h.q < .001) return 0;
+            const u = (h.q - [.08, .32, .18, .42][i]) / .3;
+            return (u <= 0 || u >= 1) ? 0 : Math.sin(Math.PI * u) * 15 * clamp01(h.q * 20);
+        }
+        function hrsTurnTick(dt, braking) {
+            const h = HRS, sp = Math.abs(h.vx);
+            const dur = lerp(.28, .5, clamp01(sp / HR_RUN));                 // slow = tight and quick, fast = wide and slow
+            const rate = (1 / dur) * (1 - .8 * sm(sp / (HR_RUN * .6)));      // at speed the yaw barely moves until braking has slowed him
+            const d = h.qt - h.q, tv = d > .0001 ? rate : d < -.0001 ? -rate : 0;
+            h.qv += (tv - h.qv) * Math.min(1, dt * 14);                       // inertia in the turn itself
+            h.q += h.qv * dt;
+            if (h.q < 0) { h.q = 0; h.qv = 0 }
+            if (h.q >= 1) { h.base = -h.base; h.q = 0; h.qv = 0; h.qt = h.tf === h.base ? 0 : 1 }   // seamless re-base
+            const q = h.q, E = d => Math.PI * sm(d >= 0 ? (q - d) / (1 - d) : q / (1 + d));
+            const fl = a => { const c = Math.cos(a); return Math.abs(c) < .05 ? (c < 0 ? -.05 : .05) : c };
+            const pt = E(.08);
+            h.Y = { t: fl(pt), n: fl(E(-.35)), f: fl(E(.16)), h: fl(E(.32)), tl: fl(E(.44)) };   // neck leads, hips and tail lag
+            h.face = pt > Math.PI / 2 ? -h.base : h.base;
+            h.brk += ((braking && h.z >= 0 ? clamp01(sp / 500) : 0) - h.brk) * Math.min(1, dt * 10);
+        }
+        // scale one body part about its own pivot; the pivot stays attached to the torso
+        function yawIn(part, px) {
+            const Y = HRS.Y, ps = Y ? Y[part] : 1, jx = px * (Y ? Y.t : 1);
+            ctx.save(); ctx.translate(jx - ps * px, 0); ctx.scale(ps, 1);
+        }
+        function yawOut() { ctx.restore(); }
 
         function drawHorse(gy) {
-            const h = HRS, S = CSc(), F = h.face, now = performance.now() / 1000;
+            const h = HRS, S = CSc(), F = h.base, now = performance.now() / 1000;
             const sx = h.x - P.x + W / 2;
 
             if (Math.abs(sx - W / 2) > W / 2 + 260) return;
@@ -5767,6 +5804,7 @@
                     fx = lerp(fx, L.ax + 24, rr);
                     fy = lerp(fy, -70 + 5 * Math.sin(now * 10 + L.far * 1.5), rr);
                 }
+                fy -= hrsTurnLift(i);
                 const jf = h.jf[i];                                      // planted / pose-driven hooves from the jump system
                 if (jf && jf[2] > .001) { fx = lerp(fx, jf[0], jf[2]); fy = lerp(fy, jf[1], jf[2]); }
                 fy = Math.min(fy, gz);                                   // a hoof can never pass through the ground
@@ -5810,6 +5848,7 @@
 
                     const [kx, ky, px, py] = q.k;
                     const front = q.L.front;
+                    yawIn(front ? 'f' : 'h', q.L.ax);
 
                     // forearm / thigh: broad at the top, narrowing to the knee or hock
                     limb(q.ax2, q.at2, kx, ky, (front ? 16 : 22) + add, 9 + add);
@@ -5822,6 +5861,7 @@
 
                     // fetlock joint
                     ctx.beginPath(); ctx.arc(px, py, 5 + add / 2, 0, 7); ctx.fill();
+                    yawOut();
                 }
             };
 
@@ -5835,6 +5875,7 @@
                 ctx.fillStyle = '#111';
 
                 for (const q of list) {
+                    yawIn(q.L.front ? 'f' : 'h', q.L.ax);
 
                     const [kx, ky, px, py] = q.k;
 
@@ -5862,6 +5903,7 @@
                     ctx.lineTo(tx - nx * 7 + ux * 5 + 7, ty - ny * 7 + uy * 5);
                     ctx.closePath();
                     ctx.fill();
+                    yawOut();
                 }
             };
 
@@ -5891,6 +5933,7 @@
             // TAIL — ragdoll rope physics + tapered ribbon with split tips
             // ============================================================
             {
+                yawIn('tl', -62);
                 const N = 11, SEG = 10;                    // joints, segment length
                 const dock = [-62, -140 + by];             // where the tail attaches
 
@@ -6058,6 +6101,7 @@
                     ctx.stroke();
                 }
                 ctx.globalAlpha = 1;
+                yawOut();
             }
 
 
@@ -6094,6 +6138,7 @@
             // Exact rope attachment point: underside/front of muzzle
             const m = hp(62, 13);
             h.muz = rotP(m[0], m[1]);
+            { const Yn = h.Y ? h.Y.n : 1, Yt = h.Y ? h.Y.t : 1; h.muzS = F * (Yn * h.muz[0] + 46 * Yt - Yn * 46); }
 
             // smooth closed curve through points
             const smoothClosed = pts => {
@@ -6160,6 +6205,7 @@
             };
 
             // ---- outline pass (drawn under the body so everything merges) ----
+            yawIn('n', 46);
             ctx.strokeStyle = '#111';
             ctx.fillStyle = '#111';
             ctx.lineWidth = 34;
@@ -6170,12 +6216,14 @@
             ctx.lineWidth = 5;
             ctx.fill();
             ctx.stroke();
+            yawOut();
 
 
             // ============================================================
             // BODY
             // ============================================================
 
+            yawIn('t', 0);
             ctx.beginPath();
             ctx.moveTo(42, -148 + by);
             ctx.quadraticCurveTo(-4, -154 + by, -48, -150 + by);
@@ -6189,12 +6237,14 @@
             ctx.strokeStyle = '#111';
             ctx.lineWidth = 5;
             ctx.stroke();
+            yawOut();
 
 
             // ============================================================
             // PAPER FILL: NECK + HEAD
             // ============================================================
 
+            yawIn('n', 46);
             ctx.strokeStyle = PAPER;
             ctx.lineWidth = 25;
             neckP();
@@ -6763,10 +6813,13 @@
                 ctx.globalAlpha = 1;
             }
 
+            yawOut();
+
             // ============================================================
             // SADDLE
             // ============================================================
 
+            yawIn('t', 0);
             ctx.fillStyle = '#5a5a5a';
             ctx.strokeStyle = '#111';
             ctx.lineWidth = 4;
@@ -6857,6 +6910,8 @@
 
             ctx.stroke();
 
+            yawOut();
+
             ctx.restore();
 
             // ============================================================
@@ -6897,7 +6952,7 @@
                 // Exact muzzle attachment
                 const muzSX =
                     sx +
-                    F * h.muz[0] * S * HORSE_W;
+                    h.muzS * S * HORSE_W;
 
                 const muzSY =
                     gy +
@@ -7030,7 +7085,7 @@
         function drawReins(F) {
             const A = P.armPts && P.armPts[0]; if (!A || !HRS.muz) return;
             const w = A[1];
-            const mx = F * HRS.muz[0] * HORSE_W, my = HRS.muz[1] * HORSE_H + HRS.z / CSc();
+            const mx = HRS.muzS * HORSE_W, my = HRS.muz[1] * HORSE_H + HRS.z / CSc();
             ctx.save(); ctx.strokeStyle = '#111'; ctx.lineWidth = 1.8; ctx.lineCap = 'round';
             ctx.beginPath(); ctx.moveTo(w[0], w[1]); ctx.quadraticCurveTo((w[0] + mx) / 2, Math.max(w[1], my) + 10, mx, my); ctx.stroke(); ctx.restore();
         }
@@ -9018,10 +9073,15 @@
         function hrsPoseTick(dt) {
             const h = HRS;
             let key = h.jp; if (key === 'IDLE') key = 'RUN'; else if (key === 'TAKEOFF') key = h.jth ? 'TAKEOFF_T' : 'TAKEOFF_C';
-            const T = HJ_TARGET[key], f = HJ_GROUND[h.jp] ? 1 : .6 + .4 * h.jpw;        // bigger jump = deeper crouch, harder drive
-            hrsSpr(h, 'cmp', T[0] * f, 260, .55, dt); hrsSpr(h, 'pitch', T[1] * f, 110, .65, dt);
-            hrsSpr(h, 'nkLow', T[2], 140, .8, dt); hrsSpr(h, 'nkFwd', T[3], 140, .8, dt); hrsSpr(h, 'rd', T[4], 80, .9, dt);
-            h.coll += (T[5] - h.coll) * Math.min(1, dt * (T[5] > h.coll ? 8 : 5));
+            const T = HJ_TARGET[key], f = HJ_GROUND[h.jp] ? 1 : .6 + .4 * h.jpw;
+            const bump = Math.sin(Math.PI * h.q), br = h.brk;
+            hrsSpr(h, 'cmp', T[0] * f + 7 * bump + 9 * br, 260, .55, dt);
+            hrsSpr(h, 'pitch', T[1] * f + .10 * br - .04 * bump, 110, .65, dt);
+            hrsSpr(h, 'nkLow', T[2] + 22 * bump - 6 * br, 140, .8, dt);
+            hrsSpr(h, 'nkFwd', T[3] - 22 * bump + 8 * br, 140, .8, dt);
+            hrsSpr(h, 'rd', T[4] - .1 * bump, 80, .9, dt);
+            const ct = Math.max(T[5], .7 * br);
+            h.coll += (ct - h.coll) * Math.min(1, dt * (ct > h.coll ? 8 : 5));
             h.cmp = Math.max(-10, Math.min(24, h.cmp));
         }
 
@@ -9066,7 +9126,7 @@
             if (HJ_GROUND[h.jp]) h.jp = Math.abs(h.vx) < 8 ? 'IDLE' : 'RUN';
 
             // 1. jump key -> APPROACH (never an instant jump)
-            if (st === 2 && P.jbuf > 0 && HJ_GROUND[h.jp] && h.z >= 0) {
+            if (st === 2 && P.jbuf > 0 && HJ_GROUND[h.jp] && h.z >= 0 && h.q < .02 && (Math.abs(h.vx) < 40 || Math.sign(h.vx) === h.face)) {
                 P.jbuf = 0;
                 const sp = Math.abs(h.vx), d = sp > 40 ? Math.sign(h.vx) : h.face;
                 const hit = hrsNextObs(d, h.x + d * 68 * cx, 150 * S + sp * 1.1);
