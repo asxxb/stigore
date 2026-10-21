@@ -7447,6 +7447,24 @@
             }
             ctx.restore();
         }
+        function drawWindowGlow(gy) {                    // lit windows, drawn BEFORE characters so they stay behind them
+            const wa = sm((DN.d - .2) / .4); if (wa < .01) return;
+            const now = performance.now() / 1000;
+            for (const B of NIGHT_LIGHTS) {
+                const sx = W / 2 + B.wx - P.x; if (sx < -700 || sx > W + 700) continue;
+                ctx.save(); ctx.translate(sx, gy); ctx.scale(B.sc, B.sc);
+                B.r.forEach((q, i) => {
+                    const fk = 1 - .06 * (.5 + .5 * Math.sin(now * 3.1 + i * 2 + B.wx));
+                    ctx.fillStyle = 'rgba(255,206,104,' + (.93 * wa * q[4] * fk) + ')'; ctx.fillRect(q[0], q[1], q[2], q[3]);
+                    if (q[5]) {
+                        ctx.strokeStyle = 'rgba(58,38,12,' + (.85 * wa) + ')'; ctx.lineWidth = 1.2; ctx.beginPath();
+                        ctx.moveTo(q[0] + q[2] / 2, q[1]); ctx.lineTo(q[0] + q[2] / 2, q[1] + q[3]); ctx.moveTo(q[0], q[1] + q[3] / 2); ctx.lineTo(q[0] + q[2], q[1] + q[3] / 2); ctx.stroke();
+                        ctx.strokeStyle = '#111'; ctx.lineWidth = 1.5; ctx.strokeRect(q[0], q[1], q[2], q[3]);
+                    }
+                });
+                ctx.restore();
+            }
+        }
         function drawNight(gy) {
             if (DN.dusk > .01) { ctx.save(); ctx.globalAlpha = .15 * DN.dusk; ctx.fillStyle = '#c8783c'; ctx.fillRect(0, 0, W, H); ctx.restore(); }   // warm dawn/dusk wash
             const d = DN.d; if (d < .01) return;
@@ -7474,22 +7492,6 @@
 
             for (const L of lights) nGlow(L[0], L[1], L[2] * .8, L[4] * d);     // warm tint
 
-            // glowing windows
-            for (const B of NIGHT_LIGHTS) {
-                const sx = W / 2 + B.wx - P.x; if (sx < -700 || sx > W + 700 || wa < .01) continue;
-                ctx.save(); ctx.translate(sx, gy); ctx.scale(B.sc, B.sc);
-                B.r.forEach((q, i) => {
-                    const fk = 1 - .06 * (.5 + .5 * Math.sin(now * 3.1 + i * 2 + B.wx));
-                    ctx.fillStyle = 'rgba(255,206,104,' + (.93 * wa * q[4] * fk) + ')'; ctx.fillRect(q[0], q[1], q[2], q[3]);
-                    if (q[5]) {
-                        ctx.strokeStyle = 'rgba(58,38,12,' + (.85 * wa) + ')'; ctx.lineWidth = 1.2; ctx.beginPath();
-                        ctx.moveTo(q[0] + q[2] / 2, q[1]); ctx.lineTo(q[0] + q[2] / 2, q[1] + q[3]); ctx.moveTo(q[0], q[1] + q[3] / 2); ctx.lineTo(q[0] + q[2], q[1] + q[3] / 2); ctx.stroke();
-                        ctx.strokeStyle = '#111'; ctx.lineWidth = 1.5; ctx.strokeRect(q[0], q[1], q[2], q[3]);
-                    }
-                });
-                ctx.restore();
-            }
-
             drawStars(gy, d, now);
             if (sb.moon) drawMoon(sb.moon, d);
 
@@ -7511,6 +7513,7 @@
             const gy = groundY();
             drawBackdrop(gy);
             drawWorld(gy);
+            drawWindowGlow(gy);
             drawSkid(gy);
             drawSplats(gy);
             drawButts(gy);
