@@ -4640,6 +4640,16 @@
         }
         function pelletHit(p, e, h) {
             if (h.head && !(e.dying > 0) && !(e.dead > 0)) { headShatter(e, p.F, Math.abs(h.x - p.x0)); return }
+
+            // leg-height blast: reuse the revolver leg damage, but a shotgun skips straight to the shatter
+            if (!h.head && h.y >= -150 * CSc() && !(e.dying > 0)) {
+                if (e.legBlast === p.id) return;                 // the rest of this blast's pellets are already handled
+                if (legShot(p, e, h, CSc())) {
+                    e.legBlast = p.id;
+                    if (!e.legGone) legShot(p, e, h, CSc());     // 2nd stage: leg shatters, he crawls
+                    return;
+                }
+            }
             const F = p.F, d = Math.abs(h.x - p.x0), fall = Math.max(.3, 1 - d / 700);
             const dmg = Math.max(1, Math.round((h.head ? SG_HEAD : SG_BODY) * fall));
             e.hp -= dmg; e.bar = 2.5; e.kdir = F; e.face = -F; e.wait = 1; e.fid = 0; e.hurt = Math.max(e.hurt, .35);
