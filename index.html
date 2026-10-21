@@ -10372,6 +10372,413 @@
             return true;
         }
 
+
+
+        // ================= FROGS (ambient wildlife) =================
+        const FR_SIZE = 1.4, FR_G = 1500;                 // FR_SIZE: overall frog scale
+        const frogs = [], fRips = [], fMarks = [];
+        let frInit = false;
+        const frR = (a, b) => a + Math.random() * (b - a);
+        const frDock = x => x >= DOCK_X0 && x <= DOCK_X1;          // deck surface (solid)
+        const frGround = x => frDock(x) ? -1 : 0;
+        const frWet = x => inPond(x, 0) && !frDock(x);
+        const frBank = () => POND_X + POND_RX;
+        const frSc = f => CSc() * f.s * FR_SIZE;
+        function frAhead(x, d) {                                    // distance to the water in direction d (Infinity = none)
+            if (d > 0) return x <= DOCK_X1 ? DOCK_X1 - x : Infinity;
+            return x >= frBank() ? x - frBank() : Infinity;
+        }
+        function frRip(x, r0, grow, life) { if (fRips.length > 40) fRips.shift(); fRips.push({ x, t: 0, life, r0, grow, seed: Math.random() * 100 }) }
+
+        // small / medium / large / long-legged / stout
+        const FR_TYPES = [
+            { s: 1.0, bw: .9, bh: .9, lg: .9, hp: 1, pw: .9 },
+            { s: 1.35, bw: 1, bh: 1, lg: 1, hp: 2, pw: 1 },
+            { s: 1.8, bw: 1.1, bh: 1.15, lg: 1.05, hp: 2, pw: 1.05 },
+            { s: 1.3, bw: .88, bh: .82, lg: 1.35, hp: 2, pw: 1.25 },
+            { s: 1.55, bw: 1.2, bh: 1.2, lg: .8, hp: 2, pw: .8 }
+        ];
+
+        function mkFrog(home, x, wet) {
+            const T = FR_TYPES[(Math.random() * FR_TYPES.length) | 0], s = T.s * frR(.9, 1.12), face = Math.random() < .5 ? -1 : 1;
+            const f = {
+                home, wet0: !!wet, hx: x, s, hp: T.hp, bw: T.bw * frR(.92, 1.08), bh: T.bh * frR(.92, 1.08), lg: T.lg * frR(.92, 1.08), pw: T.pw * frR(.9, 1.1),
+                dark: Math.random() < .35, range: home === 'dock' ? frR(240, 420) : frR(160, 320),
+                // personality: every frog has its own timing and nerve
+                nerve: Math.random(), rd: frR(170, 430), rt: Math.random() < .4 ? frR(.04, .18) : frR(.25, .8), lt2: frR(.3, 1.8),
+                idleMin: frR(1, 3), idleMax: frR(4, 9), restless: frR(.25, .7), stillP: frR(.08, .3), wp: frR(.2, .65), spd: frR(.7, 1.3), nv: frR(.12, .24),
+                x, y: 0, vx: 0, vy: 0, face, fv: face, mode: 'L', st: 'idle', t: 0, tt: frR(.3, 4), sq: 0, sqV: 0, tilt: 0, rot: 0, vr: 0,
+                ph: Math.random() * 6, seed: Math.random() * 100, bl: 0, blT: frR(1, 4), lk: 0, lkd: 1, lkf: 0, flipped: 0, cr: 0,
+                lit: 0, litT: 0, vis: 1, a: 0, gone: 0, dying: 0, afterHit: 0, hops: 0, fd: 1, hd: 1, hdist: 50, hpw: 300, bn: 0, fade: 0, rsp: 0,
+                dep: 0, sd: face, swT: 0, dt2: 0, burst: 0, bt: 0, wk: 0, exitNow: 0, toExit: 0, lastBlast: -1
+            };
+            if (wet) {
+                const sc = frSc(f);
+                f.mode = 'W'; f.st = 'swim'; f.dep = frR(24, 46) * sc * f.bh; f.swT = frR(3, 9); f.dt2 = frR(1, 3);
+                f.y = waterSurfaceY(x) + f.dep + 8 * f.bh * sc;
+            } else f.y = frGround(x);
+            return f;
+        }
+        function frSetup() {
+            const add = (h, x, w) => frogs.push(mkFrog(h, x, w));
+            for (const x of [DOCK_X0 + 140, DOCK_X0 + 330, DOCK_X1 - 90]) add('dock', x + frR(-40, 40), false);   // dock
+            add('lbank', DOCK_X0 - 90, false); add('lbank', DOCK_X0 - 260, false);                                  // left bank
+            for (const dx of [28, 90, 210]) add('rbank', frBank() + dx, false);                                     // right bank, by the reeds
+            add('lwater', DOCK_X1 + frR(80, 500), true); add('lwater', DOCK_X1 + frR(300, 800), true);              // swimmers
+            add('rwater', frBank() - frR(400, 900), true); add('rwater', frBank() - frR(500, 1000), true);
+        }
+        function frRespawn(f) { const n = mkFrog(f.home, f.hx, f.wet0); n.a = 0; Object.assign(f, n) }
+
+        // ---------- land behaviour: IDLE -> LOOK -> CROUCH -> HOP -> LAND -> PAUSE ----------
+        function frIdle(f) { f.st = 'idle'; f.t = 0; f.tt = frR(f.idleMin, f.idleMax) }
+        function frDecide(f) {
+            const r = Math.random();
+            if (r < f.stillP) { f.st = 'still'; f.t = 0; f.tt = frR(3, 9) }                                        // sits completely still
+            else if (r < .6) { f.st = 'look'; f.t = 0; f.tt = frR(.6, 1.7); f.lkd = Math.random() < .5 ? -1 : 1; f.lkf = Math.random() < .5; f.flipped = 0 }
+            else frPlanHop(f, false);
+        }
+        function frPlanHop(f, flee) {
+            const S = CSc(), sc = frSc(f);
+            let dir = flee ? f.fd : (Math.random() < .68 ? f.face : -f.face);                                      // random direction changes
+            if (!flee && Math.abs(f.x - f.hx) > f.range) dir = Math.sign(f.hx - f.x) || dir;                      // drift back home
+            const pw = frR(300, 400) * f.pw * (flee ? 1.15 : 1), T = 2 * pw / FR_G, maxD = 480 * T * .92;
+            let dist = frR(34, 70) * sc * (flee ? 1.6 : 1), into = false, e = frAhead(f.x, dir);
+            if (isFinite(e)) {
+                const want = flee || (e < 240 * S && Math.random() < f.wp);
+                if (want && e < maxD - 40 * S) { dist = e + frR(30, 65) * S; into = true }                          // jump into the pond
+                else if (!want && e < 30 * S) { dir = -dir; e = frAhead(f.x, dir); if (isFinite(e)) dist = Math.min(dist, Math.max(10, e - 18 * S)) }
+                else dist = Math.min(dist, Math.max(10, e - 16 * S));                                               // stay on the dock / bank
+            }
+            f.face = dir; f.hd = dir; f.hdist = Math.max(12, dist); f.hpw = pw;
+            f.st = 'crouch'; f.t = 0; f.tt = flee ? frR(.07, .15) : frR(.2, .42);
+        }
+        function frLaunch(f) {
+            const T = 2 * f.hpw / FR_G, sc = frSc(f);
+            f.vx = clampN(f.hd * f.hdist / T, -480, 480); f.vy = -f.hpw; f.y -= 1; f.mode = 'A'; f.st = 'hop'; f.t = 0; f.bn = 0; f.sqV -= 7;
+            for (let i = 0; i < 3; i++) flecks.push({ x: f.x - f.hd * 8 * sc, y: f.y - 1, vx: -f.hd * (30 + Math.random() * 60), vy: -(20 + Math.random() * 50), r: 1 + Math.random() * 1.5, t: 0, life: .3 });
+        }
+        function frClimb(f) {                                                                                       // water -> dock / bank
+            const sc = frSc(f), side = f.x < POND_X ? -1 : 1, pw = 380 + 75 * sc, T = 2 * pw / FR_G;
+            const dist = side < 0 ? (f.x - DOCK_X1) + frR(22, 44) : (frBank() - f.x) + frR(30, 60);
+            f.mode = 'A'; f.st = 'hop'; f.t = 0; f.vy = -pw; f.vx = side * dist / T; f.face = side; f.sqV -= 5; f.bn = 0; f.exitNow = 0; f.hops = 0;
+            splash(f.x, 1.4, 4); frRip(f.x, 8 * sc, 30 * sc, 1.1);
+        }
+        function frTouch(f, y, water) {
+            const sc = frSc(f), vi = f.vy, F = Math.sign(f.vx) || f.face;
+            if (water) {                                                                                            // HOP -> SPLASH -> SUBMERGE
+                f.y = y; f.mode = 'W';
+                const pw = clampN(1.2 + vi / 320, 1.2, 4.2) * (.6 + .22 * f.s);
+                splash(f.x, pw, 5 + (pw | 0)); frRip(f.x, 10 * sc, 40 * sc, 1.3);
+                for (let i = 0; i < 4; i++) addBubble(f.x, y + 6 + Math.random() * 18);
+                if (f.dying) { f.st = 'fade'; f.fade = 0; f.vx = 0; return }
+                f.st = 'sub'; f.t = 0; f.vy = vi * .35; f.vx *= .3; f.rot = 0; f.vr = 0;
+                f.dep = frR(24, 46) * sc * f.bh; f.swT = frR(3, 10); f.sd = Math.sign(POND_X - f.x) || 1; f.dt2 = frR(1.5, 3.5);
+                f.toExit = 0; f.exitNow = 0;
+                if (f.afterHit) { f.afterHit = 0; f.burst = 1 }
+                return;
+            }
+            f.y = y;
+            if (f.dying) {                                                                                          // lethal hit: ink poof, then gone
+                for (let i = 0; i < 8; i++) flecks.push({ x: f.x, y: y - 6, vx: (Math.random() - .5) * 240, vy: -(40 + Math.random() * 150), r: 1.3 + Math.random() * 2, t: 0, life: .5 + Math.random() * .4 });
+                impacts.push({ x: f.x, y: y - 10, t: 0, life: .18, s: 50, seed: Math.random() * 50 });
+                f.st = 'fade'; f.fade = 0; f.vx = 0; f.rot = F * 1.3; f.vr = 0; return;
+            }
+            if (f.st === 'hop' && vi > 330 && !f.bn) { f.bn = 1; f.vy = -vi * .2; f.vx *= .35; f.y = y - 1; f.sqV += vi / 60; return }   // small bounce
+            f.mode = 'L'; f.vx = 0; f.vy = 0; f.rot = 0; f.vr = 0; f.st = 'land'; f.t = 0; f.tt = frR(.14, .24);
+            f.sq = clampN(vi / 420, .25, .95); f.sqV = 0;                                                           // landing compression (spring overshoots = bounce)
+            for (let i = 0; i < 4; i++) flecks.push({ x: f.x + (Math.random() - .5) * 20 * sc, y: y - 1, vx: (Math.random() - .5) * 120, vy: -(20 + Math.random() * 60), r: 1 + Math.random() * 1.4, t: 0, life: .3 });
+            if (f.afterHit) { f.fd = f.afterHit; f.hops = 2 + (Math.random() * 2 | 0); f.afterHit = 0 }
+        }
+
+        // ---------- water behaviour: SUB -> SWIM -> RISE -> SURF (-> swim again, or climb out) ----------
+        function frWater(f, dt, S, sc, cOff) {
+            const sy = waterSurfaceY(f.x), floor = pondDepth(f.x - POND_X) - 4 * sc, side = f.x < POND_X ? -1 : 1;
+            const xE = side < 0 ? DOCK_X1 + 24 : frBank() - 30;
+            const zLo = side < 0 ? DOCK_X1 + 30 : frBank() - 1200, zHi = side < 0 ? DOCK_X1 + 900 : frBank() - 300;
+            const eyeY = sy + 18 * f.bh * sc;                                       // belly height when only the eyes poke out
+            let ty = sy + f.dep + cOff, k = 30, c = 9, tiltT = 0, spT = 0;
+            if (f.burst > 0) f.burst -= dt;
+            if (f.st === 'surf' || f.st === 'rise' || f.st === 'swim') {            // scared by the player / swimmer / gunshots
+                let R = f.rd * S * .6 * (1 + clampN(Math.abs(P.vx) / 450, 0, 1)); if (swim.on) R *= 1.3; if (f.nerve > .72) R *= .5;
+                const dist = Math.abs(P.x - f.x), shot = (P.recoil > .8 || P.sgFlash > .6) && dist < 1300;
+                if ((dist < R || shot) && !(f.burst > 0)) {
+                    f.st = 'swim'; f.t = 0; f.sd = Math.sign(f.x - P.x) || 1; f.burst = .9; f.dep = frR(30, 50) * sc * f.bh;
+                    f.swT = frR(2.5, 6); f.toExit = 0; f.exitNow = 0; splash(f.x, .5, 0);
+                }
+            }
+            switch (f.st) {
+                case 'sub': k = 14; if (f.t > .6) { f.st = 'swim'; f.t = 0 } break;
+                case 'swim':
+                    f.swT -= dt; f.dt2 -= dt;
+                    if (f.dt2 <= 0) { f.dt2 = frR(1.5, 4); if (!f.toExit && Math.random() < .4) f.sd = -f.sd; if (Math.random() < .5) f.dep = frR(24, 50) * sc * f.bh }
+                    if (f.toExit) f.sd = Math.sign(xE - f.x) || f.sd;
+                    else if (f.x < zLo) f.sd = 1; else if (f.x > zHi) f.sd = -1;
+                    f.face = f.sd; spT = f.sd * (38 + 34 * f.spd) * (f.burst > 0 ? 2.4 : 1);
+                    if (f.toExit && Math.abs(xE - f.x) < 16 * S) { f.st = 'rise'; f.t = 0; f.exitNow = 1; f.toExit = 0 }
+                    else if (f.swT <= 0 && !f.toExit) { f.st = 'rise'; f.t = 0; f.exitNow = 0 }
+                    break;
+                case 'rise':                                                        // nose tilts up, head/eyes reach the surface first
+                    ty = eyeY; k = 12; tiltT = -.7; spT = f.sd * 14;
+                    if ((f.t > .5 && Math.abs(f.y - Math.min(ty, floor)) < 5 * sc) || f.t > 2) { f.st = 'surf'; f.t = 0; f.tt = f.exitNow ? frR(.4, 1) : frR(1.5, 5) }
+                    break;
+                case 'surf':
+                    ty = eyeY + Math.sin(f.t * 2.3 + f.seed) * 1.3; k = 14; spT = Math.sin(f.t * .8 + f.seed) * 6; f.lk = Math.sin(f.t * .9 + f.seed);
+                    if (f.t > f.tt) {
+                        if (f.exitNow) frClimb(f);
+                        else {
+                            const r = Math.random(); f.t = 0;
+                            if (r < .8) { f.st = 'swim'; f.dep = frR(24, 46) * sc * f.bh; f.swT = frR(3, 9); f.dt2 = frR(1.5, 3.5); f.sd = Math.random() < .5 ? -1 : 1; f.toExit = r >= .45 ? 1 : 0 }
+                            else f.tt = frR(1.5, 4);
+                        }
+                    }
+                    break;
+            }
+            if (f.mode !== 'W') return;
+            ty = Math.max(Math.min(ty, floor), sy + 3 * sc);
+            f.vy += ((ty - f.y) * k - f.vy * c) * dt; f.y += f.vy * dt;
+            f.vx += (spT * (f.st === 'swim' ? .5 + .5 * Math.abs(Math.sin(f.ph)) : 1) - f.vx) * Math.min(1, dt * 3);   // kick-pulsed thrust
+            f.x += f.vx * dt;
+            f.x = side < 0 ? Math.max(f.x, DOCK_X1 + 14) : Math.min(f.x, frBank() - 10);                            // never under the dock / past the bank
+            f.ph += dt * (f.st === 'swim' ? 7 + Math.abs(f.vx) * .04 : 2.5);
+            f.tilt += ((f.st === 'swim' ? Math.sin(f.ph) * .05 : tiltT) - f.tilt) * Math.min(1, dt * 5);
+            const cd = f.y - cOff - sy;                                              // centre depth
+            f.bt -= dt; if (f.bt <= 0 && cd > 8 * sc) { f.bt = frR(.5, 1.6); addBubble(f.x + f.face * 8 * sc, f.y - cOff) }
+            f.wk -= dt;
+            if (f.wk <= 0 && cd < 40 * sc && (Math.abs(f.vx) > 12 || f.st === 'surf')) {                           // subtle wake / ripples
+                f.wk = frR(.35, .8); splash(f.x + f.face * 10 * sc, .1, 0); frRip(f.x + f.face * 12 * sc, 5 * sc, 18 * sc, 1.1);
+            }
+        }
+
+        // ---------- per-frog update ----------
+        function frStep(f, dt, S, lan, lanR) {
+            const sc = S * f.s * FR_SIZE, cOff = 8 * f.bh * sc;
+            if (f.st === 'fade') {
+                f.fade += dt; f.a = Math.max(0, 1 - f.fade / .35); if (f.mode === 'W') f.y += 30 * dt;
+                if (f.fade > .35) { f.gone = 1; f.rsp = frR(18, 40) }
+                return;
+            }
+            f.t += dt; f.a = Math.min(1, f.a + dt * 1.5);
+            f.fv += clampN(f.face - f.fv, -dt * 7, dt * 7);                                                         // smooth turn
+            const sqT = f.st === 'crouch' ? .85 : f.mode === 'A' ? -.35 : f.st === 'notice' ? .2 : 0;               // squash & stretch spring
+            f.sqV += (230 * (sqT - f.sq) - 2 * .4 * Math.sqrt(230) * f.sqV) * dt; f.sq = clampN(f.sq + f.sqV * dt, -.6, 1);
+            f.blT -= dt; if (f.blT <= 0) { f.bl = .12; f.blT = frR(1.5, 5) } if (f.bl > 0) f.bl -= dt;
+            if (f.cr > 0) f.cr -= dt; else if (f.mode === 'L' && f.st === 'idle' && Math.random() < dt * .07) f.cr = .7;   // throat croak
+
+            // lantern light / night visibility
+            const sxs = W / 2 + f.x - P.x;
+            if (Math.abs(sxs - W / 2) < W / 2 + 400) {
+                let lit = 0;
+                if (lan && lanR) { const dd = Math.hypot(sxs - lan[0], groundY() + 4 + f.y - 12 * sc - lan[1]); lit = sm((1 - dd / lanR) * 1.25) * DN.litK }
+                f.lit += (lit - f.lit) * Math.min(1, dt * 8);
+            } else f.lit = 0;
+            const hidden = f.mode === 'W' && !(f.st === 'surf' || f.st === 'rise'), nvk = hidden ? f.nv * .5 : f.nv;
+            f.vis = 1 - DN.d * (1 - (nvk + (1 - nvk) * f.lit));
+
+            if (f.gone) { f.rsp -= dt; if (f.rsp <= 0 && Math.abs(f.hx - P.x) > W / 2 + 300) frRespawn(f); return }
+
+            if (f.mode === 'A') {                                                                                   // airborne arc
+                f.vy += FR_G * dt; f.x += f.vx * dt; f.y += f.vy * dt; f.rot += f.vr * dt;
+                if (f.vy > 0) {
+                    if (frDock(f.x) && f.y >= -1) frTouch(f, -1, false);
+                    else if (frWet(f.x)) { const sy = waterSurfaceY(f.x); if (f.y >= sy) frTouch(f, sy, true) }
+                    else if (f.y >= 0) frTouch(f, 0, false);
+                }
+                return;
+            }
+            if (f.mode === 'W') { frWater(f, dt, S, sc, cOff); return }
+
+            if (frWet(f.x)) { f.mode = 'A'; f.vy = 0; return }                                                      // safety: never stand on water
+            f.y = frGround(f.x);
+
+            // player / gunshot / lantern reaction (each frog has its own distance + delay; bold ones stay frozen longer)
+            if (f.st === 'idle' || f.st === 'look' || f.st === 'pause' || f.st === 'still' || f.st === 'land') {
+                const dist = Math.abs(P.x - f.x), shot = (P.recoil > .8 || P.sgFlash > .6) && dist < 1300 && f.nerve < .85;
+                let R = f.rd * S * (1 + clampN(Math.abs(P.vx) / 450, 0, 1.1)); if (f.nerve > .72) R *= .38;
+                let from = null;
+                if (dist < R || shot) from = P.x;
+                else if (lan && f.lit > .4) { f.litT += dt; if (f.litT > f.lt2) { from = P.x + (lan[0] - W / 2); f.litT = 0 } }
+                else if (f.lit <= .4) f.litT = 0;
+                if (from !== null) { f.st = 'notice'; f.t = 0; f.tt = shot ? frR(.05, .25) : f.rt; f.fd = Math.sign(f.x - from) || -f.face; f.face = -f.fd; f.cr = 0 }   // notice -> pause -> turn toward it
+            }
+            switch (f.st) {
+                case 'idle': if (f.t > f.tt) frDecide(f); break;
+                case 'look':
+                    f.lk = Math.sin(f.t / f.tt * Math.PI * 2) * f.lkd;
+                    if (!f.flipped && f.lkf && f.t > f.tt * .5) { f.face = -f.face; f.flipped = 1 }
+                    if (f.t > f.tt) { f.lk = 0; if (Math.random() < f.restless) frPlanHop(f, false); else frIdle(f) }
+                    break;
+                case 'still': if (f.t > f.tt) frIdle(f); break;
+                case 'pause': if (f.t > f.tt) { if (Math.random() < f.restless * .5) frPlanHop(f, false); else frIdle(f) } break;
+                case 'land':
+                    if (f.t > f.tt) { if (f.hops > 0) { f.hops--; frPlanHop(f, true) } else { f.st = 'pause'; f.t = 0; f.tt = frR(.3, 1.5) } }
+                    break;
+                case 'crouch': if (f.t > f.tt) frLaunch(f); break;
+                case 'notice': if (f.t > f.tt) { f.hops = 2 + (Math.random() * 3 | 0); frPlanHop(f, true) } break;   // then hops away / into the pond
+            }
+        }
+
+        function frogTick(dt) {
+            if (!(dt > 0)) return;
+            if (!frInit) { frInit = true; frSetup() }
+            const S = CSc(), lp = lanternPos(), lan = lp && DN.litK > .05 ? lp : null;
+            const lanR = lan ? 340 * S * (.4 + .6 * DN.litK) * .85 : 0;
+            for (const f of frogs) frStep(f, dt, S, lan, lanR);
+            for (let i = fRips.length - 1; i >= 0; i--) { fRips[i].t += dt; if (fRips[i].t > fRips[i].life) fRips.splice(i, 1) }
+            for (let i = fMarks.length - 1; i >= 0; i--) { fMarks[i].t += dt; if (fMarks[i].t > 7) fMarks.splice(i, 1) }
+        }
+
+        // ---------- shooting: stylized ink hit, no gore ----------
+        function frogHit(p, px, py, sg) {
+            const S = CSc(), dx = p.x - px, dy = p.y - py, l2 = dx * dx + dy * dy || 1;
+            for (const f of frogs) {
+                if (f.gone || f.st === 'fade') continue;
+                const sc = S * f.s * FR_SIZE;
+                if (f.mode === 'W' && !(f.st === 'surf' || f.st === 'rise')) continue;                              // fully submerged = safe
+                const cx = f.x, cy = f.y - 9 * f.bh * sc, r = 17 * sc * Math.max(f.bw, .9) + 6;
+                let t = ((cx - px) * dx + (cy - py) * dy) / l2; t = clampN(t, 0, 1);
+                const x = px + dx * t, y = py + dy * t;
+                if ((x - cx) ** 2 + (y - cy) ** 2 < r * r) {
+                    if (sg) { if (f.lastBlast === p.id) return true; f.lastBlast = p.id }
+                    frogDamage(f, p, sg, x, y); return true;
+                }
+            }
+            return false;
+        }
+        function frogDamage(f, p, sg, x, y) {
+            const F = p.F, sc = frSc(f);
+            f.hp -= sg ? 2 : 1;
+            impacts.push({ x, y, t: 0, life: .22, s: 55 + sc * 8, seed: Math.random() * 50 });                      // ink burst
+            for (let k = 0; k < (sg ? 14 : 9); k++) flecks.push({ x: x + (Math.random() - .5) * 10, y: y + (Math.random() - .5) * 10, vx: F * (80 + Math.random() * 320) + (Math.random() - .5) * 160, vy: -(60 + Math.random() * 260), r: 1.2 + Math.random() * 2.6, t: 0, life: .5 + Math.random() * .6 });
+            fMarks.push({ x: f.x + F * (20 + Math.random() * 30), y: f.mode === 'W' ? 0 : frGround(f.x), t: 0, seed: Math.random() * 99, n: 4 + ((Math.random() * 4) | 0) });   // scattered ink marks
+            if (f.mode === 'W') splash(f.x, 2.2, 6);
+            hitstop = Math.max(hitstop, .03); shake = Math.max(shake, 3);
+            f.mode = 'A'; f.y -= 2; f.vy = -(sg ? 330 : 270); f.vx = F * (sg ? 420 : 300); f.vr = F * (10 + Math.random() * 6) * (f.hp <= 0 ? 1 : .4);   // strong knockback
+            f.bn = 1; f.t = 0; f.sq = 0; f.sqV = 0;
+            if (f.hp <= 0) { f.dying = 1; f.st = 'hit' } else { f.st = 'hop'; f.afterHit = F }
+        }
+
+        // ---------- drawing ----------
+        function frShape(f, sc, now) {                                              // local space: origin = belly bottom, +x = forward
+            const INK = '#111', FILL = f.dark ? '#1c1c1c' : PAPER, HI = f.dark ? PAPER : INK;
+            const bw = f.bw, bh = f.bh, sq = clampN(f.sq, -.6, 1), air = f.mode === 'A', wet = f.mode === 'W';
+            let F = f.fv; if (Math.abs(F) < .15) F = .15 * (Math.sign(F) || 1);
+            ctx.scale(sc * F, sc); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+            if (f.mode === 'L') { ctx.save(); ctx.globalAlpha *= .3; ctx.fillStyle = INK; ctx.beginPath(); ctx.ellipse(0, 1.5, 15 * bw, 2.4, 0, 0, 7); ctx.fill(); ctx.restore() }
+            ctx.scale(1 + .16 * sq, 1 - .26 * sq);
+            const lean = f.st === 'crouch' ? -.3 * clampN(sq, 0, 1) : 0;                                            // leans back before the jump
+            const rot = f.rot + f.tilt + lean + (air ? clampN(Math.atan2(f.vy, Math.max(90, Math.abs(f.vx))) * .55, -.6, .6) : 0);
+            ctx.translate(0, -8 * bh); ctx.rotate(rot); ctx.translate(0, 8 * bh);
+
+            let e0 = 0, e1 = 0, fe = 0;
+            if (wet) {
+                if (f.st === 'swim' || f.st === 'sub') { e0 = .5 + .5 * Math.sin(f.ph); e1 = .5 + .5 * Math.sin(f.ph + Math.PI); fe = .1 }   // alternating kicks
+                else { e0 = .3 + .25 * Math.sin(f.ph); e1 = .3 + .25 * Math.sin(f.ph + 2.2); fe = .15 }
+            } else if (air) { const a = f.vy < 0 ? 1 : lerp(1, .5, clamp01(f.vy / 260)); e0 = e1 = a; fe = f.vy < 0 ? .9 : lerp(.9, .35, clamp01(f.vy / 200)) }   // extend, then tuck
+            else if (f.st === 'crouch') e0 = e1 = -.2 * clampN(sq, 0, 1);
+
+            const hind = (e, al) => {
+                const H = [-9 * bw, -7 * bh], K = [lerp(-16 * bw, -21 * bw * (.9 + .1 * f.lg), e), lerp(-13 * bh, -8 * bh, e)], Ft = [lerp(-3 * bw, -32 * bw * f.lg, e), lerp(.5, -2 * bh, e)];
+                let dx = Ft[0] - K[0], dy = Ft[1] - K[1]; const dl = Math.hypot(dx, dy) || 1; dx = dx / dl * 8; dy = dy / dl * 8;
+                const m = clamp01(e), tx = lerp(7, dx, m), ty = lerp(0, dy, m);
+                ctx.save(); ctx.globalAlpha *= al; ctx.beginPath(); ctx.moveTo(H[0], H[1]); ctx.lineTo(K[0], K[1]); ctx.lineTo(Ft[0], Ft[1]);
+                ctx.strokeStyle = INK; ctx.lineWidth = 5.4; ctx.stroke(); ctx.strokeStyle = FILL; ctx.lineWidth = 2.4; ctx.stroke();
+                ctx.fillStyle = INK; ctx.beginPath(); ctx.moveTo(Ft[0] - 1, Ft[1] - 2); ctx.lineTo(Ft[0] + tx, Ft[1] + ty - 1); ctx.lineTo(Ft[0] + tx * .9, Ft[1] + ty + 1.6); ctx.lineTo(Ft[0] - 1, Ft[1] + 2); ctx.closePath(); ctx.fill();
+                ctx.restore();
+            };
+            const body = () => {
+                ctx.beginPath(); ctx.moveTo(-16 * bw, -5 * bh); ctx.bezierCurveTo(-16 * bw, -15 * bh, -4 * bw, -18 * bh, 5 * bw, -16 * bh);
+                ctx.quadraticCurveTo(14 * bw, -16 * bh, 19 * bw, -9 * bh); ctx.quadraticCurveTo(19 * bw, -4 * bh, 10 * bw, -2 * bh);
+                ctx.quadraticCurveTo(0, 1, -9 * bw, -1 * bh); ctx.quadraticCurveTo(-16 * bw, -1 * bh, -16 * bw, -5 * bh); ctx.closePath();
+            };
+            hind(e1, .75);
+            body(); ctx.fillStyle = FILL; ctx.fill(); ctx.strokeStyle = INK; ctx.lineWidth = 2.4; ctx.stroke();
+            if (f.dark) {                                                                                           // paper highlight along the back
+                ctx.save(); ctx.strokeStyle = PAPER; ctx.globalAlpha *= .35; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(-13 * bw, -11 * bh); ctx.quadraticCurveTo(-3 * bw, -16 * bh, 8 * bw, -14.5 * bh); ctx.stroke(); ctx.restore();
+            } else {                                                                                                // ink spots
+                ctx.fillStyle = INK;
+                for (const [x, y, rx, ry, r] of [[-9, -12, 3, 1.8, .3], [-2, -14.2, 2.6, 1.5, 0], [-12, -7.5, 2.2, 1.6, .5], [3, -11, 1.8, 1.2, 0]]) { ctx.beginPath(); ctx.ellipse(x * bw, y * bh, rx, ry, r, 0, 7); ctx.fill() }
+            }
+            ctx.strokeStyle = HI; ctx.lineWidth = 1.3; ctx.beginPath(); ctx.moveTo(19 * bw, -8 * bh); ctx.lineTo(9 * bw, -6.5 * bh); ctx.stroke();   // mouth
+            if (f.cr > 0) {                                                                                         // croaking throat sac
+                const k = Math.sin(Math.PI * (1 - f.cr / .7)), r = 2.5 + 5 * k;
+                ctx.beginPath(); ctx.ellipse(13 * bw, -2.5 * bh, r, r * .8, 0, 0, 7); ctx.fillStyle = FILL; ctx.fill(); ctx.strokeStyle = INK; ctx.lineWidth = 1.6; ctx.stroke();
+            }
+            hind(e0, 1);
+            {   // front arm
+                const Sh = [7 * bw, -5 * bh], El = [lerp(8 * bw, 14 * bw, fe), lerp(-1.5, -6.5 * bh, fe)], Ha = [lerp(10 * bw, 20 * bw, fe), lerp(.5, -4 * bh, fe)];
+                ctx.beginPath(); ctx.moveTo(Sh[0], Sh[1]); ctx.lineTo(El[0], El[1]); ctx.lineTo(Ha[0], Ha[1]);
+                ctx.strokeStyle = INK; ctx.lineWidth = 4; ctx.stroke(); ctx.strokeStyle = FILL; ctx.lineWidth = 1.6; ctx.stroke();
+                ctx.fillStyle = INK; ctx.beginPath(); ctx.arc(Ha[0] + 1, Ha[1], 1.8, 0, 7); ctx.fill();
+            }
+            const er = f.st === 'notice' ? 1.15 : 1;                                                                // eyes widen when it notices you
+            const eye = (x, y, r) => {
+                ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = f.dark ? '#ddd9cf' : FILL; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = INK; ctx.stroke();
+                if (f.bl > 0) { ctx.beginPath(); ctx.moveTo(x - r * .8, y); ctx.lineTo(x + r * .8, y + .4); ctx.stroke(); return }
+                ctx.fillStyle = INK; ctx.beginPath(); ctx.ellipse(x + f.lk * 1.3 + .8, y, r * .32, r * .5, 0, 0, 7); ctx.fill();
+            };
+            eye(5.5 * bw, -17 * bh, 3.6 * er); eye(10.5 * bw, -16.5 * bh, 4.1 * er);
+        }
+
+        function drawFrogs(gy) {
+            if (!frogs.length) return;
+            const S = CSc(), top = gy + 4, sxp = W / 2 + POND_X - P.x, now = performance.now() / 1000;
+            ctx.save(); ctx.lineCap = 'round'; ctx.strokeStyle = '#111'; ctx.fillStyle = '#111';
+            for (const m of fMarks) {                                                                               // little ink marks from hits
+                const sx = m.x - P.x + W / 2; if (sx < -80 || sx > W + 80) continue;
+                ctx.globalAlpha = m.t > 5 ? 1 - (m.t - 5) / 2 : 1;
+                for (let k = 0; k < m.n; k++) {
+                    const x = sx + (hash(m.seed + k) - .5) * 70, y = top + m.y + 1 + hash(m.seed + k * 3) * 4;
+                    if (k % 2) { ctx.lineWidth = 1.6; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 3 + hash(m.seed + k * 5) * 7, y - .5); ctx.stroke() }
+                    else { ctx.beginPath(); ctx.arc(x, y, 1 + hash(m.seed + k * 7) * 1.6, 0, 7); ctx.fill() }
+                }
+            }
+            ctx.lineWidth = 1.2;
+            for (const r of fRips) {                                                                                // broken-arc ink ripples
+                const rx = r.x - P.x + W / 2; if (rx < -200 || rx > W + 200) continue;
+                const k = r.t / r.life, rad = r.r0 + r.grow * k, y = surfY(top, sxp, rx) + 1;
+                ctx.globalAlpha = .5 * (1 - k) * (1 - .5 * DN.d);
+                for (let j = 0; j < 3; j++) { const a0 = hash(r.seed + j * 2.3) * 6.28; ctx.beginPath(); ctx.ellipse(rx, y, rad * (.9 + hash(r.seed + j) * .2), Math.max(1.5, rad * .14), 0, a0, a0 + 1 + hash(r.seed + j * 5.1) * 1.3); ctx.stroke() }
+            }
+            ctx.restore();
+            for (const f of frogs) {
+                if (f.gone) continue;
+                const sx = f.x - P.x + W / 2; if (sx < -160 || sx > W + 160) continue;
+                const vis = clamp01(f.vis * f.a); if (vis < .02) continue;
+                const sc = S * f.s * FR_SIZE, sy = top + f.y;
+                const one = a => { ctx.save(); ctx.globalAlpha = a; ctx.translate(sx, sy); frShape(f, sc, now); ctx.restore() };
+                if (f.mode === 'W') {                                                                               // above the surface solid, below it faint
+                    ctx.save(); ctx.beginPath(); ctx.moveTo(sx - 170, top - 700);
+                    for (let x = sx - 170; x <= sx + 170; x += 12) ctx.lineTo(x, surfY(top, sxp, x));
+                    ctx.lineTo(sx + 170, top - 700); ctx.closePath(); ctx.clip(); one(vis); ctx.restore();
+                    ctx.save(); waterShape(sxp, top); ctx.clip(); one(vis * .42); ctx.restore();
+                } else one(vis);
+            }
+        }
+
+        // tiny eye glints in the dark (call AFTER drawNight so they sit on top of the darkness)
+        function drawFrogGlints(gy) {
+            const nk = sm((DN.d - .35) / .4); if (nk < .02) return;
+            const S = CSc(), now = performance.now() / 1000;
+            ctx.save();
+            for (const f of frogs) {
+                if (f.gone || f.st === 'fade' || f.a < .3 || f.bl > 0) continue;
+                const sc = S * f.s * FR_SIZE, ey = f.y - 16.8 * f.bh * sc;
+                if (f.mode === 'W' && ey > waterSurfaceY(f.x) + 1) continue;                                        // eyes underwater: no glint
+                const sx = f.x - P.x + W / 2; if (sx < -50 || sx > W + 50) continue;
+                const a = nk * (.35 + .65 * f.lit) * (.55 + .45 * Math.sin(now * .7 + f.seed)) * f.a;
+                if (a < .03) continue;
+                const F = Math.sign(f.fv) || 1, sy = gy + 4 + ey;
+                for (const ex of [5.5 * f.bw, 10.5 * f.bw]) {
+                    const x = sx + F * ex * sc, R = 5 * sc, g = ctx.createRadialGradient(x, sy, 0, x, sy, R);
+                    g.addColorStop(0, 'rgba(255,240,176,' + (.55 * a) + ')'); g.addColorStop(1, 'rgba(255,240,176,0)');
+                    ctx.fillStyle = g; ctx.fillRect(x - R, sy - R, R * 2, R * 2);
+                    ctx.globalAlpha = Math.min(1, a * 1.4); ctx.fillStyle = '#fff4c0'; ctx.beginPath(); ctx.arc(x, sy, .9 * sc, 0, 7); ctx.fill(); ctx.globalAlpha = 1;
+                }
+            }
+            ctx.restore();
+        }
+
+
         function frame(now) {
 
 
