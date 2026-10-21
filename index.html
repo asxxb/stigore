@@ -1295,7 +1295,7 @@
         }
 
         function hitEnemyParkour(e, dmg, kb, sh) {
-            e.hp -= dmg; e.hurt = .3;
+            e.hp -= dmg; e.hurt = Math.max(e.hurt, 2.0); e.wait = 2; e.fid = 0;   // stay stunned for 1.4s
             e.vx = kb; e.kdir = Math.sign(kb) || 1;
             burst(e.x, -160, 14, 280, e.kdir);
             spray(e.x, -160, 16, 360, e.kdir);
