@@ -4599,6 +4599,7 @@
                 }
                 if (best) { if (!legShot(b, best.e, best.h, S)) gunHit(b, best.e, best.h, S); bullets.splice(i, 1); continue }
                 if (birdsHit(px, py, b.x, b.y, b.F, 20) || fowlHit(px, py, b.x, b.y, b.F, 20)) { bullets.splice(i, 1); continue }
+                if (frogHit(b, px, py, false)) { bullets.splice(i, 1); continue }
                 if (crocHit(b, px, py)) { bullets.splice(i, 1); continue }
                 if (waterStep(b, px, py, dt)) { bullets.splice(i, 1); continue }
                 if (!b.m && b.y > 0 && !inPond(b.x)) { burst(b.x, -2, 6, 180, b.F); bullets.splice(i, 1); continue }
@@ -4932,6 +4933,7 @@
                 }
                 if (best) { pelletHit(p, best.e, best.h); pellets.splice(i, 1); continue }
                 if (birdsHit(px, py, p.x, p.y, p.F, 22) || fowlHit(px, py, p.x, p.y, p.F, 22)) { pellets.splice(i, 1); continue }
+                if (frogHit(p, px, py, true)) { pellets.splice(i, 1); continue }
                 if (crocHit(p, px, py)) { pellets.splice(i, 1); continue }
                 if (waterStep(p, px, py, dt)) { pellets.splice(i, 1); continue }
                 if (!p.m && p.y > 0 && !inPond(p.x)) { burst(p.x, -2, 2, 140, p.F); pellets.splice(i, 1); continue }
@@ -10786,7 +10788,7 @@
             let dt = dt0;
             if (hitstop > 0) { hitstop -= dt0; dt = 0 }
 
-            update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); sgTick(dt); sgGroundTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); waterFXTick(dt); brainTick(dt); gibTick(dt); boneTick(dt); weatherTick(dt); horseTick(dt); birdTick(dt); fowlTick(dt); crocTick(dt); bgTick(dt); dayTick(dt0); fireflyTick(dt0);
+            update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); sgTick(dt); sgGroundTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); waterFXTick(dt); brainTick(dt); gibTick(dt); boneTick(dt); weatherTick(dt); horseTick(dt); birdTick(dt); fowlTick(dt); frogTick(dt); crocTick(dt); bgTick(dt); dayTick(dt0); fireflyTick(dt0);
             shake = Math.max(0, shake - dt0 * 60);
             ctx.save();
             if (shake > .3) ctx.translate((Math.random() - .5) * shake * 1.6, (Math.random() - .5) * shake * 1.6);
@@ -10817,6 +10819,7 @@
             drawWaterFX(gy);
             drawBirds(gy);
             drawFowl(gy);
+            drawFrogs(gy);
             drawCroc(gy); drawCrocGore(gy);
             drawBGoreAir(gy);
             drawHorse(gy);
@@ -10831,6 +10834,7 @@
             drawWeather(gy);
             ctx.restore();
             drawNight(gy);
+            drawFrogGlints(gy);
             drawFireflies(gy);
             ctx.fillStyle = vig; ctx.fillRect(0, 0, W, H);
             drawHUD();
