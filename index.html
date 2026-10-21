@@ -5325,7 +5325,13 @@
         // ================= HORSE (mount, ride, jump, trample) =================
         const HR_MOUNT_R = 170, HR_SEAT = -240, HR_WALK = 215, HR_RUN = 790, HR_JUMP = 640, HR_REAR_T = 1.0;
         const HORSE_W = 1.55, HORSE_H = 1.60;
-        const HRS = { x: 1840, vx: 0, z: 0, vz: 0, face: -1, ph: 0, amp: 0, rg: 0, home: 1840, goal: 1840, wait: 2, gz: 0, gT: 3, gk: 0, rear: 0, muz: [123, -158], tied: true };
+        const HRS = { x: 1840, vx: 0, z: 0, vz: 0, face: -1, ph: 0, amp: 0, rg: 0, home: 1840, goal: 1840, wait: 2, gz: 0, gT: 3, gk: 0, rear: 0, muz: [123, -158], tied: true, huffT: 5, huff: 0, hp1: 0, hp2: 0 };
+
+        function huffOff(u) {   // head offset (px) over the huff, u = 0..1
+            if (u < .25) return -8 * sm(u / .25);                 // toss up
+            if (u < .5) return -8 + 20 * sm((u - .25) / .25);     // jerk down as the air is blown out
+            return 12 * (1 - sm((u - .5) / .5));                  // settle back
+        }
         P.mount = 0; P.mountT = 0; P.mx0 = 0; P.mk = 0;   // mount: 0 off, 1 climbing on, 2 riding, 3 climbing off
         const clamp01 = v => Math.max(0, Math.min(1, v));
 
@@ -5401,6 +5407,21 @@
             if (!idle) { h.gz = 0; h.gT = 2 + Math.random() * 3 }
             else if (h.gT <= 0) { h.gz = h.gz ? 0 : 1; h.gT = h.gz ? 2.5 + Math.random() * 2.5 : 3 + Math.random() * 5 }
             h.gk += (h.gz - h.gk) * Math.min(1, dt * 3.5);
+
+            // ---- occasional huff / snort ----
+            if (h.huff > 0) {
+                h.huff += dt / .9;
+                const bx = () => h.x + h.face * h.muz[0] * S * HORSE_W, by = () => h.muz[1] * S * HORSE_H + h.z;
+                if (!h.hp1 && h.huff >= .42 && h.muz) { h.hp1 = 1; puff(bx(), by(), 7, h.face * 110, 14, 3, 13, 1.7, .38); }
+                if (!h.hp2 && h.huff >= .55 && h.muz) { h.hp2 = 1; puff(bx(), by(), 4, h.face * 70, 8, 2.5, 10, 1.4, .3); }
+                if (h.huff >= 1) { h.huff = 0; h.huffT = 6 + Math.random() * 10; }
+            } else {
+                h.huffT -= dt;
+                if (h.huffT <= 0) {
+                    if (h.rear <= 0 && h.gk < .3 && h.rg < .3 && h.z >= 0) { h.huff = .0001; h.hp1 = 0; h.hp2 = 0; }
+                    else h.huffT = 2;     // busy: try again soon
+                }
+            }
 
             h.x += h.vx * dt;
             if (h.vz !== 0 || h.z < 0) {
@@ -5935,7 +5956,7 @@
             // NECK + HEAD (shaped after the reference drawing)
             // ============================================================
 
-            const nod = Math.sin(h.ph * 2 * Math.PI) * 5 * kk * (.2 + rg);
+            const nod = Math.sin(h.ph * 2 * Math.PI) * 5 * kk * (.2 + rg) + (h.huff > 0 ? huffOff(h.huff) : 0);
 
             const n0 = [46, -124 + by];
             const n1 = [
