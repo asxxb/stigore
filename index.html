@@ -1430,6 +1430,7 @@
 
         function comboPose(Q) {
             if (Q === PL && swim.on) { const sp = swimPose(); if (sp) return sp }
+            if (Q === PL && Q.stc > 0) return Q.stcM >= 2 ? Q.stcPose : null;
             if (Q === PL && Q.stbk > 0) return stabPose(Q);
             if (Q === PL && Q.gu > 0) return guPose(Q);
             if (Q === PL && Q.yk > 0) return ykPose(Q);
@@ -1794,7 +1795,7 @@
             if (footFlat > .5 && ny > 0) { nx = -nx; ny = -ny }   // stomping leg: knee points up, shin comes down onto the head
             const kickLeg2 = CUR === PL && CUR.cs === 5 && F * (fx - hx) > 30;   // the leg that is kicking
             if (kickLeg2 && ny > 0) { nx = -nx; ny = -ny }                       // knee always ABOVE the hip→foot line
-            const clmb = CUR === PL && swim.on && swim.cl > 0 && swim.cl < 3.7;
+            const clmb = CUR === PL && ((swim.on && swim.cl > 0 && swim.cl < 3.7) || PL.stc > 0);
             const hf = (kickLeg2 || clmb) ? 1 : 1 - .7 * (1 - Rf()) * (1 - (CUR.kneelK || 0)), hs = h * (hf + (.55 - hf) * (CUR.mk || 0)), kx = mx + nx * hs, ky = my + ny * hs;
             ctx.strokeStyle = '#111'; ctx.lineWidth = 7; ctx.lineCap = 'round';
             ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(kx, ky); ctx.stroke();
@@ -4162,7 +4163,7 @@
 
         function drawBuildings(gy) {
             const list = [
-                [drawStiltHouse, -7800, 3.6],
+                [drawStiltHouse, -8800, 4.2],
                 [drawLiquorShop, -4600, 3.2],
                 [drawGraves, -3400, 2.2], [drawShack, -2500, 2.5], [drawSaloon, -1500, 3.3], [drawBarrels, -1220, 2.2],
                 [drawWagon, -950, 2.2], [drawSignpost, 700, 2.4], [drawWell, 1000, 2.3], [drawBarrels, 2780, 2.2],
@@ -4531,14 +4532,26 @@
             best.fst = 1; best.fid = 0;                        // he stops tugging
         }
 
-        // ================= STILT HOUSE STAIRS (E to climb) =================
-        const STH_WX = -7800;                       // same x as in drawBuildings()
-        P.stc = 0; P.stcD = 1; P.stcX0 = 0; P.dh = 0;   // stair timer / direction / start x / deck height
+        // ================= STILT HOUSE STAIRS v2: per-step IK climb =================
+        const STH_WX = -7800;
+        P.stc = 0; P.stcD = 1; P.stcM = 0; P.dh = 0;
+        // stcM: 1 = walk to the first step, 2 = settle into stance, 3 = strides (9 of them: 8 steps + bring-together)
 
-        function stairGeom() {
+        const stClamp = (v, a, b) => Math.max(a, Math.min(b, v));
+        function stSmin(a, b, k) { const m = Math.min(a, b); return m - k * Math.log(1 + Math.exp(-Math.abs(a - b) / k)); }
+
+        // stop k = where a foot lands: 0 = ground, 1..7 = treads (bottom to top), 8 = deck. x = world px, y = px above the feet-ground line
+        function stopGeom(k) {
             const s = 3.6 * BLD;
-            return { bx: STH_WX + 192 * s, tx: STH_WX + 138 * s, x0: STH_WX - 122 * s, h: 82 * s + 4 };
+            if (k <= 0) return { x: STH_WX + 199.2 * s, y: 0 };
+            if (k >= 8) return { x: STH_WX + 130 * s, y: 82 * s + 4 };
+            return { x: STH_WX + (199.2 - 7.6 * k) * s, y: (2.3 + 11.6 * k) * s + 4 };   // same numbers the stair is drawn with
         }
+        function stairGeom() {
+            const S = CSc(), top = stopGeom(8);
+            return { bx: stopGeom(0).x, tx: top.x - 20 * S, x0: STH_WX - 122 * 3.6 * BLD, h: top.y };
+        }
+
         function tryStairs() {
             if (P.stc > 0 || P.mount || P.z < 0 || P.fin > 0 || P.cs > 0 || P.thw > 0 || P.tt > 0 || P.pk > 0 ||
                 P.stbk > 0 || P.fs > 0 || P.gu > 0 || P.yk > 0 || P.sgp > 0 || P.sm > 0 || swim.on) return false;
@@ -4548,24 +4561,118 @@
             else if (P.dh > 0 && Math.abs(P.x - g.tx) < R) up = false;
             else return false;
             if (P.skid) endSkid();
-            P.stc = .0001; P.stcD = up ? 1 : -1; P.stcX0 = P.x;
-            P.face = up ? -1 : 1; P.vx = 0; P.idle = 0; P.fid = 0; P.abuf = 0; P.grabbed = null; P.clast = 0;
+            P.stc = .0001; P.stcM = 1; P.stcD = up ? 1 : -1; P.stcN = 0; P.stcT = 0; P.stcW = 0;
+            P.stcPose = null; P.stcHs = null; P.stcLean = 0;
+            P.idle = 0; P.fid = 0; P.abuf = 0; P.grabbed = null; P.clast = 0;
             return true;
         }
-        function stairTick(dt) {
-            const g = stairGeom(), up = P.stcD > 0, T = 1.8;
-            const target = up ? g.tx : g.bx;
-            P.stc += dt; P.abuf = 0; P.jbuf = 0; P.vz = 0; P.z = 0;
-            const u = Math.min(1, P.stc / T);
-            P.x = P.stcX0 + (target - P.stcX0) * u;
-            P.dh = Math.max(0, Math.min(1, (g.bx - P.x) / (g.bx - g.tx))) * g.h;   // follows the stair slope
-            P.face = target < P.stcX0 ? -1 : 1;
-            P.vx = P.face * 170;                                                    // walking pose
-            P.phase += 170 * dt / (280 * CSc()) * Math.PI * 2;
-            P.amp += (1 - P.amp) * Math.min(1, dt * 10);
-            P.lean += (P.face * .4 * (170 / 420) - P.lean) * Math.min(1, dt * 6);
-            if (u >= 1) { P.stc = 0; P.x = target; P.vx = 0; P.dh = up ? g.h : 0; }
+
+        // sets up one stride: which foot moves, where it lands, where the hip travels
+        function stStrideInit() {
+            const S = CSc(), up = P.stcD > 0, Fd = up ? -1 : 1, n = P.stcN;
+            const to = up ? Math.min(n, 8) : Math.max(8 - n, 0), f = n % 2 ? 0 : 1, o = 1 - f, st = stopGeom(to);
+            P.stcF = f; P.stcTx = st.x + (n === 9 ? Fd * 40 * S : 0); P.stcTy = st.y;      // last stride ends in a normal standing stance
+            P.stcFrom = [P.stcFx[f], P.stcFh[f]]; P.stcYo = P.stcFh[o];
+            const xo = P.stcFx[o], xf = P.stcFx[f];
+            P.stcA = n === 1 ? P.x : .62 * xo + .38 * xf;                                  // hip x is weighted toward the supporting foot
+            P.stcB = n === 9 ? P.stcTx - Fd * 20 * S : .62 * P.stcTx + .38 * xo;
+            P.stcU = 0;
+            P.stcDur = (up ? .42 : .36) * (n === 1 ? 1.3 : n === 9 ? 1.25 : 1) * (1 + .07 * Math.sin(n * 2.3));   // uneven rhythm, slow start / finish
         }
+
+        function stairTick(dt) {
+            const S = CSc(), g = stairGeom(), up = P.stcD > 0, Fd = up ? -1 : 1;
+            P.stc += dt; P.abuf = 0; P.jbuf = 0; P.vz = 0; P.z = 0; P.idle = 0; P.fid = 0;
+
+            // ---- 1: walk to the foot of the stairs (normal walk cycle) ----
+            if (P.stcM === 1) {
+                const xs = up ? g.bx : g.tx, d = xs - P.x, dir = Math.sign(d) || Fd, sp = 170;
+                P.face = dir;
+                if (Math.abs(d) <= sp * dt + .5) { P.x = xs; P.stcM = 2; P.stcT = 0; }
+                else { P.x += dir * sp * dt; P.vx = dir * sp; }
+                P.phase += sp * dt / (280 * S) * Math.PI * 2;
+                P.amp += (1 - P.amp) * Math.min(1, dt * 10);
+                P.lean += (dir * .4 * (sp / 420) - P.lean) * Math.min(1, dt * 6);
+                return;
+            }
+            // ---- 2: stop and settle into a stance facing the stairs ----
+            if (P.stcM === 2) {
+                P.stcT += dt; P.face = Fd; P.vx *= Math.max(0, 1 - dt * 14);
+                P.amp += (0 - P.amp) * Math.min(1, dt * 14); P.lean += (0 - P.lean) * Math.min(1, dt * 10);
+                P.stcW = sm(P.stcT / .2);
+                P.stcPose = {
+                    w: P.stcW, a0: .12, f0: .3, a1: .12, f1: .3, lean: 0, hipX: 0, hipY: 0, arch: 0, hx: 0, hy: 0,
+                    l0: [20, 0, 0], l1: [-20, 0, 0], st: STEPS[0], sw: 0, ik: 0
+                };
+                if (P.stcT >= .2) {
+                    P.stcFx = [P.x + Fd * 20 * S, P.x - Fd * 20 * S]; P.stcFh = [P.dh, P.dh];
+                    P.stcM = 3; P.stcN = 1; stStrideInit();
+                }
+                return;
+            }
+
+            // ---- 3: one stride = PREPARE > LIFT/KNEE > MOVE FOOT > CONTACT > PUSH > TRANSFER > RECOVER ----
+            const n = P.stcN, T = P.stcDur, f = P.stcF;
+            P.stcU += dt; P.face = Fd; P.vx = 0;
+            const u = Math.min(1, P.stcU / T);
+            P.x = lerp(P.stcA, P.stcB, .5 * u + .5 * sm(u));                                // hips travel over the supporting foot
+
+            const riseU = g.h / 8 / S;                                                       // average stair height, so everything scales with it
+            const clr = 8 + .12 * riseU, comp = stClamp(8 + .2 * riseU, 10, 30);
+
+            // swinging foot (u .12 -> .62). Climbing: foot rises first, then moves forward. Descending: foot reaches out first, then lowers.
+            const sw = stClamp((u - .12) / .5, 0, 1);
+            let xU, yU, bump;
+            if (up) { yU = sm(sw / .6); xU = sm((sw - .3) / .7); bump = clr * Math.sin(Math.PI * sw); }
+            else { xU = sm(sw / .55); yU = sm((sw - .2) / .8); bump = clr * Math.sin(Math.PI * stClamp(sw / .75, 0, 1)); }
+            P.stcFx[f] = lerp(P.stcFrom[0], P.stcTx, xU);
+            P.stcFh[f] = lerp(P.stcFrom[1], P.stcTy, yU);
+
+            // hip height = support height + leg extension (compress -> lift -> contact dip -> push -> settle)
+            const rel = h => (h - P.dh) / S;
+            const yO = rel(P.stcYo), yT = rel(P.stcTy);
+            const b0 = up ? .5 : .6, b1 = up ? .92 : .95;
+            const Lext = 163, Lx = n === 1 ? 172 : Lext, Le = n === 9 ? 172 : Lext;
+            const Lc = Lext - comp, Lm = up ? Lc + .3 * comp : Lc - .25 * comp, dip = (up ? .2 : .5) * comp;
+            let L;
+            if (u < .12) L = lerp(Lx, Lc, sm(u / .12));
+            else if (u < .5) L = lerp(Lc, Lm, sm((u - .12) / .38));
+            else if (u < .62) L = Lm;
+            else if (u < .74) L = lerp(Lm, Lm - dip, sm((u - .62) / .12));
+            else L = lerp(Lm - dip, Le, sm((u - .74) / .2)) - (n < 9 && u > .94 ? 1.8 * Math.sin(Math.PI * (u - .94) / .06) : 0);   // tiny stabilization
+            let Hh = yO + (yT - yO) * sm((u - b0) / (b1 - b0)) + L;
+
+            // the hip can never be higher than a leg can reach from ANY foot (no stretched legs, no floating feet)
+            const lifts = [0, 0]; lifts[f] = bump;
+            for (let i = 0; i < 2; i++) {
+                const dx = (P.stcFx[i] - P.x) / S;
+                Hh = stSmin(Hh, rel(P.stcFh[i]) + lifts[i] + 12 + Math.sqrt(Math.max(0, 158.4 * 158.4 - dx * dx)), 2);
+            }
+            P.stcHs = P.stcHs == null ? Hh : P.stcHs + (Hh - P.stcHs) * Math.min(1, dt * 4);
+
+            // pose for drawChar: leg targets are foot position relative to the hip (character units)
+            const leg = i => [(P.stcFx[i] - P.x) * Fd / S, -rel(P.stcFh[i]), lifts[i]];
+            const l0 = leg(0), l1 = leg(1);
+            const tl = up ? .17 + .08 * Math.sin(Math.PI * stClamp((u - .5) / .45, 0, 1)) : .02 + .06 * Math.sin(Math.PI * stClamp((u - .55) / .4, 0, 1));
+            P.stcLean += (tl - P.stcLean) * Math.min(1, dt * 8);                             // torso follows a moment later
+            const armA = x => stClamp(.12 - .0085 * x, -.6, .75);                            // arms swing against the legs
+            P.stcPose = {
+                w: 1, a0: armA(l0[0]), f0: .3 + .3 * stClamp(lifts[0] / 12, 0, 1), a1: armA(l1[0]), f1: .3 + .3 * stClamp(lifts[1] / 12, 0, 1),
+                lean: P.stcLean, hipX: 0, hipY: -Hh + 169.15, arch: .03, hx: 2, hy: stClamp(.4 * (Hh - P.stcHs), -5, 5),   // hy keeps the head steady
+                l0, l1, st: STEPS[0], sw: 0, ik: 0
+            };
+
+            if (u >= 1) {
+                P.stcFx[f] = P.stcTx; P.stcFh[f] = P.stcTy;
+                if (n >= 9) {                                                                // done: hand back to the normal standing code
+                    P.x = P.stcB; P.stc = 0; P.stcM = 0; P.stcPose = null; P.dh = up ? g.h : 0;
+                    P.vx = 0; P.amp = 0; P.lean = 0; P.face = Fd;
+                    return;
+                }
+                P.stcN++; stStrideInit();
+            }
+        }
+
         function deckTick() {                         // keeps you on the deck, with invisible walls at both ends
             if (!(P.dh > 0) || P.stc > 0) return;
             const g = stairGeom();
@@ -8134,8 +8241,8 @@
         ];
 
 
-        NIGHT_LIGHTS.push({ wx: -6800, sc: 2.6 * BLD, r: [[-84, -140, 32, 32, 1, 1], [-34, -140, 28, 32, .9, 1]] });
-        PERCH.push({ x: -6800 - 18 * 2.6 * BLD, y: -220 * 2.6 * BLD, by: null }, { x: -6800 + 24 * 2.6 * BLD, y: -203 * 2.6 * BLD, by: null });
+        NIGHT_LIGHTS.push({ wx: -8800, sc: 2.6 * BLD, r: [[-84, -140, 32, 32, 1, 1], [-34, -140, 28, 32, .9, 1]] });
+        PERCH.push({ x: -8800 - 18 * 2.6 * BLD, y: -220 * 2.6 * BLD, by: null }, { x: -6800 + 24 * 2.6 * BLD, y: -203 * 2.6 * BLD, by: null });
         function nPunch(x, y, R, a) {
             const g = nctx.createRadialGradient(x, y, 0, x, y, R);
             g.addColorStop(0, 'rgba(0,0,0,' + a + ')'); g.addColorStop(.45, 'rgba(0,0,0,' + (a * .55) + ')'); g.addColorStop(1, 'rgba(0,0,0,0)');
