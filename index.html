@@ -2275,7 +2275,7 @@
             const kk = P.kneelK || 0, fk = P.fallK || 0;
             const mk = (P === PL) ? (P.mk || 0) : 0;                        // mounted blend 0..1
             const mz = mk * (HRS.z / S) - 85 * Math.sin(Math.PI * mk);    // horse jump + hop arc while climbing on/off
-            const seatY = HR_SEAT + hrsBob() + mz;
+            const seatY = HR_SEAT + hrsBob() + HRS.cmp * HORSE_H + mz;
             const sgW = (P === PL && P.sgK > .01 && z >= 0) ? sm(P.sgK) * (1 - Math.min(1, sp / 120)) : 0;   // shotgun stance weight
             const sgpE = (P === PL && P.sgp > 0 && !P.sgpWalk) ? sgpEnv() : 0;   // stomp crouch weight
             const fkk = (P !== PL && P.fk) ? (P.fkK || 0) : 0;
@@ -2344,7 +2344,7 @@
             const RIDE_LEAN_RUN = .42;   // radians at full gallop
             const rideLean = (P === PL && mk > 0)
                 ? F * (RIDE_LEAN_WALK * clamp01(Math.abs(HRS.vx) / 215)
-                    + (RIDE_LEAN_RUN - RIDE_LEAN_WALK) * HRS.rg)
+                    + (RIDE_LEAN_RUN - RIDE_LEAN_WALK) * HRS.rg + HRS.rd)
                 : 0;
 
             const walkLean =
@@ -5498,21 +5498,17 @@
 
         function hrsGait(sp) {
             return {
-                // Longer, more natural stride
-                A: 34 + 58 * clamp01((sp - 80) / 620),
-
-                // Longer ground-contact phase at walk,
-                // shorter at faster speeds
+                A: (34 + 58 * clamp01((sp - 80) / 620)) * (1 - .38 * HRS.coll),   // shorter stride while gathering
                 st: .62 - .20 * HRS.rg
             };
-        } // stride half-length, stance fraction
-        function hrsBob() { return Math.sin(HRS.ph * 4 * Math.PI) * 2.6 * HRS.amp * (.3 + HRS.rg) }
+        }
+        function hrsBob() { return Math.sin(HRS.ph * 4 * Math.PI) * 2.6 * HRS.amp * (.3 + HRS.rg) * (1 - HRS.jw) }
         function hrsRear() { return HRS.rear > 0 ? Math.sin(Math.PI * (1 - HRS.rear / HR_REAR_T)) : 0 }
         function horseSpook() { if (P.mount || HRS.rear > 0 || HRS.tied) return; if (Math.abs(HRS.x - P.x) < 800) HRS.rear = HR_REAR_T }
 
         function pressHorse() {
             if (P.mount === 2) {
-                if (HRS.z < -4) return;
+                if (HRS.z < -4 || !HJ_GROUND[HRS.jp]) return;       // no dismounting mid-jump
                 P.mount = 3; P.mountT = 0; P.mx0 = P.x; return;
             }
             if (P.mount) return;
@@ -5523,7 +5519,7 @@
             if (Math.abs(HRS.x - P.x) > HR_MOUNT_R * S) { banner.t = .8; banner.text = 'WALK TO THE HORSE'; return }
             if (P.sm === 2) { releaseButt(); P.sm = 0; }   // drop the cigarette, then climb on
             if (P.skid) endSkid();
-            HRS.rear = 0; HRS.wait = 2;
+            HRS.rear = 0; HRS.wait = 2; hrsJumpReset();
             HRS.tied = false;   // Untie the lead rope when mounting
             P.face = HRS.face; P.mount = 1; P.mountT = 0; P.mx0 = P.x; P.vx = 0;
             P.idle = 0; P.fid = 0; P.abuf = 0; P.clast = 0; P.cgr = 0; P.grabbed = null;
@@ -5556,16 +5552,25 @@
             for (const e of ENEMIES) if (e.trampT > 0) e.trampT -= dt;
             let braking = false;
 
+            const jp = h.jp, flight = jp === 'ASCENT' || jp === 'APEX' || jp === 'DESCENT' || (jp === 'TAKEOFF' && h.jth) || (jp === 'LAND_FRONT' && h.z < 0);
+
             if (st === 2) {                                                   // ---- riding: player input drives the horse
-                const dir = (keys.ArrowRight || keys.KeyD ? 1 : 0) - (keys.ArrowLeft || keys.KeyA ? 1 : 0), run = !!(keys.ShiftLeft || keys.ShiftRight);
-                const max = run ? HR_RUN : HR_WALK, grounded = h.z >= 0;
-                if (dir) {
-                    if (dir !== h.face && Math.abs(h.vx) > 60) { h.vx -= Math.sign(h.vx) * 1800 * dt; braking = true }   // skid to a stop before turning
-                    else { h.face = dir; h.vx += dir * (run ? 560 : 800) * dt }
-                } else if (grounded) { const f = 900 * dt; h.vx = Math.abs(h.vx) <= f ? 0 : h.vx - Math.sign(h.vx) * f }
-                if (Math.abs(h.vx) > max) h.vx += (Math.sign(h.vx) * max - h.vx) * Math.min(1, dt * (grounded ? 2.5 : .6));
-                if (P.jbuf > 0 && grounded) { h.vz = -HR_JUMP; h.z = -1; P.jbuf = 0; burst(h.x, -3, 6, 200, -h.face) }
-                if (braking && grounded && Math.abs(h.vx) > 200 && Math.random() < dt * 40)
+                let dir = (keys.ArrowRight || keys.KeyD ? 1 : 0) - (keys.ArrowLeft || keys.KeyA ? 1 : 0);
+                const run = !!(keys.ShiftLeft || keys.ShiftRight), grounded = h.z >= 0;
+                let max = run ? HR_RUN : HR_WALK;
+                if (jp === 'REFUSE') { h.vx -= Math.sign(h.vx) * Math.min(Math.abs(h.vx), 1700 * dt); braking = true }   // skid to a halt
+                else if (flight) h.vx *= Math.exp(-.12 * dt);                                                          // air resistance, no steering
+                else if (jp === 'LAND_FRONT' || jp === 'LAND_REAR') { const f = 420 * dt; h.vx = Math.abs(h.vx) <= f ? 0 : h.vx - Math.sign(h.vx) * f }   // landing friction
+                else if (jp === 'RECOVERY' && h.tl < .22) h.vx *= Math.exp(-.35 * dt);                                // coast while he finds his feet
+                else {
+                    if (jp === 'APPROACH' || jp === 'TAKEOFF') { dir = h.jdir; max = Math.max(max, Math.abs(h.vx) * .985) }   // committed: keep momentum
+                    if (dir) {
+                        if (dir !== h.face && Math.abs(h.vx) > 60) { h.vx -= Math.sign(h.vx) * 1800 * dt; braking = true }
+                        else { h.face = dir; h.vx += dir * (run ? 560 : 800) * dt }
+                    } else if (grounded) { const f = 900 * dt; h.vx = Math.abs(h.vx) <= f ? 0 : h.vx - Math.sign(h.vx) * f }
+                    if (Math.abs(h.vx) > max) h.vx += (Math.sign(h.vx) * max - h.vx) * Math.min(1, dt * (grounded ? 2.5 : .6));
+                }
+                if (braking && h.z >= 0 && Math.abs(h.vx) > 200 && Math.random() < dt * 40)
                     flecks.push({ x: h.x + Math.sign(h.vx) * 30 * S, y: -2, vx: -Math.sign(h.vx) * (40 + Math.random() * 80), vy: -(40 + Math.random() * 90), r: 1.2 + Math.random() * 1.8, t: 0, life: .35 });
             } else if (st === 0) {                                            // ---- free horse: wanders, grazes, rears
                 if (h.tied) {
@@ -5607,17 +5612,11 @@
             }
 
             h.x += h.vx * dt;
-            if (h.vz !== 0 || h.z < 0) {
-                h.vz += GRAV * (h.vz < 0 && !(st === 2 && keys.Space) ? 3.5 : 1) * dt; h.z += h.vz * dt;
-                if (h.z >= 0) {
-                    if (h.vz > 300) { shake = Math.max(shake, 4); burst(h.x, -3, 8, 220, h.face); burst(h.x, -3, 6, 180, -h.face) }
-                    h.z = 0; h.vz = 0;
-                }
-            }
+            horseJumpTick(dt, S);                       // jump phases, vertical motion, hooves, obstacle collision
             const sp = Math.abs(h.vx);
             h.rg += (clamp01((sp - 380) / 260) - h.rg) * Math.min(1, dt * 5);
             h.amp += (Math.min(1, sp / 160) - h.amp) * Math.min(1, dt * 10);
-            if (h.z >= 0) { const g = hrsGait(sp); h.ph = (h.ph + sp * dt / ((2 * g.A / g.st) * S)) % 1; hrsDust(sp, g, S) }
+            if (h.z >= 0 && h.jp !== 'TAKEOFF' && h.jp !== 'LAND_FRONT' && h.jp !== 'LAND_REAR') { const g = hrsGait(sp); h.ph = (h.ph + sp * dt / ((2 * g.A / g.st) * S)) % 1; hrsDust(sp, g, S) }
 
             // ---- rider sync ----
 
@@ -5693,7 +5692,7 @@
             } else if (st === 3) {
                 P.mountT += dt; const k = Math.min(1, P.mountT / .45);
                 P.mk = 1 - sm(k); P.x = lerp(P.mx0, h.x - h.face * 105 * S, sm(k)); P.vx = 0;
-                if (k >= 1) { P.mount = 0; P.mk = 0; h.home = h.x; h.goal = h.x; h.wait = 3; burst(P.x, -3, 6, 160, h.face) }
+                if (k >= 1) { P.mount = 0; P.mk = 0; hrsJumpReset(); h.home = h.x; h.goal = h.x; h.wait = 3; burst(P.x, -3, 6, 160, h.face) }
             }
         }
 
@@ -5719,7 +5718,7 @@
             const sp = Math.abs(h.vx);
             const rg = h.rg;
             const rr = hrsRear();
-            const by = hrsBob();
+            const by = hrsBob() + h.cmp;
             const g = hrsGait(sp);
             const kk = sm(sp / 50);
             const gk = h.gk;
@@ -5746,109 +5745,35 @@
             // ============================================================
 
             const AT = -108 + by;
+            const gz = -h.z / (S * HORSE_H);                          // ground level in horse-local y (0 when standing)
+            const pcs = Math.cos(-h.pitch), pns = Math.sin(-h.pitch);
+            const rotP = (x, y) => { const dy = y + 122; return [x * pcs - dy * pns, x * pns + dy * pcs - 122]; };   // pitch about the body centre
 
             const legs = [
-                // front far
                 { ax: 46, wo: .50, go: .10, bend: 0.18, front: 1, far: 1 },
-
-                // rear far
                 { ax: -52, wo: .25, go: .62, bend: -0.18, front: 0, far: 1 },
-
-                // front near
                 { ax: 46, wo: 0, go: 0, bend: 0.18, front: 1, far: 0 },
-
-                // rear near
                 { ax: -52, wo: .75, go: .50, bend: -0.18, front: 0, far: 0 }
             ];
 
-            const geo = legs.map(L => {
-
-                const u =
-                    ((h.ph + lerp(L.wo, L.go, rg)) % 1 + 1) % 1;
-
-                const A = g.A * kk;
-                const st = g.st;
-
-                let x;
-                let lift = 0;
-
-                if (u < st) {
-
-                    x = A * (1 - 2 * u / st);
-
-                } else {
-
-                    const s = (u - st) / (1 - st);
-                    const e = s * s * (3 - 2 * s);
-
-                    x = -A + 2 * A * e;
-
-                    lift =
-                        Math.sin(Math.PI * s) *
-                        (7 + 14 * rg) *
-                        kk;
+            const geo = legs.map((L, i) => {
+                const u = ((h.ph + lerp(L.wo, L.go, rg)) % 1 + 1) % 1;
+                const A = g.A * kk, st = g.st;
+                let x, lift = 0;
+                if (u < st) { x = A * (1 - 2 * u / st); }
+                else { const s = (u - st) / (1 - st), e = s * s * (3 - 2 * s); x = -A + 2 * A * e; lift = Math.sin(Math.PI * s) * (7 + 14 * rg) * kk; }
+                let fx = L.ax + x, fy = -lift;
+                if (rr > 0 && L.front) {                                 // rearing pose (unchanged)
+                    fx = lerp(fx, L.ax + 24, rr);
+                    fy = lerp(fy, -70 + 5 * Math.sin(now * 10 + L.far * 1.5), rr);
                 }
-
-                let fx = L.ax + x;
-                let fy = -lift;
-
-                // --------------------------------------------------------
-                // Airborne pose
-                // --------------------------------------------------------
-
-                if (air > 0) {
-
-                    fx = lerp(
-                        fx,
-                        L.ax + (L.front ? 30 : -32),
-                        air
-                    );
-
-                    fy = lerp(
-                        fy,
-                        L.front ? -58 : -52,
-                        air
-                    );
-                }
-
-                // --------------------------------------------------------
-                // Rearing pose
-                // --------------------------------------------------------
-
-                if (rr > 0 && L.front) {
-
-                    fx = lerp(
-                        fx,
-                        L.ax + 24,
-                        rr
-                    );
-
-                    fy = lerp(
-                        fy,
-                        -70 + 5 * Math.sin(
-                            now * 10 + L.far * 1.5
-                        ),
-                        rr
-                    );
-                }
-
-                // --------------------------------------------------------
-                // IMPORTANT:
-                // Reduced IK bend dramatically.
-                // Previously this was 1 / -1.
-                // Now the knees remain almost straight.
-                // --------------------------------------------------------
-
-                return {
-                    L,
-                    k: hrsLegIK(
-                        L.ax,
-                        AT,
-                        fx,
-                        fy - 9,
-                        L.bend
-                    )
-                };
+                const jf = h.jf[i];                                      // planted / pose-driven hooves from the jump system
+                if (jf && jf[2] > .001) { fx = lerp(fx, jf[0], jf[2]); fy = lerp(fy, jf[1], jf[2]); }
+                fy = Math.min(fy, gz);                                   // a hoof can never pass through the ground
+                const A2 = rotP(L.ax, AT);                               // shoulder / hip follow the body pitch
+                const fold = clamp01((118 - Math.hypot(fx - A2[0], fy - 9 - A2[1])) / 60) * h.jw;   // knees / hocks fold when the leg is short
+                const bend = L.bend + Math.sign(L.bend) * fold * .82;
+                return { L, ax2: A2[0], at2: A2[1], k: hrsLegIK(A2[0], A2[1], fx, fy - 9, bend) };
             });
 
 
@@ -5887,7 +5812,7 @@
                     const front = q.L.front;
 
                     // forearm / thigh: broad at the top, narrowing to the knee or hock
-                    limb(q.L.ax, AT, kx, ky, (front ? 16 : 22) + add, 9 + add);
+                    limb(q.ax2, q.at2, kx, ky, (front ? 16 : 22) + add, 9 + add);
 
                     // cannon bone: thin and straight
                     limb(kx, ky, px, py, 7 + add, 6 + add);
@@ -5950,6 +5875,9 @@
             legPass(far, PAPER, 0);
             hoof(far);
 
+
+            ctx.save();
+            if (h.pitch) { ctx.translate(0, -122); ctx.rotate(-h.pitch); ctx.translate(0, 122); }
 
             // ============================================================
             // TAIL
@@ -6143,10 +6071,10 @@
 
             const n0 = [46, -124 + by];
             const n1 = [
-                lerp(88 + 4 * rg, 100, gk),
-                lerp(-188 + by + nod - 4 * rg, -52, gk)
+                lerp(88 + 4 * rg, 100, gk) + h.nkFwd,
+                lerp(-188 + by + nod - 4 * rg, -52, gk) + h.nkLow
             ];
-            const nc = [lerp(76, 90, gk), lerp(-152 + by, -100, gk)];
+            const nc = [lerp(76, 90, gk) + h.nkFwd * .55, lerp(-152 + by, -100, gk) + h.nkLow * .4];
 
             // head axis (poll -> muzzle) and its perpendicular (toward jaw/throat)
             const hax = lerp(lerp(32, 38, rg), 7, gk);
@@ -6165,7 +6093,7 @@
 
             // Exact rope attachment point: underside/front of muzzle
             const m = hp(62, 13);
-            h.muz = [m[0], m[1]];
+            h.muz = rotP(m[0], m[1]);
 
             // smooth closed curve through points
             const smoothClosed = pts => {
@@ -6929,6 +6857,7 @@
 
             ctx.stroke();
 
+            ctx.restore();
 
             // ============================================================
             // NEAR LEGS
@@ -8887,6 +8816,303 @@
                 ctx.beginPath(); ctx.moveTo(X(s.x0), top + s.y0); ctx.lineTo(X(s.x1), top + s.y1); ctx.stroke(); ctx.setLineDash([]);
             }
             ctx.restore();
+        }
+
+        // ================= HORSE JUMP v2 =================
+        const HJ_G = 1450;              // gravity while jumping (px/s²)
+        const HJ_TH = .10;              // thrust time: hind legs driving the body off the ground
+        const HJ_STAND_V = 170;         // forward push a standing jump gets (px/s)
+        const HJ_APEX_MAX = 170;        // highest arc at speed (px × S)
+        const HJ_APEX_STAND = 52;       // highest arc from a standstill (px × S)
+        const HJ_FREE_APEX = 100;       // arc of a jump with no obstacle at full speed (px × S)
+        const HJ_GROUND = { IDLE: 1, RUN: 1 };
+
+        // pose targets per phase: [body squash, pitch (+ = nose up), head lowered, neck forward, rider lean, stride collection]
+        const HJ_TARGET = {
+            RUN: [0, 0, 0, 0, 0, 0],
+            APPROACH: [3, .02, 5, 2, .05, 1],
+            TAKEOFF_C: [14, .10, 15, 4, .04, 1],      // compress: sink, weight back, head lowered
+            TAKEOFF_T: [-6, .27, -4, 12, .18, .5],    // thrust: haunches drive, forehand rocks up
+            ASCENT: [-3, .20, -8, 16, .28, 0],
+            APEX: [-2, -.02, 6, 20, .30, 0],          // neck stretched forward and down
+            DESCENT: [-1, -.17, -6, 12, .22, 0],
+            LAND_FRONT: [5, -.20, -12, 6, .08, 0],
+            LAND_REAR: [10, -.04, -10, 2, -.06, 0],
+            RECOVERY: [0, 0, 0, 0, 0, 0],
+            REFUSE: [8, .24, -10, -2, -.10, 0]
+        };
+        // hoof keyframes over the whole flight (v = 0..1): x offset from the shoulder/hip, and leg reach (118 = fully extended)
+        const HJ_FDX = [[0, 12], [.07, 12], [.14, 16], [.30, 24], [.50, 26], [.68, 28], [.82, 34], [.93, 38], [1, 40]];
+        const HJ_FRY = [[0, 106], [.07, 100], [.14, 78], [.30, 54], [.50, 44], [.68, 62], [.82, 100], [.93, 122], [1, 126]];
+        const HJ_HDX = [[0, 22], [.06, -14], [.14, -28], [.30, -22], [.45, -4], [.60, 8], [.76, 10], [.90, 10], [1, 10]];
+        const HJ_HRY = [[0, 108], [.06, 118], [.14, 116], [.30, 92], [.45, 62], [.60, 52], [.76, 74], [.90, 104], [1, 118]];
+
+        Object.assign(HRS, {
+            jp: 'IDLE', jt: 0, jth: 0, tp: 0, tl: 0, jTc: .2, jTa: .9, jA: 0, jvz: 0, jpw: 0, jxp: null, jdir: 1, jobs: null, plan: null, planT: 0,
+            jw: 0, coll: 0, cmp: 0, cmpV: 0, pitch: 0, pitchV: 0, nkLow: 0, nkLowV: 0, nkFwd: 0, nkFwdV: 0, rd: 0, rdV: 0,
+            pc: [null, null, null, null], jf: [null, null, null, null], lw: [0, 0, 0, 0], pd: [0, 0, 0, 0]
+        });
+
+        // ---- obstacles the horse has to jump (world x0..x1, height h). Nearby ones merge into one cluster. ----
+        const HR_OBS = [];
+        (function () {
+            const add = (wx, sc, lx0, lx1, h) => HR_OBS.push({ x0: wx + lx0 * sc * BLD, x1: wx + lx1 * sc * BLD, h: h * sc * BLD });
+            HR_OBS.push({ x0: 1592, x1: 1648, h: 66 });                       // hitching post (small)
+            add(1000, 2.3, -28, 28, 26);                                      // well wall (small)
+            add(2200, 3.5, 128, 162, 22);                                     // hay bale (medium)
+            add(-1220, 2.2, -47, 13, 38); add(-1220, 2.2, 14, 42, 52);        // barrels + crates (large)
+            add(2780, 2.2, -47, 13, 38); add(2780, 2.2, 14, 42, 52);
+            add(-950, 2.2, -66, 64, 62);                                      // wagon bed (large)
+            for (const [a, b, h] of [[-84, -56, 54], [-42, -18, 44], [0, 28, 60], [44, 68, 46]]) add(-3400, 2.2, a, b, h);   // graves
+            HR_OBS.sort((a, b) => a.x0 - b.x0);
+            for (let i = HR_OBS.length - 1; i > 0; i--) {                     // gaps too small to land in = one obstacle
+                const a = HR_OBS[i - 1], b = HR_OBS[i];
+                if (b.x0 - a.x1 < 130) { a.x1 = Math.max(a.x1, b.x1); a.h = Math.max(a.h, b.h); HR_OBS.splice(i, 1); }
+            }
+        })();
+        function hrsNextObs(d, fromX, maxD) {
+            let best = null, bd = 1e9;
+            for (const o of HR_OBS) {
+                const dist = d > 0 ? o.x0 - fromX : fromX - o.x1;
+                if (dist < -40 || dist > maxD || dist >= bd) continue;
+                bd = dist; best = o;
+            }
+            return best ? { o: best, d: bd } : null;
+        }
+
+        // ---- what the horse can do at a given speed ----
+        function hrsApexMax(sp, S) { return lerp(HJ_APEX_STAND, HJ_APEX_MAX, sm((sp - 80) / 360)) * S }
+        function hrsApexFree(sp, S) { return lerp(34, HJ_FREE_APEX, sm((sp - 60) / 420)) * S }
+        function hrsAir(A) {      // thrust ramp + ballistic flight reaching apex height A
+            const g = HJ_G, TH = HJ_TH, vz = (-g * TH + Math.sqrt(g * g * TH * TH + 8 * g * A)) / 2;
+            return { vz, T: TH + vz / g + Math.sqrt(2 * A / g) };
+        }
+        function hrsKey(i, v, pw) {   // hoof pose for leg i (0 FF, 1 HF, 2 FN, 3 HN) at flight progress v -> [x offset, reach]
+            const front = !(i & 1), lag = [.03, .10, 0, .07][i];                       // hind legs land a touch after the front
+            const vl = Math.max(0, Math.min(1, v - lag * sm((v - .45) / .2)));
+            const dx = kf(vl, front ? HJ_FDX : HJ_HDX), ry = kf(vl, front ? HJ_FRY : HJ_HRY);
+            return [dx, 118 - (118 - ry) * (.8 + .3 * pw)];                            // bigger jump = more leg tuck
+        }
+        // simulate a jump: lowest gap between hooves/belly and the obstacle top, wherever they overlap it horizontally
+        function hrsSim(A, vxA, o, d, xp, S) {
+            const g = HJ_G, TH = HJ_TH, ar = hrsAir(A), vz = ar.vz, T = ar.T, cx = S * HORSE_W, k = S * HORSE_H, pw = Math.min(1, A / (HJ_APEX_MAX * S));
+            let clr = 1e9;
+            const fp = xp + d * (46 + Math.min(44, vxA * .1 / cx + 12)) * cx;          // front hooves planted ahead during the gather
+            if (fp > o.x0 - 6 && fp < o.x1 + 6) clr = -o.h;
+            for (let n = 0; n <= 20; n++) {
+                const t = T * n / 20, v = t / T; let z;
+                if (t < TH) { const u = t / TH; z = vz * TH * (u * u * u - u * u * u * u / 2) }
+                else { const tb = t - TH; z = vz * TH / 2 + vz * tb - .5 * g * tb * tb }
+                z = Math.max(0, z);
+                const xb = xp + d * vxA * t, pts = [[-60, 94 * k + z], [0, 94 * k + z], [60, 94 * k + z]];
+                for (let i = 0; i < 4; i++) {
+                    const key = hrsKey(i, v, pw), ax = i & 1 ? -52 : 46;
+                    pts.push([ax + key[0], Math.max(0, z + (108 - key[1]) * k)], [ax + key[0] / 2, z + (108 - key[1] / 2) * k]);
+                }
+                for (const p of pts) { const x = xb + d * p[0] * cx; if (x > o.x0 - 6 && x < o.x1 + 6) clr = Math.min(clr, p[1] - o.h) }
+            }
+            return clr;
+        }
+        // lowest arc + takeoff point that clears the obstacle; ok:false means "not at this speed"
+        function hrsPlan(sp, o, d, S) {
+            const vxA = Math.max(sp, HJ_STAND_V) * .94, aMax = hrsApexMax(sp, S), free = hrsApexFree(sp, S), mk = A => Math.min(1, A / (HJ_APEX_MAX * S));
+            if (!o) { const A = Math.min(free, aMax), ar = hrsAir(A); return { ok: true, A, vz: ar.vz, T: ar.T, xp: null, pw: mk(A) } }
+            for (let A = Math.max(free * .6, 24 * S); A <= aMax + .5; A += 8 * S) {
+                const ar = hrsAir(A), x0 = (o.x0 + o.x1) / 2 - d * vxA * ar.T / 2;
+                for (const sh of [0, -30, -60, -90, -120, 30, 60]) {
+                    const xp = x0 + d * sh * S;
+                    if (hrsSim(A, vxA, o, d, xp, S) >= 10 * S) return { ok: true, A, vz: ar.vz, T: ar.T, xp, pw: mk(A) };
+                }
+            }
+            return { ok: false };
+        }
+
+        // ---- small helpers ----
+        function hrsSpr(o, k, tgt, K, Z, dt) { const vk = k + 'V'; o[vk] += (K * (tgt - o[k]) - 2 * Z * Math.sqrt(K) * o[vk]) * dt; o[k] += o[vk] * dt }
+        function hrsHoofFX(wx, n, k) {
+            for (let j = 0; j < n; j++) flecks.push({ x: wx + (Math.random() - .5) * 14, y: -2, vx: (Math.random() - .5) * 160 * k, vy: -(60 + Math.random() * 150) * k, r: 3 + Math.random() * 4, t: 0, life: .45 + Math.random() * .4 });
+            puff(wx, -8, 2, 0, -22, 9, 26, 1.3, .5);
+        }
+        function hrsJumpReset() {
+            Object.assign(HRS, { jp: 'IDLE', jt: 0, jth: 0, tp: 0, tl: 0, jw: 0, vz: 0, jobs: null, plan: null, pc: [null, null, null, null], jf: [null, null, null, null], lw: [0, 0, 0, 0], pd: [0, 0, 0, 0] });
+            if (HRS.z < 0) HRS.z = 0;
+        }
+        function hrsRefuse() {
+            const h = HRS; h.jp = 'REFUSE'; h.jt = 0; h.jobs = null; h.pitchV += 2.2; h.rdV -= 1.5;
+            shake = Math.max(shake, 4); banner.t = .9; banner.text = 'REFUSED!';
+        }
+        function hrsBeginTakeoff(S, pl) {
+            const h = HRS, cx = S * HORSE_W, d = h.jdir, sp = Math.abs(h.vx);
+            h.jTc = Math.max(.12, Math.min(.28, .30 - .00018 * sp));
+            const rem = pl.xp != null ? Math.max(0, (pl.xp - h.x) * d) : sp * h.jTc, tr = (rem + sp * HJ_TH * .5) / cx;   // how far the body travels over the planted hooves
+            Object.assign(h, { jp: 'TAKEOFF', jt: 0, jth: 0, tp: 0, tl: 0, jA: pl.A, jvz: pl.vz, jTa: pl.T, jpw: pl.pw, jxp: pl.xp, pd: [0, 0, 0, 0] });
+            for (let i = 0; i < 4; i++) {                                              // all four hooves plant in the world, hind ones under the belly
+                const ax = i & 1 ? -52 : 46, dx = i & 1 ? Math.max(10, Math.min(46, tr * .5 + 18)) : Math.max(6, Math.min(44, tr * .5 + 12));
+                h.pc[i] = h.x + d * (ax + dx) * cx; h.lw[i] = 0;
+            }
+        }
+        function hrsFrontContact(S) {
+            const h = HRS, k = S * HORSE_H, vz = h.vz;
+            h.jp = 'LAND_FRONT'; h.jt = 0;
+            h.vz *= .7; h.cmpV += vz / k * .45; h.pitchV -= 1.8;                        // front legs take part of the fall, forehand dips
+            shake = Math.max(shake, 3);
+            for (const i of [0, 2]) if (h.pc[i] !== null) hrsHoofFX(h.pc[i], 4, .7);
+        }
+        function hrsTouchdown(S) {
+            const h = HRS, k = S * HORSE_H, cx = S * HORSE_W, F = h.face, vi = Math.max(0, h.vz);
+            h.z = 0; h.vz = 0; h.jp = 'LAND_REAR'; h.tl = 0; h.jt = 0;
+            h.cmpV += Math.min(420, vi / k);                                            // impact speed -> visible squash
+            h.pitchV += .8; h.rdV -= Math.min(1.6, vi / 500);
+            h.vx *= 1 - Math.min(.16, .04 + vi / 9000);                                 // impact friction
+            shake = Math.max(shake, Math.min(9, 2 + vi / 120));
+            for (let i = 0; i < 4; i++) {
+                const key = hrsKey(i, 1, h.jpw), ax = i & 1 ? -52 : 46;
+                if (h.pc[i] === null && !h.pd[i]) h.pc[i] = h.x + F * (ax + key[0]) * cx;   // any hoof still in the air grounds now
+                if (h.pc[i] !== null) hrsHoofFX(h.pc[i], i & 1 ? 5 : 2, Math.min(1.4, .6 + vi / 800));
+            }
+        }
+
+        // ---- hooves: plant / release / pose-driven; result in HRS.jf[i] = [x, y, weight] (horse-local) ----
+        function hrsJumpFeet(dt, S) {
+            const h = HRS, cx = S * HORSE_W, k = S * HORSE_H, gz = -h.z / k, F = h.face, AT = -108 + h.cmp, jp = h.jp;
+            const landing = jp === 'DESCENT' || jp === 'LAND_FRONT' || jp === 'LAND_REAR' || jp === 'RECOVERY';
+            const lg = jp === 'LAND_FRONT' || jp === 'LAND_REAR' || jp === 'RECOVERY';
+            const v = (jp === 'TAKEOFF' && !h.jth) ? 0 : (h.tl > 0 ? 1 : Math.min(1, h.tp / h.jTa));
+            let front = false;
+            for (let i = 0; i < 4; i++) {
+                const fr = !(i & 1), ax = fr ? 46 : -52, key = hrsKey(i, v, h.jpw), px = ax + key[0], py = AT + key[1];
+                let planted = h.pc[i] !== null;
+                if (!planted && landing && jp !== 'RECOVERY' && !h.pd[i] && v > .55 && py >= gz - .5) {   // hoof reaches the ground -> it plants
+                    h.pc[i] = h.x + F * px * cx; planted = true;
+                    if (fr && jp === 'DESCENT') front = true;
+                }
+                if (planted) {
+                    const xl = (h.pc[i] - h.x) * F / cx;
+                    let rel = Math.hypot(xl - ax, gz - AT) > 119;                       // leg fully stretched: hoof has to come off
+                    if (jp === 'ASCENT') rel = true;
+                    else if (jp === 'TAKEOFF' && h.jth) rel = rel || (fr ? h.jt >= .075 : py < gz - 1.5);   // hind push first, front lifts after
+                    else if (lg) rel = rel || h.tl > (fr ? .16 : .21);
+                    if (rel) { h.pc[i] = null; planted = false; h.lw[i] = h.jw; if (lg) h.pd[i] = 1 }
+                }
+                const w = planted ? h.jw : (h.pd[i] ? (h.lw[i] = Math.max(0, h.lw[i] - dt * 8)) : (h.lw[i] = h.jw));
+                h.jf[i] = planted ? [(h.pc[i] - h.x) * F / cx, gz, w] : [px, Math.min(py, gz), w];
+            }
+            return { front };
+        }
+
+        function hrsPoseTick(dt) {
+            const h = HRS;
+            let key = h.jp; if (key === 'IDLE') key = 'RUN'; else if (key === 'TAKEOFF') key = h.jth ? 'TAKEOFF_T' : 'TAKEOFF_C';
+            const T = HJ_TARGET[key], f = HJ_GROUND[h.jp] ? 1 : .6 + .4 * h.jpw;        // bigger jump = deeper crouch, harder drive
+            hrsSpr(h, 'cmp', T[0] * f, 260, .55, dt); hrsSpr(h, 'pitch', T[1] * f, 110, .65, dt);
+            hrsSpr(h, 'nkLow', T[2], 140, .8, dt); hrsSpr(h, 'nkFwd', T[3], 140, .8, dt); hrsSpr(h, 'rd', T[4], 80, .9, dt);
+            h.coll += (T[5] - h.coll) * Math.min(1, dt * (T[5] > h.coll ? 8 : 5));
+            h.cmp = Math.max(-10, Math.min(24, h.cmp));
+        }
+
+        // ---- legs + belly against obstacles ----
+        function hrsCollide(S) {
+            const h = HRS, F = h.face, cx = S * HORSE_W, k = S * HORSE_H, gz = -h.z / k, AT = -108 + h.cmp, pts = [];
+            for (let i = 0; i < 4; i++) {
+                const ax = i & 1 ? -52 : 46, jf = h.jf[i] && h.jf[i][2] > .5 ? h.jf[i] : null, fx = jf ? jf[0] : ax, fy = jf ? Math.min(jf[1], gz) : 0;
+                for (const t of [.35, .7, 1]) pts.push([ax + (fx - ax) * t, (gz - (AT + (fy - AT) * t)) * k]);
+            }
+            for (let x = -60; x <= 60; x += 30) pts.push([x, (gz - (AT + 14)) * k]);   // belly
+            for (const o of HR_OBS) {
+                if (o.x1 < h.x - 400 || o.x0 > h.x + 400) continue;
+                const side = h.x < (o.x0 + o.x1) / 2 ? -1 : 1;
+                let shift = 0, hit = false;
+                for (const p of pts) {
+                    const sx = h.x + F * p[0] * cx;
+                    if (sx > o.x0 - 4 && sx < o.x1 + 4 && p[1] < o.h - 2) {
+                        hit = true; const s = side < 0 ? (o.x0 - 4) - sx : (o.x1 + 4) - sx;
+                        if (side < 0 ? s < shift : s > shift) shift = s;
+                    }
+                }
+                if (!hit) continue;
+                h.x += shift;
+                const vin = h.vx * (side < 0 ? 1 : -1);                                   // speed INTO the obstacle
+                if (vin > 20) h.vx = -Math.sign(h.vx) * Math.min(vin * .12, 70);
+                if (P.mount !== 2) { h.goal = h.x + side * 120; h.wait = 1; continue }    // free horse just turns away
+                if (vin > 120) {
+                    const cxw = h.x + F * 70 * cx;
+                    hrsHoofFX(cxw, 6, Math.min(1.5, vin / 400));
+                    shake = Math.max(shake, Math.min(12, vin / 60));
+                    h.pitchV += Math.min(4, vin / 220); h.cmpV += Math.min(260, vin * .3); h.rdV -= Math.min(2, vin / 400);
+                    if (vin > 380) { banner.t = .8; banner.text = 'CRASH!' }
+                }
+            }
+        }
+
+        // ---- the jump state machine (called from horseTick) ----
+        function horseJumpTick(dt, S) {
+            const h = HRS, st = P.mount, cx = S * HORSE_W;
+            if (st !== 2 && !HJ_GROUND[h.jp]) hrsJumpReset();
+            if (HJ_GROUND[h.jp]) h.jp = Math.abs(h.vx) < 8 ? 'IDLE' : 'RUN';
+
+            // 1. jump key -> APPROACH (never an instant jump)
+            if (st === 2 && P.jbuf > 0 && HJ_GROUND[h.jp] && h.z >= 0) {
+                P.jbuf = 0;
+                const sp = Math.abs(h.vx), d = sp > 40 ? Math.sign(h.vx) : h.face;
+                const hit = hrsNextObs(d, h.x + d * 68 * cx, 150 * S + sp * 1.1);
+                h.face = d; Object.assign(h, { jp: 'APPROACH', jt: 0, jth: 0, jdir: d, jobs: hit ? hit.o : null, plan: null, planT: 0, jpw: 0 });
+            }
+            // 2. APPROACH: gather, shorten stride, wait for the takeoff point (or refuse)
+            if (h.jp === 'APPROACH') {
+                h.jt += dt;
+                const sp = Math.abs(h.vx), o = h.jobs, d = h.jdir;
+                const dirIn = (keys.ArrowRight || keys.KeyD ? 1 : 0) - (keys.ArrowLeft || keys.KeyA ? 1 : 0);
+                if (dirIn === -d) h.jp = 'RUN';                                           // rider pulls the other way: abort
+                else if (!o) { if (h.jt >= (sp < 60 ? .28 : .2)) hrsBeginTakeoff(S, hrsPlan(sp, null, d, S)) }
+                else {
+                    if ((h.planT -= dt) <= 0) { h.plan = hrsPlan(sp, o, d, S); h.planT = .05 }
+                    const pl = h.plan, fx = h.x + d * 68 * cx, dObs = d > 0 ? o.x0 - fx : fx - o.x1;
+                    if (pl.ok) { if (h.jt >= .15 && (pl.xp - h.x) * d <= Math.max(sp, 60) * .2) hrsBeginTakeoff(S, pl) }
+                    else if (dObs <= Math.max(60 * S, sp * .55)) hrsRefuse();            // too slow for this one: stops at the fence
+                    else if (h.jt > 2.4) { h.jp = 'RUN'; banner.t = .7; banner.text = 'NEED MORE SPEED' }
+                }
+            }
+            if (h.jp === 'REFUSE') { h.jt += dt; if (h.jt >= .65) h.jp = 'RUN' }
+            // 3. TAKEOFF: compress over planted hooves, then the hind legs drive
+            if (h.jp === 'TAKEOFF') {
+                h.jt += dt;
+                const d = h.jdir, sp = Math.abs(h.vx);
+                if (!h.jth) {
+                    const go = h.jxp == null ? h.jt >= h.jTc : (((h.jxp - h.x) * d <= 0 && h.jt >= .10) || h.jt > .5);
+                    if (go) {
+                        h.jth = 1; h.jt = 0; h.tp = 0;
+                        if (sp < HJ_STAND_V * .9) h.vx = d * HJ_STAND_V; else h.vx *= 1.02;
+                        h.cmpV -= 260; h.pitchV += 1.6; shake = Math.max(shake, 3 + 3 * h.jpw);
+                        hrsHoofFX(h.x - d * 70 * cx, 8, 1);
+                    }
+                } else {
+                    h.tp += dt;
+                    h.vz = -h.jvz * sm(h.jt / HJ_TH); h.z += h.vz * dt;                   // force builds up over the thrust
+                    if (h.jt >= HJ_TH) { h.vz = -h.jvz; h.jp = 'ASCENT' }
+                }
+            }
+            // 4. flight: gravity, arc phases
+            const jp = h.jp, inAir = jp === 'ASCENT' || jp === 'APEX' || jp === 'DESCENT' || (jp === 'LAND_FRONT' && h.z < 0);
+            if (inAir) {
+                h.vz += HJ_G * dt; h.z += h.vz * dt; h.tp += dt;
+                if (jp === 'ASCENT' && h.vz > -90) h.jp = 'APEX';
+                else if (jp === 'APEX' && h.vz > 90) h.jp = 'DESCENT';
+            }
+            // 5. hoof weights, hooves, contacts
+            const J = h.jp;
+            if (J === 'TAKEOFF' || J === 'ASCENT' || J === 'APEX' || J === 'DESCENT' || J === 'LAND_FRONT' || J === 'LAND_REAR') h.jw += (1 - h.jw) * Math.min(1, dt * 18);
+            else if (J === 'RECOVERY') h.jw = 1 - sm((h.tl - .30) / .30);
+            else h.jw += (0 - h.jw) * Math.min(1, dt * 10);
+            let ev = null;
+            if (h.jw > .001 || h.pc.some(p => p !== null)) ev = hrsJumpFeet(dt, S); else h.jf = [null, null, null, null];
+            if (ev && ev.front && h.jp === 'DESCENT') hrsFrontContact(S);
+            if ((h.jp === 'DESCENT' || h.jp === 'LAND_FRONT') && h.z >= 0) hrsTouchdown(S);
+            // 6. landing timers
+            if (h.jp === 'LAND_REAR' || h.jp === 'RECOVERY') h.tl += dt;
+            if (h.jp === 'LAND_REAR' && h.tl >= .14) h.jp = 'RECOVERY';
+            if (h.jp === 'RECOVERY' && h.tl >= .6) hrsJumpReset();
+            hrsPoseTick(dt);
+            hrsCollide(S);
         }
 
         function frame(now) {
