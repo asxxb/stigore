@@ -138,8 +138,8 @@
             if (e.code === 'KeyV') { P.female = !P.female; banner.t = .8; banner.text = P.female ? 'WOMAN' : 'MAN'; }
             if (e.code === 'KeyC') pressSmoke();
             if (e.code === 'KeyN') { const toNight = DN.d < .5; DN.t = toNight ? 0 : .5; banner.t = .8; banner.text = toNight ? 'MIDNIGHT' : 'NOON'; }
-            if (e.code === 'KeyO') { DN.lantern = !DN.lantern; banner.t = .6; banner.text = DN.lantern ? 'LANTERN ON' : 'LANTERN OFF'; }
-            if (P.sm === 1) return;                 // no actions while lighting up
+            if (e.code === 'KeyO') { DN.lantern = !DN.lantern; if (!DN.lantern) { DN.lit = 0; DN.hung = 0; P.ln = 0; } banner.t = .6; banner.text = DN.lantern ? 'LANTERN ON' : 'LANTERN OFF'; }
+            if (P.sm === 1 || P.ln > 0) return;                 // no actions while lighting up
             if (P.sgp > 0) return;    // no actions mid-stomp
             if (e.code === 'KeyG') pressG();
             if (e.code === 'KeyH') pressHorse();
@@ -361,7 +361,7 @@
                 fidgetTick(P, true, dt);
                 return;
             }
-            const dir = (P.fin > 0 || P.sm === 1 || P.fs > 0 || P.yk > 0 || P.gu > 0 || P.sgp > 0 || P.mount) ? 0 : (keys.ArrowRight || keys.KeyD ? 1 : 0) - (keys.ArrowLeft || keys.KeyA ? 1 : 0);
+            const dir = (P.fin > 0 || P.sm === 1 || P.ln > 0 || P.fs > 0 || P.yk > 0 || P.gu > 0 || P.sgp > 0 || P.mount) ? 0 : (keys.ArrowRight || keys.KeyD ? 1 : 0) - (keys.ArrowLeft || keys.KeyA ? 1 : 0);
             const run = keys.ShiftLeft || keys.ShiftRight;
             const max = run ? 520 : 190;
             const grounded = P.z >= 0;
@@ -434,7 +434,7 @@
                 }
             }
             // ---- idle fidgets ----
-            fidgetTick(P, dir || keys.Space || keys.KeyJ || keys.KeyF || P.sm > 0 || P.cs > 0 || P.skid || !grounded || sp > 8 || P.tt > 0 || P.atk > 0 || P.thw > 0 || P.stbk > 0 || P.fs > 0 || P.yk > 0 || P.gu > 0 || P.sg || P.sgp > 0 || P.mount, dt);
+            fidgetTick(P, dir || keys.Space || keys.KeyJ || keys.KeyF || P.sm > 0 || P.cs > 0 || P.skid || !grounded || sp > 8 || P.tt > 0 || P.atk > 0 || P.thw > 0 || P.stbk > 0 || P.fs > 0 || P.yk > 0 || P.gu > 0 || P.sg || P.sgp > 0 || P.mount || P.ln > 0, dt);
         }
 
         // ================= COMBAT =================
@@ -2569,6 +2569,7 @@
                 drawHolster(P.hol, F, holGrip);
             }
             if (P === PL) P.sgBelt = rot(F * 6, -16);
+            if (P === PL) P.lnB = rot(-F * 13, -12);       // belt hook, behind the hip
             const sh = rot(0, -T + 10), swing = (.015 + .9 * R) * P.amp * ARM_SWING, up = z < 0 ? -.9 : 0;
             const sTilt = (P === PL) ? smokeTilt() : [0, 0];
             const mA = (P === PL && P.sm) ? (() => { const h = rot(-F * 7 + F * sTilt[0], -T - 24 + sTilt[1]); return [h[0] + F * 19, h[1] + 8] })() : null;
@@ -2787,6 +2788,7 @@
                     }
                 }
 
+                if (P === PL && P.ln > 0 && P.lnB) { const o = lnArm(i, sh, F); if (o[2] > .001) { ang = ang * (1 - o[2]) + o[0] * o[2]; flex = flex * (1 - o[2]) + o[1] * o[2] } }
                 wristKick = (i === 0 && P === PL && P.gunK > .02) ? RC_WRIST * P.recoil * P.recoil + (P.rl > 0 ? rlTilt(P.rl / RELOAD_T) : 0) : 0;
                 arm(sh, ang, flex, F, (i === 0 && !P.pk) ? P.kt : 0, Math.max(pq, (cb && !(P === PL && P.stbk > 0)) ? cb.w : 0), (i === 0 && !P.pk) ? P.tt / TOSS_T : 0);
                 if (i === 1 && P === PL && P.rl > 0) {
@@ -2906,6 +2908,7 @@
                 if (P.hCrack > 0) drawHeadCrack(hd, F, P, now);
             }
             if (P === PL && P.sm) drawSmokeProps(F, hd, S, now);
+            if (P === PL) drawLanternProps(F, S, now);
             if (cb && cb.sw > .02) { if (cb.st.line !== undefined) punchLines(P.fistInfo[cb.st.line], cb.sw); else swoosh(sh[0], sh[1], F, cb.st, cb.sw) }
             function punchLines(f, alpha) {      // straight dashes trailing the fist, like the sprite sheet
                 if (!f) return;
@@ -5368,7 +5371,7 @@
             }
             if (P.mount) return;
             if (P.sm === 1 || P.sm === 3) return;   // lighting up / flicking: wait
-            if (P.fin > 0 || P.cs > 0 || P.thw > 0 || P.tt > 0 || P.pk > 0 || P.fs > 0 || P.gu > 0 || P.yk > 0 || P.stbk > 0 || P.sgp > 0 || P.gs === 2 || P.z < 0) return;
+            if (P.fin > 0 || P.cs > 0 || P.thw > 0 || P.tt > 0 || P.pk > 0 || P.fs > 0 || P.gu > 0 || P.yk > 0 || P.stbk > 0 || P.sgp > 0 || P.gs === 2 || P.z < 0 || P.ln > 0) return;
             if (P.kn !== 0 || P.kt > .2) { banner.t = .7; banner.text = 'PUT THE KNIFE AWAY (K)'; return }
             const S = CSc();
             if (Math.abs(HRS.x - P.x) > HR_MOUNT_R * S) { banner.t = .8; banner.text = 'WALK TO THE HORSE'; return }
@@ -7145,6 +7148,7 @@
             DN.sunH = -Math.cos(DN.t * Math.PI * 2);
             DN.d = sm((.1 - DN.sunH) / .6);                                  // 0 = day, 1 = full night
             DN.dusk = Math.max(0, 1 - Math.abs(DN.sunH - .02) / .3);         // warm tint at sunrise / sunset
+            lanternTick(dt);
         }
         function skyBody() {
             const cam = P.x, t = DN.t, out = { sun: null, moon: null };
@@ -7153,10 +7157,85 @@
             const mq = ((t < .25 ? t + 1 : t) - .75) / .5; if (mq > 0 && mq < 1) out.moon = arc(mq);
             return out;
         }
-        function lanternPos() {
-            const h = P.hipP; if (!h) return null;
-            return [W / 2 + (h[0] + P.face * 17) * CSc(), groundY() + 4 + (h[1] + 4) * CSc()];
+
+        // ---- lantern: take it off the belt, light it with the lighter, hang it back ----
+        const LN_REACH = .45, LN_RAISE = 1.0, LN_OPEN = 1.05, LN_FLAME0 = 1.25, LN_LIT = 1.65, LN_FLAME1 = 1.95, LN_HANG = 2.1, LN_END = 2.65, LN_DONE = 2.9;
+        P.ln = 0; P.lnB = null; P.lnPos = null;
+        DN.hung = 0; DN.lit = 0; DN.litK = 0;
+
+        function lanternPos() {                        // screen position of the lantern body, for the night light
+            const p = P.lnPos; if (!p) return null;
+            return [W / 2 + p[0] * CSc(), groundY() + 4 + p[1] * CSc()];
         }
+        function lnReady() {
+            return P.z >= 0 && !P.mount && !P.gun && P.gs !== 2 && !P.sg && P.kn === 0 && P.kt < .05 &&
+                !(P.cs > 0 || P.fin > 0 || P.thw > 0 || P.tt > 0 || P.stbk > 0 || P.fs > 0 || P.gu > 0 || P.yk > 0 || P.sgp > 0 || P.pk > 0 || P.sm > 0);
+        }
+        function lanternTick(dt) {
+            if (!DN.lantern || DN.d < .1) {            // daytime or switched off: put it away
+                P.ln = 0; DN.lit = 0; DN.hung = 0;
+            } else if (DN.d > .25 && !DN.lit && !P.ln) {
+                if (P.mount) { DN.lit = 1; DN.hung = 1; }                       // riding: just lights up, no animation
+                else if (lnReady()) { if (P.skid) endSkid(); P.ln = .0001; P.idle = 0; P.fid = 0; P.abuf = 0 }
+            }
+            if (P.ln > 0) {
+                P.ln += dt; P.abuf = 0; P.jbuf = 0; P.vx *= Math.max(0, 1 - dt * 10);
+                if (!DN.lit && P.ln >= LN_LIT) {
+                    DN.lit = 1;
+                    if (P.lnPos) { const S = CSc(); puff(P.x + P.lnPos[0] * S, P.lnPos[1] * S, 3, 0, -30, 2, 5, 1.2, .2) }
+                }
+                if (P.ln >= LN_DONE) { P.ln = 0; DN.hung = 1 }
+            }
+            DN.litK += ((DN.lit ? 1 : 0) - DN.litK) * Math.min(1, dt * 6);
+        }
+        function lnPivotAt(t, B, H) {                  // where the lantern handle is, in character space
+            if (t < LN_REACH || t >= LN_END) return B;
+            if (t < LN_RAISE) { const k = sm((t - LN_REACH) / (LN_RAISE - LN_REACH)); return [B[0] + (H[0] - B[0]) * k, B[1] + (H[1] - B[1]) * k] }
+            if (t < LN_HANG) return H;
+            const k = sm((t - LN_HANG) / (LN_END - LN_HANG)); return [H[0] + (B[0] - H[0]) * k, H[1] + (B[1] - H[1]) * k];
+        }
+        function lnArm(i, sh, F) {                     // -> [ang, flex, weight]; arm 1 holds the lantern, arm 0 works the lighter
+            const t = P.ln, B = P.lnB, H = [sh[0] + F * 42, sh[1] + 44];
+            if (i === 1) {
+                const pv = lnPivotAt(t, B, H), w = t < LN_END ? sm(t / .3) : 1 - sm((t - LN_END) / (LN_DONE - LN_END));
+                const [a, f] = ikTo(sh, pv[0], pv[1], F); return [a, f, w];
+            }
+            const w = sm((t - .5) / .4) * (1 - sm((t - 2.1) / .3)), tr = (t > LN_OPEN && t < LN_FLAME1) ? Math.sin(t * 40) * .7 : 0;
+            const [a, f] = ikTo(sh, H[0] + F + tr, H[1] + 40 + tr * .5, F); return [a, f, w];
+        }
+        function drawLantern(x, y, rotA, lit, now) {   // character space, pivot at the handle
+            ctx.save(); ctx.translate(x, y); ctx.rotate(rotA);
+            ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.strokeStyle = '#111'; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(-4, -2); ctx.quadraticCurveTo(0, -11, 4, -2); ctx.stroke();                       // handle
+            ctx.fillStyle = '#3a3a3a'; ctx.beginPath(); ctx.rect(-6, -3, 12, 3.5); ctx.fill(); ctx.stroke();              // cap
+            ctx.fillStyle = 'rgba(' + Math.round(150 + 105 * lit) + ',' + Math.round(140 + 60 * lit) + ',' + Math.round(120 - 24 * lit) + ',' + (.55 + .41 * lit) + ')';
+            ctx.beginPath(); ctx.rect(-5, .5, 10, 12); ctx.fill(); ctx.stroke();                                         // glass
+            ctx.save(); ctx.globalAlpha = .45; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(0, .5); ctx.lineTo(0, 12.5); ctx.stroke(); ctx.restore();
+            ctx.fillStyle = '#3a3a3a'; ctx.beginPath(); ctx.rect(-6, 12.5, 12, 3); ctx.fill(); ctx.stroke();             // base
+            if (lit > .05) {
+                const fl = 1 + .15 * Math.sin(now * 25) + .1 * Math.sin(now * 11);
+                ctx.globalAlpha = lit; ctx.fillStyle = '#fff6d0'; ctx.beginPath(); ctx.ellipse(0, 8, 1.8 * fl, 3.6 * fl, 0, 0, 7); ctx.fill();
+            }
+            ctx.restore();
+        }
+        function drawLanternProps(F, S, now) {         // called from drawChar, after the head
+            const B = P.lnB;
+            if (!B || !(P.ln > 0 || DN.hung)) { P.lnPos = null; return }
+            const t = P.ln, A = P.armPts || [];
+            const hc = i => { const a = A[i]; if (!a) return null; const dx = a[1][0] - a[0][0], dy = a[1][1] - a[0][1], dl = Math.hypot(dx, dy) || 1; return [a[1][0] + dx / dl * 12, a[1][1] + dy / dl * 12] };
+            const h0 = hc(0), h1 = hc(1), inHand = t >= LN_REACH && t < LN_END && h1, pv = inHand ? h1 : B;
+            const sway = Math.sin(now * 2.1) * .05 + Math.sign(P.vx) * clamp01(Math.abs(P.vx) / 600) * .35 * (inHand ? .3 : 1);
+            P.lnPos = [pv[0], pv[1] + 8];
+            drawLantern(pv[0], pv[1], sway, DN.litK, now);
+            if (inHand && FIST.complete && P.fistInfo && P.fistInfo[1]) {          // fist back on top so it grips the handle
+                const f = P.fistInfo[1]; ctx.save(); ctx.translate(f.x, f.y); ctx.scale(f.F, 1); ctx.rotate(f.a - Math.PI / 2); ctx.drawImage(FIST, -FIST.naturalWidth / 2, -4); ctx.restore();
+            }
+            if (t > .55 && t < 2.45 && h0) {
+                const open = sm((t - LN_OPEN) / .16) * (1 - sm((t - 1.98) / .14)), flame = sm((t - LN_FLAME0) / .1) * (1 - sm((t - 1.9) / .1));
+                drawLighter(h0[0], h0[1] - 2, F, open, flame, now);
+            }
+        }
+
         // { wx: world x, sc: scale, r: [x, y, w, h, brightness, mullions] in the building's local space }
         const NIGHT_LIGHTS = [
             { wx: -1500, sc: 2.5, r: [[-70, -100, 30, 34, 1, 1], [40, -100, 30, 34, 1, 1], [-86, -34, 26, 34, .9, 0], [-17, -46, 34, 34, .6, 0]] },   // saloon
@@ -7172,17 +7251,6 @@
             const g = ctx.createRadialGradient(x, y, 0, x, y, R);
             g.addColorStop(0, 'rgba(255,176,80,' + a + ')'); g.addColorStop(1, 'rgba(255,176,80,0)');
             ctx.fillStyle = g; ctx.fillRect(x - R, y - R, R * 2, R * 2);
-        }
-        function drawLantern(x, y, S, now) {
-            ctx.save(); ctx.translate(x, y); ctx.scale(S, S); ctx.rotate(Math.sin(now * 2.1) * .06 - clamp01(Math.abs(P.vx) / 600) * P.face * .35);
-            ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.strokeStyle = '#111'; ctx.lineWidth = 2;
-            ctx.beginPath(); ctx.moveTo(-4, -2); ctx.quadraticCurveTo(0, -11, 4, -2); ctx.stroke();                    // handle
-            ctx.fillStyle = '#3a3a3a'; ctx.beginPath(); ctx.rect(-6, -3, 12, 3.5); ctx.fill(); ctx.stroke();           // cap
-            ctx.fillStyle = 'rgba(255,200,96,.96)'; ctx.beginPath(); ctx.rect(-5, .5, 10, 12); ctx.fill(); ctx.stroke(); // glass
-            ctx.fillStyle = '#3a3a3a'; ctx.beginPath(); ctx.rect(-6, 12.5, 12, 3); ctx.fill(); ctx.stroke();           // base
-            const fl = 1 + .15 * Math.sin(now * 25) + .1 * Math.sin(now * 11);
-            ctx.fillStyle = '#fff6d0'; ctx.beginPath(); ctx.ellipse(0, 8, 1.8 * fl, 3.6 * fl, 0, 0, 7); ctx.fill();    // flame
-            ctx.restore();
         }
         function drawMoon(m, d) {
             const r = Math.min(W, H) * .06, x = m[0], y = m[1], a = m[2] * sm(d * 3);
@@ -7217,8 +7285,8 @@
             const S = CSc(), now = performance.now() / 1000, sb = skyBody(), wa = sm((d - .2) / .4);
             const lights = [];   // [x, y, radius, cut-out strength, warm glow strength]
 
-            const lan = DN.lantern ? lanternPos() : null;
-            if (lan) lights.push([lan[0], lan[1], 340 * S * (1 + Math.sin(now * 13) * .03 + Math.sin(now * 7.3 + 1) * .03), .97, .26]);
+            const lan = (DN.lantern && DN.litK > .01) ? lanternPos() : null;
+            if (lan) lights.push([lan[0], lan[1], 340 * S * (.4 + .6 * DN.litK) * (1 + Math.sin(now * 13) * .03 + Math.sin(now * 7.3 + 1) * .03), .97 * DN.litK, .26 * DN.litK]);
 
             for (const B of NIGHT_LIGHTS) {
                 const sx = W / 2 + B.wx - P.x; if (sx < -700 || sx > W + 700) continue;
@@ -7254,7 +7322,6 @@
                 ctx.restore();
             }
 
-            if (lan) drawLantern(lan[0], lan[1], S, now);
             drawStars(gy, d, now);
             if (sb.moon) drawMoon(sb.moon, d);
 
