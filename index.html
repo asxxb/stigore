@@ -7858,8 +7858,169 @@
             ctx.lineWidth = 1.6; ctx.beginPath(); ctx.ellipse(L, -r, r * .5, r, 0, 0, 7); ctx.stroke();
         }
 
-        // ---- main entry. mode 0 = trees + floor (behind characters); mode 1 = low foreground cover ----
-        function drawForest(gy, mode) {
+        // =====================================================================
+        // POND + DOCK (centre of the forest)
+        // =====================================================================
+        const POND_X = 5250;                 // world x of the pond centre
+        const POND_RX = 460, POND_RY_MAX = 120;   // half-width / max depth of the water (side-view cross-section)
+        let POND_RY = POND_RY_MAX;                // actual depth this frame (shrinks if the screen has no room below the ground line)
+        const DOCK_X0 = POND_X - POND_RX - 130, DOCK_X1 = POND_X + 150;   // dock starts on the left bank and reaches into the water
+        const F_POND_WASH = 'rgba(100,140,160,.40)', F_WOOD = 'rgba(150,120,85,.6)';
+
+        function inPond(wx, m) { return Math.abs(wx - POND_X) < POND_RX + (m || 0) }
+
+        function drawPond(gy, mode) {
+            const sx = W / 2 + POND_X - P.x;
+            if (Math.abs(sx) > W / 2 + POND_RX + 300) return;
+            const cvH = ctx.canvas.clientHeight || ctx.canvas.height;
+            POND_RY = Math.max(24, Math.min(POND_RY_MAX, cvH - gy - 8));   // never draw the pond bottom off-screen
+            const now = performance.now() / 1000;
+            ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#111'; ctx.fillStyle = '#111';
+
+            if (mode === 0) {
+                // paper bank + water body (flat top on the ground line, bowl below)
+                ctx.fillStyle = PAPER; ctx.beginPath(); ctx.ellipse(sx, gy + 4, POND_RX + 14, POND_RY + 8, 0, 0, Math.PI); ctx.closePath(); ctx.fill();
+                // water: pale at the surface, dark and teal at the bottom
+                const wg = ctx.createLinearGradient(0, gy + 4, 0, gy + 4 + POND_RY);
+                wg.addColorStop(0, 'rgba(160,200,210,.32)'); wg.addColorStop(.5, 'rgba(85,130,150,.50)'); wg.addColorStop(1, 'rgba(35,70,95,.68)');
+                ctx.fillStyle = wg; ctx.beginPath(); ctx.ellipse(sx, gy + 4, POND_RX, POND_RY, 0, 0, Math.PI); ctx.closePath(); ctx.fill();
+
+                // ---- underwater scene, clipped to the water ----
+                ctx.save();
+                ctx.beginPath(); ctx.ellipse(sx, gy + 4, POND_RX - 2, POND_RY - 1, 0, 0, Math.PI); ctx.closePath(); ctx.clip();
+                const top = gy + 4, dep = POND_RY, ds = dep / 120;
+                const by = rx => top + dep * (.8 + .04 * Math.sin(rx * .02) + .03 * Math.sin(rx * .07));   // pond-bed height at pond-relative x
+                // light shafts from the surface
+                ctx.fillStyle = 'rgba(255,255,225,.10)';
+                for (let i = 0; i < 5; i++) {
+                    const x = sx - POND_RX * .6 + i * POND_RX * .3 + Math.sin(now * .3 + i) * 12;
+                    ctx.beginPath(); ctx.moveTo(x - 6, top); ctx.lineTo(x + 8, top); ctx.lineTo(x + 46 + i * 4, top + dep); ctx.lineTo(x + 8, top + dep); ctx.closePath(); ctx.fill();
+                }
+                // sandy bed
+                ctx.fillStyle = 'rgba(190,170,130,.55)'; ctx.strokeStyle = '#111'; ctx.lineWidth = 1.3;
+                ctx.beginPath(); ctx.moveTo(sx - POND_RX, by(-POND_RX));
+                for (let x = -POND_RX; x <= POND_RX; x += 20) ctx.lineTo(sx + x, by(x));
+                ctx.lineTo(sx + POND_RX, top + dep + 20); ctx.lineTo(sx - POND_RX, top + dep + 20); ctx.closePath(); ctx.fill();
+                ctx.beginPath(); for (let x = -POND_RX; x <= POND_RX; x += 20) { x === -POND_RX ? ctx.moveTo(sx + x, by(x)) : ctx.lineTo(sx + x, by(x)) } ctx.stroke();
+                // rocks on the bed
+                for (let i = 0; i < 10; i++) {
+                    const rx = (hash(i * 4.7) - .5) * POND_RX * 1.7, r = (6 + hash(i * 2.9) * 10) * ds + 3;
+                    ctx.fillStyle = 'rgba(120,120,115,.55)'; ctx.lineWidth = .9;
+                    ctx.beginPath(); ctx.ellipse(sx + rx, by(rx) + 2, r * 1.4, r * .75, 0, Math.PI, 0); ctx.closePath(); ctx.fill(); ctx.stroke();
+                }
+                // swaying weeds
+                ctx.lineWidth = 1.3; ctx.globalAlpha = .75;
+                for (let i = 0; i < 10; i++) {
+                    const rx = (hash(i * 6.3 + 2) - .5) * POND_RX * 1.8;
+                    for (let s = 0; s < 3; s++) {
+                        const hgt = (30 + hash(i * 3 + s) * 40) * ds + 8, sw = Math.sin(now * 1.1 + i + s) * 7;
+                        ctx.beginPath(); ctx.moveTo(sx + rx + s * 5, by(rx) + 2);
+                        ctx.quadraticCurveTo(sx + rx + s * 5 + sw, by(rx) - hgt * .5, sx + rx + s * 5 + sw * 1.6 + (s - 1) * 5, by(rx) - hgt); ctx.stroke();
+                    }
+                }
+                ctx.globalAlpha = 1;
+                // fish
+                for (let i = 0; i < 3; i++) {
+                    const dir = i % 2 ? -1 : 1, span = POND_RX * 2.2;
+                    const fx = sx + dir * (((now * (14 + i * 6) + i * 300) % span) - span / 2), fy = top + dep * (.3 + .18 * i) + Math.sin(now * 2 + i) * 4;
+                    ctx.save(); ctx.translate(fx, fy); ctx.scale(dir, 1);
+                    ctx.fillStyle = 'rgba(215,150,90,.75)'; ctx.lineWidth = 1.2;
+                    const tw = Math.sin(now * 8 + i) * 3;
+                    ctx.beginPath(); ctx.ellipse(0, 0, 13, 5.5, 0, 0, 7); ctx.fill(); ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(-12, 0); ctx.lineTo(-21, -6 + tw); ctx.lineTo(-21, 6 + tw); ctx.closePath(); ctx.fill(); ctx.stroke();
+                    ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(7, -1.2, 1.2, 0, 7); ctx.fill();
+                    ctx.restore();
+                }
+                // rising bubbles
+                ctx.strokeStyle = '#111'; ctx.lineWidth = .8;
+                for (let i = 0; i < 7; i++) {
+                    const ph = (now * .15 + i * .15) % 1, bx = sx + (hash(i * 8.1) - .5) * POND_RX * 1.3 + Math.sin(now * 2 + i) * 3;
+                    ctx.globalAlpha = .7 * (1 - ph); ctx.beginPath(); ctx.arc(bx, top + dep * .78 - ph * dep * .78, 2 + hash(i * 1.3) * 2.5, 0, 7); ctx.stroke();
+                }
+                ctx.globalAlpha = 1;
+                ctx.restore();
+                ctx.strokeStyle = '#111'; ctx.fillStyle = '#111';
+                ctx.lineWidth = 1.7; ctx.beginPath(); ctx.ellipse(sx, gy + 4, POND_RX, POND_RY, 0, .06, Math.PI - .06); ctx.stroke();
+                ctx.lineWidth = .8; ctx.globalAlpha = .5; ctx.beginPath(); ctx.ellipse(sx, gy + 4, POND_RX * .8, POND_RY * .68, 0, .3, Math.PI - .5); ctx.stroke();
+                ctx.globalAlpha = 1;
+
+                // shimmer dashes
+                ctx.lineWidth = 1;
+                for (let i = 0; i < 16; i++) {
+                    const x = sx + (hash(i * 5.1) - .5) * POND_RX * 1.8, y = gy + 12 + hash(i * 2.3) * 22;
+                    const ex = (x - sx) / (POND_RX * .95), ey = (y - gy - 4) / POND_RY;
+                    if (ex * ex + ey * ey > .85) continue;
+                    ctx.globalAlpha = .25 + .25 * Math.sin(now * 1.4 + i * 2);
+                    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 14 + hash(i * 7.7) * 22, y); ctx.stroke();
+                }
+                // slow expanding ripples
+                ctx.lineWidth = .9;
+                for (let i = 0; i < 4; i++) {
+                    const ph = (now * .22 + i / 4) % 1;
+                    ctx.globalAlpha = .5 * (1 - ph);
+                    ctx.beginPath(); ctx.ellipse(sx + 120 + (hash(i * 3.3) - .3) * POND_RX * .9, gy + 20 + hash(i * 7.1) * 16, 8 + ph * 40, 2 + ph * 9, 0, 0, 7); ctx.stroke();
+                }
+                ctx.globalAlpha = 1;
+
+                // lily pads
+                for (let i = 0; i < 7; i++) {
+                    const x = sx + 60 + i * 52 + hash(i * 9.2) * 26, y = gy + 18 + hash(i * 4.4) * 18 + Math.sin(now * .8 + i) * 1.2, r = 9 + hash(i * 1.9) * 7;
+                    ctx.fillStyle = 'rgba(95,130,80,.6)'; ctx.lineWidth = 1;
+                    ctx.beginPath(); ctx.ellipse(x, y, r * 1.6, r * .5, 0, .35, Math.PI * 2 - .35); ctx.lineTo(x, y); ctx.closePath(); ctx.fill(); ctx.stroke();
+                }
+
+                // ---- dock ----
+                const x0 = W / 2 + DOCK_X0 - P.x, x1 = W / 2 + DOCK_X1 - P.x;
+                ctx.strokeStyle = '#111';
+                // pilings down into the water
+                for (let x = x0 + 40; x <= x1 - 10; x += 110) {
+                    if (x < sx - POND_RX) continue;                      // only over water
+                    ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(x, gy + 10); ctx.lineTo(x + 1, gy + POND_RY - 6); ctx.stroke();
+                    ctx.lineWidth = .9; ctx.globalAlpha = .5; ctx.beginPath(); ctx.ellipse(x, gy + 16, 9 + Math.sin(now * 1.6 + x) * 1.5, 2.5, 0, 0, 7); ctx.stroke(); ctx.globalAlpha = 1;
+                    ctx.globalAlpha = .25; ctx.lineWidth = 3; ctx.beginPath();            // wobbly reflection
+                    for (let k = 0; k < 6; k++) { const yy = gy + POND_RY - 4 + k * 4; ctx.lineTo(x + Math.sin(now * 2 + k) * 2, yy) }
+                    ctx.stroke(); ctx.globalAlpha = 1;
+                }
+                // deck boards
+                bdShape([[x0, gy + 2], [x1, gy + 2], [x1, gy + 13], [x0, gy + 13]], F_WOOD, 1.8, 77);
+                ctx.lineWidth = .9; ctx.strokeStyle = '#111';
+                for (let x = x0 + 22; x < x1; x += 26) { ctx.beginPath(); ctx.moveTo(x, gy + 2); ctx.lineTo(x, gy + 13); ctx.stroke() }
+                ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(x0, gy + 8); ctx.lineTo(x1, gy + 8); ctx.stroke();
+                // rail posts + sagging rope (over the water section only)
+                const rs = Math.max(x0 + 60, sx - POND_RX + 40);
+                let prev = null;
+                for (let x = rs; x <= x1 - 10; x += 110) {
+                    ctx.lineWidth = 3.5; ctx.beginPath(); ctx.moveTo(x, gy + 3); ctx.lineTo(x, gy - 80); ctx.stroke();
+                    ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(x, gy - 82, 3.5, 0, 7); ctx.fill();
+                    if (prev !== null) { ctx.lineWidth = 1.3; ctx.beginPath(); ctx.moveTo(prev, gy - 74); ctx.quadraticCurveTo((prev + x) / 2, gy - 52, x, gy - 74); ctx.stroke() }
+                    prev = x;
+                }
+                // lantern on the end post
+                if (prev !== null) {
+                    ctx.fillStyle = 'rgba(255,225,140,.30)'; ctx.beginPath(); ctx.arc(prev, gy - 100, 34, 0, 7); ctx.fill();
+                    ctx.fillStyle = PAPER; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.rect(prev - 7, gy - 108, 14, 18); ctx.fill(); ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(prev - 9, gy - 108); ctx.lineTo(prev, gy - 116); ctx.lineTo(prev + 9, gy - 108); ctx.stroke();
+                }
+            } else {
+                // foreground reeds on both banks, swaying
+                ctx.lineWidth = 1.5; ctx.strokeStyle = '#111'; ctx.fillStyle = '#111';
+                for (const side of [-1, 1]) {
+                    const bx = sx + side * (POND_RX - 6);
+                    for (let i = 0; i < 9; i++) {
+                        const x = bx + side * (i * 9 + hash(i * 3.1 + side) * 6), hgt = 70 + hash(i * 6.7 + side * 4) * 70;
+                        const sw = Math.sin(now * 1.2 + i * 1.7 + side) * 6 - (wind.v / 400) * 14, lean = side * (8 + hash(i) * 14);
+                        ctx.beginPath(); ctx.moveTo(x, gy + 16); ctx.quadraticCurveTo(x + lean * .4, gy + 16 - hgt * .55, x + lean + sw, gy + 16 - hgt); ctx.stroke();
+                        if (i % 2 === 0) { ctx.beginPath(); ctx.ellipse(x + lean + sw, gy + 16 - hgt + 8, 2.6, 9, lean * .02, 0, 7); ctx.fill() }   // cattail
+                    }
+                }
+            }
+            ctx.restore();
+        }
+
+        function drawForest(gy, mode) { drawForestBase(gy, mode); drawPond(gy, mode) }
+
+        // ---- main entry (base). mode 0 = trees + floor (behind characters); mode 1 = low foreground cover ----
+        function drawForestBase(gy, mode) {
             if (P.x + W / 2 < FOREST_X0 - 900) return;
             const now = performance.now() / 1000;
             ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#111'; ctx.fillStyle = '#111'; ctx.globalAlpha = 1;
@@ -7876,6 +8037,7 @@
                     for (let i = i0; i <= i1; i++) {
                         const wx = i * L.sp + hash(i * 7.3 + L.id * 31) * L.sp * .9;
                         if (wx < FOREST_X0 - 200) continue;
+                        if (L.id === 2 && inPond(wx, 160)) continue;                  // clear the main row of trees around the pond
                         if (hash(i * 3.9 + L.id * 17 + 5) > .1 + fDensity(wx)) continue;
                         const sx = W / 2 + wx - cam, seed = i * 13.7 + L.id * 101;
                         const h = L.h[0] + hash(seed) * (L.h[1] - L.h[0]), t = hash(seed + 2);
@@ -7891,7 +8053,7 @@
                 ctx.strokeStyle = '#111'; ctx.lineWidth = 1.2;
                 for (let sx = -10; sx <= W + 10; sx += 18) {
                     const wx = P.x - W / 2 + sx;
-                    if (wx < FOREST_X0) continue;
+                    if (wx < FOREST_X0 || inPond(wx, 20)) continue;
                     const hh = hash(Math.floor(wx / 18) * 1.3 + 7); if (hh > .15 + .4 * fDensity(wx)) continue;
                     ctx.globalAlpha = .3 + .3 * hash(hh * 91); const y = gy + 10 + hash(hh * 17) * 20;
                     ctx.beginPath(); ctx.moveTo(sx, y); ctx.lineTo(sx + 5 + hash(hh * 5) * 7, y + (hash(hh * 3) - .5) * 3); ctx.stroke();
@@ -7900,7 +8062,7 @@
                 const sp = 220, lx0 = P.x - W / 2 - 200, i0 = Math.floor(lx0 / sp), i1 = Math.ceil((lx0 + W + 400) / sp);
                 for (let i = i0; i <= i1; i++) {
                     const wx = i * sp + hash(i * 4.1 + 11) * 160;
-                    if (wx < FOREST_X0 + 100) continue;
+                    if (wx < FOREST_X0 + 100 || inPond(wx, 80)) continue;
                     if (hash(i * 2.3 + 3) > fDensity(wx) * 1.2) continue;
                     const sx = W / 2 + wx - P.x, k = hash(i * 5.7 + 1), seed = i * 9.1;
                     ctx.save(); ctx.translate(sx, gy + 10); ctx.scale(F_SCALE, F_SCALE); ctx.globalAlpha = 1;
