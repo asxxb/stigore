@@ -3744,6 +3744,7 @@
             }
 
             drawBuildings(gy);
+            drawForest(gy, 0);
 
             ctx.restore();
         }
@@ -7749,6 +7750,172 @@
             ctx.restore();
         }
 
+        // =====================================================================
+        // INK FOREST v2 (sparser, calmer)
+        //
+        // HOW TO INSTALL (same 3 edits in Ink Walker):
+        //   1. Paste this whole file inside your <script>, right above  `function frame(now) {`
+        //   2. In drawWorld(), right after   drawBuildings(gy);   add:   drawForest(gy, 0);
+        //   3. In frame(), right after       drawChar(W / 2, gy, P);   add:   drawForest(gy, 1);
+        //
+        // Reuses: hash, sm, bdShape, bdLine, wind, P, W, PAPER, ctx.
+        //
+        // TUNING KNOBS (top of file): F_SPACING, F_MAX_DENSITY, F_ROUND_BLOBS
+        // =====================================================================
+
+        const FOREST_X0 = 4500;
+        const FOREST_RAMP = 1400;           // slower thickening
+        const F_SCALE = 1.6;                // tree size multiplier (1 = old size)
+        const F_SPACING = 2.4;              // multiplies tree spacing: bigger = fewer trees
+        const F_MAX_DENSITY = 0.55;         // 1 = packed, 0.3 = very sparse
+        const F_ROUND_BLOBS = 3;            // canopy circles per round tree (was 9)
+        const FW_WASH = ['rgba(110,135,95,.30)', 'rgba(135,150,100,.30)', 'rgba(95,120,100,.30)'];
+        const FW_TRUNK = 'rgba(150,120,85,.45)';
+
+        function fDensity(wx) { return sm((wx - FOREST_X0 + 200) / FOREST_RAMP) * F_MAX_DENSITY }
+        function fSway(seed, now) { return -(wind.v / 400) * .05 * (.7 + .3 * Math.sin(now * 1.3 + seed)) }
+
+        // ---- pine: fewer, cleaner tiers ----
+        function fPine(h, seed, wash) {
+            const tiers = 4 + (hash(seed) * 3 | 0), tw = h * (.18 + .06 * hash(seed + 1));
+            bdShape([[-4, 4], [-3, -h * .3], [3, -h * .3], [4, 4]], FW_TRUNK, 1.6, seed);
+            for (let k = 0; k < tiers; k++) {
+                const u = k / tiers, y = -h * .14 - u * h * .82, th = h * .82 / tiers * 1.5, hw = tw * (1 - u * .88) + 5;
+                const pts = [[0, y - th], [hw, y]];
+                const n = 3;
+                for (let j = 1; j <= n; j++) pts.push([hw - 2 * hw * j / (n + 1), y + (j % 2 ? -5 : 5) + (hash(seed + k * 7 + j) - .5) * 4]);
+                pts.push([-hw, y]);
+                bdShape(pts, wash, 1.5, seed + k);
+                bdLine([[-hw * .6, y - 2], [-hw * .35, y - th * .55]], .7, seed + k, .35);   // one hatch only
+            }
+        }
+
+        // ---- round broadleaf: a few soft blobs, one outline each, no inner loops ----
+        function fRound(h, seed, wash) {
+            const th = h * .45, cr = h * .2;
+            bdShape([[-9, 4], [-6, -th * .5], [-4, -th], [4, -th], [6, -th * .5], [9, 4]], FW_TRUNK, 1.7, seed);
+            bdLine([[0, -th * .65], [-cr * .55, -th - cr * .2]], 2.4, seed + 3, 1);
+            bdLine([[0, -th * .75], [cr * .5, -th - cr * .25]], 2.2, seed + 4, 1);
+            const bl = [], n = F_ROUND_BLOBS;
+            for (let j = 0; j < n; j++) {
+                const a = j / n * Math.PI * 2 + hash(seed + j) * .6, rr = j === 0 ? 0 : cr * .55;
+                bl.push({ x: Math.cos(a) * rr * 1.1, y: -th - cr * .7 + Math.sin(a) * rr * .7, r: cr * (.6 + .3 * hash(seed + j * 5)) });
+            }
+            ctx.fillStyle = wash;
+            for (const b of bl) { ctx.beginPath(); ctx.arc(b.x + 3, b.y + 2, b.r, 0, 7); ctx.fill() }
+            ctx.fillStyle = '#111';
+            for (const b of bl) {                                            // one partial outline arc, not a full circle
+                const a0 = hash(seed + b.x) * 6.28;
+                ctx.lineWidth = 1.4; ctx.beginPath(); ctx.arc(b.x, b.y, b.r, a0, a0 + 2.6 + hash(seed + b.y) * 1.2); ctx.stroke();
+            }
+        }
+
+        // ---- dead tree: fewer forks ----
+        function fDead(h, seed) {
+            const br = (x, y, a, l, d, s) => {
+                if (d <= 0) return;
+                const x2 = x + Math.cos(a) * l, y2 = y + Math.sin(a) * l, mx = (x + x2) / 2 + (hash(s) - .5) * l * .18, my = (y + y2) / 2 + (hash(s + 3) - .5) * l * .18;
+                ctx.lineWidth = d * 1.6; ctx.beginPath(); ctx.moveTo(x, y); ctx.quadraticCurveTo(mx, my, x2, y2); ctx.stroke();
+                br(x2, y2, a - .4 - hash(s + d) * .5, l * .72, d - 1, s * 1.7 + 1);
+                br(x2, y2, a + .4 + hash(s + d + 9) * .5, l * .72, d - 1, s * 1.3 + 2);
+            };
+            br(0, 4, -Math.PI / 2 + (hash(seed) - .5) * .2, h * .34, 4, seed + 1);
+        }
+
+        // ---- ground cover ----
+        function fFern(s, seed) {
+            ctx.strokeStyle = '#111';
+            for (let k = 0; k < 7; k++) {
+                const ang = -Math.PI / 2 + (k - 3) * .32, L = (30 + hash(seed + k) * 22) * s, ex = Math.cos(ang) * L, ey = Math.sin(ang) * L + L * .18 * Math.abs(k - 3) / 3;
+                ctx.lineWidth = 1.6; ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(ex * .25, ey * .95, ex, ey); ctx.stroke();
+                ctx.lineWidth = .9;
+                for (let t = .25; t <= 1; t += .15) {
+                    const px = ex * t, py = ey * t * .95, q = 6 * s * (1 - t * .5);
+                    ctx.beginPath(); ctx.moveTo(px - q * .4, py + q * .5); ctx.lineTo(px, py); ctx.lineTo(px + q * .4, py + q * .5); ctx.stroke();
+                }
+            }
+        }
+        function fBush(s, seed, wash) {
+            const bl = [[-14, -9, 12], [4, -14, 14], [18, -8, 11]];          // 3 small blobs (was 5 big)
+            ctx.fillStyle = wash;
+            for (const b of bl) { ctx.beginPath(); ctx.arc(b[0] * s + 3, b[1] * s + 2, b[2] * s, 0, 7); ctx.fill() }
+            ctx.strokeStyle = '#111'; ctx.lineWidth = 1.4;
+            bl.forEach((b, i) => { const a0 = hash(seed + i) * 6.28; ctx.beginPath(); ctx.arc(b[0] * s, b[1] * s, b[2] * s, a0, a0 + 3); ctx.stroke() });
+        }
+        function fMushrooms(s, seed) {
+            ctx.strokeStyle = '#111';
+            for (let i = 0; i < 3; i++) {
+                const x = (i - 1) * 14 * s, h = (10 + hash(seed + i) * 10) * s, r = (7 + hash(seed + i * 3) * 5) * s;
+                ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x + 1, -h); ctx.stroke();
+                ctx.fillStyle = PAPER; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.ellipse(x + 1, -h, r, r * .6, 0, Math.PI, 0); ctx.closePath(); ctx.fill(); ctx.stroke();
+                ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(x - r * .3, -h - r * .25, 1.1 * s, 0, 7); ctx.arc(x + r * .35, -h - r * .2, 1 * s, 0, 7); ctx.fill();
+            }
+        }
+        function fLog(s, seed) {
+            const L = 80 * s, r = 11 * s;
+            bdShape([[-L, 0], [-L + 3, -r * 2], [L, -r * 2.1], [L + 2, 0]], FW_TRUNK, 1.8, seed);
+            for (let i = 0; i < 3; i++) bdLine([[-L + 14 + i * L * .6, -r * 1.7], [-L + 24 + i * L * .6, -r * .3]], .8, seed + i, .45);
+            ctx.lineWidth = 1.6; ctx.beginPath(); ctx.ellipse(L, -r, r * .5, r, 0, 0, 7); ctx.stroke();
+        }
+
+        // ---- main entry. mode 0 = trees + floor (behind characters); mode 1 = low foreground cover ----
+        function drawForest(gy, mode) {
+            if (P.x + W / 2 < FOREST_X0 - 900) return;
+            const now = performance.now() / 1000;
+            ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#111'; ctx.fillStyle = '#111'; ctx.globalAlpha = 1;
+
+            if (mode === 0) {
+                const layers = [
+                    { pf: .45, sp: 120 * F_SPACING, h: [300, 450], a: .22, dy: -4, mist: .6, id: 0 },
+                    { pf: .75, sp: 105 * F_SPACING, h: [380, 560], a: .5, dy: -2, mist: .3, id: 1 },
+                    { pf: 1, sp: 92 * F_SPACING, h: [420, 650], a: 1, dy: 0, mist: 0, id: 2 }
+                ];
+                for (const L of layers) {
+                    const cam = P.x * L.pf + FOREST_X0 * (1 - L.pf);
+                    const lx0 = cam - W / 2 - 300, i0 = Math.floor(lx0 / L.sp), i1 = Math.ceil((lx0 + W + 600) / L.sp);
+                    for (let i = i0; i <= i1; i++) {
+                        const wx = i * L.sp + hash(i * 7.3 + L.id * 31) * L.sp * .9;
+                        if (wx < FOREST_X0 - 200) continue;
+                        if (hash(i * 3.9 + L.id * 17 + 5) > .1 + fDensity(wx)) continue;
+                        const sx = W / 2 + wx - cam, seed = i * 13.7 + L.id * 101;
+                        const h = L.h[0] + hash(seed) * (L.h[1] - L.h[0]), t = hash(seed + 2);
+                        ctx.save(); ctx.translate(sx, gy + 4 + L.dy); ctx.scale(F_SCALE, F_SCALE); ctx.globalAlpha = L.a;
+                        ctx.transform(1, 0, fSway(seed, now), 1, 0, 0);
+                        ctx.strokeStyle = '#111'; ctx.fillStyle = '#111';
+                        const wash = FW_WASH[(hash(seed + 4) * 3) | 0];
+                        if (t < .6) fPine(h, seed, wash); else if (t < .85) fRound(h, seed, wash); else fDead(h, seed);
+                        ctx.restore();
+                        if (L.mist) { ctx.save(); ctx.globalAlpha = L.mist; ctx.fillStyle = PAPER; ctx.beginPath(); ctx.ellipse(sx, gy + 2 + L.dy, 95, 16, 0, 0, 7); ctx.fill(); ctx.restore() }
+                    }
+                }
+                ctx.strokeStyle = '#111'; ctx.lineWidth = 1.2;
+                for (let sx = -10; sx <= W + 10; sx += 18) {
+                    const wx = P.x - W / 2 + sx;
+                    if (wx < FOREST_X0) continue;
+                    const hh = hash(Math.floor(wx / 18) * 1.3 + 7); if (hh > .15 + .4 * fDensity(wx)) continue;
+                    ctx.globalAlpha = .3 + .3 * hash(hh * 91); const y = gy + 10 + hash(hh * 17) * 20;
+                    ctx.beginPath(); ctx.moveTo(sx, y); ctx.lineTo(sx + 5 + hash(hh * 5) * 7, y + (hash(hh * 3) - .5) * 3); ctx.stroke();
+                }
+            } else {
+                const sp = 220, lx0 = P.x - W / 2 - 200, i0 = Math.floor(lx0 / sp), i1 = Math.ceil((lx0 + W + 400) / sp);
+                for (let i = i0; i <= i1; i++) {
+                    const wx = i * sp + hash(i * 4.1 + 11) * 160;
+                    if (wx < FOREST_X0 + 100) continue;
+                    if (hash(i * 2.3 + 3) > fDensity(wx) * 1.2) continue;
+                    const sx = W / 2 + wx - P.x, k = hash(i * 5.7 + 1), seed = i * 9.1;
+                    ctx.save(); ctx.translate(sx, gy + 10); ctx.scale(F_SCALE, F_SCALE); ctx.globalAlpha = 1;
+                    ctx.transform(1, 0, fSway(seed, now) * 1.5, 1, 0, 0);
+                    ctx.strokeStyle = '#111'; ctx.fillStyle = '#111';
+                    if (k < .5) fFern(1.1 + hash(seed) * .5, seed);
+                    else if (k < .7) fBush(1 + hash(seed) * .5, seed, FW_WASH[(hash(seed + 4) * 3) | 0]);
+                    else if (k < .85) fMushrooms(1, seed);
+                    else fLog(1, seed);
+                    ctx.restore();
+                }
+            }
+            ctx.restore();
+        }
+
         function frame(now) {
 
 
@@ -7786,6 +7953,7 @@
             drawBirds(gy);
             drawHorse(gy);
             drawChar(W / 2, gy, P);
+            drawForest(gy, 1);
             drawSgProp(gy, true);
             drawSmoke(gy);
             drawBlood(gy);
