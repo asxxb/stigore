@@ -7835,20 +7835,20 @@
             [-0.260, .52],    // ridge
             [-0.180, .60],
             [-0.100, .78],
-            [ 0.000, .68],
-            [ 0.080, .50],    // ridge
-            [ 0.160, .58],
-            [ 0.260, .82],    // hollow
-            [ 0.340, .70],
-            [ 0.420, .48],
-            [ 0.520, .58],
-            [ 0.620, .40],
-            [ 0.700, .30],
-            [ 0.780, .38],
-            [ 0.860, .22],
-            [ 0.930, .12],    // shelf
-            [ 0.975, .05],    // beach, you wade out here
-            [ 1.000, 0]
+            [0.000, .68],
+            [0.080, .50],    // ridge
+            [0.160, .58],
+            [0.260, .82],    // hollow
+            [0.340, .70],
+            [0.420, .48],
+            [0.520, .58],
+            [0.620, .40],
+            [0.700, .30],
+            [0.780, .38],
+            [0.860, .22],
+            [0.930, .12],    // shelf
+            [0.975, .05],    // beach, you wade out here
+            [1.000, 0]
         ];
 
         function pondShape(t) {                         // smooth curve through the profile points, 0..1
@@ -8007,16 +8007,16 @@
         // ---------- ledge climb v2: reach -> grip -> heave -> press -> knee up -> step over -> stand -> shake off ----------
         const CL_END = 4.0;
         // body rise as a fraction of what is needed to get the hips above the ledge (until t = 2.45)
-        const CL_DY    = [[0, 0], [.75, 0], [.95, .1], [1.1, .1], [1.35, .28], [1.5, .28], [1.6, .38], [2.0, .85], [2.45, 1]];
-        const CL_P     = [[0, 0], [.75, 0], [1.6, .05], [2.0, .1], [2.45, .2], [3.0, .55], [3.45, .88], [4, 1]];     // travel onto land
-        const CL_OFF   = [[0, 0], [.4, 8], [.75, 10], [1.3, 2], [2.0, -2], [2.45, 6], [2.9, 20], [3.3, 6], [3.75, 0]]; // hips sink (+) / lift (-)
-        const CL_LEAN  = [[0, .1], [.4, .22], [1.0, .3], [1.6, .28], [2.0, .2], [2.45, .18], [2.9, .42], [3.3, .3], [3.7, .05], [4, 0]];
-        const CL_HX    = [[0, 0], [.75, -2], [1.6, 2], [2.0, 4], [2.45, 8], [3.0, 10], [3.5, 3], [4, 0]];
-        const CL_ARCH  = [[0, 0], [1.1, .05], [2.0, .06], [2.6, -.08], [3.3, -.02], [4, 0]];
+        const CL_DY = [[0, 0], [.75, 0], [.95, .1], [1.1, .1], [1.35, .28], [1.5, .28], [1.6, .38], [2.0, .85], [2.45, 1]];
+        const CL_P = [[0, 0], [.75, 0], [1.6, .05], [2.0, .1], [2.45, .2], [3.0, .55], [3.45, .88], [4, 1]];     // travel onto land
+        const CL_OFF = [[0, 0], [.4, 8], [.75, 10], [1.3, 2], [2.0, -2], [2.45, 6], [2.9, 20], [3.3, 6], [3.75, 0]]; // hips sink (+) / lift (-)
+        const CL_LEAN = [[0, .1], [.4, .22], [1.0, .3], [1.6, .28], [2.0, .2], [2.45, .18], [2.9, .42], [3.3, .3], [3.7, .05], [4, 0]];
+        const CL_HX = [[0, 0], [.75, -2], [1.6, 2], [2.0, 4], [2.45, 8], [3.0, 10], [3.5, 3], [4, 0]];
+        const CL_ARCH = [[0, 0], [1.1, .05], [2.0, .06], [2.6, -.08], [3.3, -.02], [4, 0]];
         const CL_HEADX = [[0, 2], [.8, 5], [1.6, 8], [2.45, 6], [3.2, 2], [4, 0]];
         const CL_HEADY = [[0, -2], [.8, -5], [1.6, -3], [2.45, 2], [3.0, 0], [3.6, -4], [3.75, -4], [4, 0]];
-        const CL_A0    = [[0, .62], [.45, 1.5], [2.5, .2], [3.0, .9], [3.4, .5], [3.75, .12], [4, .08]];             // fallback arms (IK owns them while the hands are on the ledge)
-        const CL_F0    = [[0, .95], [.45, .5], [2.5, .6], [3.0, .9], [3.4, .6], [3.75, .25], [4, .1]];
+        const CL_A0 = [[0, .62], [.45, 1.5], [2.5, .2], [3.0, .9], [3.4, .5], [3.75, .12], [4, .08]];             // fallback arms (IK owns them while the hands are on the ledge)
+        const CL_F0 = [[0, .95], [.45, .5], [2.5, .6], [3.0, .9], [3.4, .6], [3.75, .25], [4, .1]];
 
         function clRise(t, u0) {                 // how far the body has risen (character units)
             const need = Math.max(0, u0 - 128), a = need * kf(Math.min(t, 2.45), CL_DY);
@@ -8687,8 +8687,8 @@
         // ================= WATER BALLISTICS =================
         const WB_DRAG_Q = 0.012;   // quadratic drag (v²): bigger = stops sooner
         const WB_DRAG_L = 10;      // linear drag (1/s): finishes it off once it's slow
-        const WB_BEND   = 1.2;     // bends toward vertical on entry (1 = no bend)
-        const WB_SKIP   = 0.3;     // grazing angle (rad, about 17°) below which a fast bullet skips off the water
+        const WB_BEND = 1.2;     // bends toward vertical on entry (1 = no bend)
+        const WB_SKIP = 0.3;     // grazing angle (rad, about 17°) below which a fast bullet skips off the water
         const WB_SINK_V = 240;     // below this speed it stops and sinks
         const wTrails = [], wClouds = [];
 
@@ -8913,15 +8913,29 @@
             }
             return clr;
         }
-        // lowest arc + takeoff point that clears the obstacle; ok:false means "not at this speed"
         function hrsPlan(sp, o, d, S) {
-            const vxA = Math.max(sp, HJ_STAND_V) * .94, aMax = hrsApexMax(sp, S), free = hrsApexFree(sp, S), mk = A => Math.min(1, A / (HJ_APEX_MAX * S));
-            if (!o) { const A = Math.min(free, aMax), ar = hrsAir(A); return { ok: true, A, vz: ar.vz, T: ar.T, xp: null, pw: mk(A) } }
-            for (let A = Math.max(free * .6, 24 * S); A <= aMax + .5; A += 8 * S) {
-                const ar = hrsAir(A), x0 = (o.x0 + o.x1) / 2 - d * vxA * ar.T / 2;
-                for (const sh of [0, -30, -60, -90, -120, 30, 60]) {
-                    const xp = x0 + d * sh * S;
-                    if (hrsSim(A, vxA, o, d, xp, S) >= 10 * S) return { ok: true, A, vz: ar.vz, T: ar.T, xp, pw: mk(A) };
+            const base = Math.max(sp, HJ_STAND_V) * .94;
+            const mk = A => Math.min(1, A / (HJ_APEX_MAX * S));
+
+            if (!o) {
+                const A = Math.min(hrsApexFree(sp, S), hrsApexMax(sp, S)), ar = hrsAir(A);
+                return { ok: true, A, vz: ar.vz, T: ar.T, xp: null, pw: mk(A), vx: base };
+            }
+
+            // try the current speed first, then progressively stronger drives (wide clusters need them)
+            const speeds = [base];
+            for (const v of [300, 400, 500, 600]) if (v > base) speeds.push(v);
+
+            for (const vxA of speeds) {
+                const spEff = vxA / .94;                       // a harder drive also allows a higher arc
+                const aMax = hrsApexMax(spEff, S), free = hrsApexFree(spEff, S);
+                for (let A = Math.max(free * .6, 24 * S); A <= aMax + .5; A += 8 * S) {
+                    const ar = hrsAir(A), x0 = (o.x0 + o.x1) / 2 - d * vxA * ar.T / 2;
+                    for (const sh of [0, -30, -60, -90, -120, 30, 60]) {
+                        const xp = x0 + d * sh * S;
+                        if (hrsSim(A, vxA, o, d, xp, S) >= 10 * S)
+                            return { ok: true, A, vz: ar.vz, T: ar.T, xp, pw: mk(A), vx: vxA };
+                    }
                 }
             }
             return { ok: false };
@@ -8945,7 +8959,10 @@
             const h = HRS, cx = S * HORSE_W, d = h.jdir, sp = Math.abs(h.vx);
             h.jTc = Math.max(.12, Math.min(.28, .30 - .00018 * sp));
             const rem = pl.xp != null ? Math.max(0, (pl.xp - h.x) * d) : sp * h.jTc, tr = (rem + sp * HJ_TH * .5) / cx;   // how far the body travels over the planted hooves
-            Object.assign(h, { jp: 'TAKEOFF', jt: 0, jth: 0, tp: 0, tl: 0, jA: pl.A, jvz: pl.vz, jTa: pl.T, jpw: pl.pw, jxp: pl.xp, pd: [0, 0, 0, 0] });
+            Object.assign(h, {
+                jp: 'TAKEOFF', jt: 0, jth: 0, tp: 0, tl: 0, jA: pl.A, jvz: pl.vz, jTa: pl.T,
+                jpw: pl.pw, jxp: pl.xp, jvx: pl.vx || 0, pd: [0, 0, 0, 0]
+            });
             for (let i = 0; i < 4; i++) {                                              // all four hooves plant in the world, hind ones under the belly
                 const ax = i & 1 ? -52 : 46, dx = i & 1 ? Math.max(10, Math.min(46, tr * .5 + 18)) : Math.max(6, Math.min(44, tr * .5 + 12));
                 h.pc[i] = h.x + d * (ax + dx) * cx; h.lw[i] = 0;
@@ -9081,7 +9098,10 @@
                     const go = h.jxp == null ? h.jt >= h.jTc : (((h.jxp - h.x) * d <= 0 && h.jt >= .10) || h.jt > .5);
                     if (go) {
                         h.jth = 1; h.jt = 0; h.tp = 0;
-                        if (sp < HJ_STAND_V * .9) h.vx = d * HJ_STAND_V; else h.vx *= 1.02;
+                        const need = (h.jvx || 0) / .94;                     // speed the plan was calculated for
+                        if (sp < HJ_STAND_V * .9) h.vx = d * HJ_STAND_V;
+                        else h.vx *= 1.02;
+                        if (Math.abs(h.vx) < need) h.vx = d * need;          // hind-leg drive: push off hard enough to cross the cluster
                         h.cmpV -= 260; h.pitchV += 1.6; shake = Math.max(shake, 3 + 3 * h.jpw);
                         hrsHoofFX(h.x - d * 70 * cx, 8, 1);
                     }
