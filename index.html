@@ -703,7 +703,7 @@
         }
         function respawn(n) {
             const side = Math.random() < .5 ? -1 : 1, x = P.x + side * (W / 2 + 150 + Math.random() * 250);
-            Object.assign(n, { hpK: 0, hCrack: 0, hCrackT: 0, headHits: 0, hsPart: 0, hcDrip: 0, dbl: 0, dbK: 0, hsDead: 0, hsT: 0, veins: null, int: null, gut: 0, headThud: 0, gutDead: false, gutK: 0, gutPop: 0, gutCut: 0, fkSnk: 0, fk: null, fkT: 0, fkK: 0, fkPend: false, stab: 0, kneelK: 0, fst: 0, fallT: 0, fallK: 0, thud: 0, x, home: x, goal: x, vx: 0, z: 0, vz: 0, hp: n.maxhp, hurt: 0, down: 0, rot: 0, dying: 0, dead: 0, bar: 0, tumble: 0, wait: 1.5, face: -side, fid: 0, fidK: 0, headCut: 0, headK: 0, cord: null, brainOut: 0 });
+            Object.assign(n, { legHurt: 0, legGone: 0, crawl: 0, crawlDead: 0, crawlT: 0, crT: 0, cwK: 0, crDeadT: 0, lmK: 0, lgT: 0, lveins: null, stumpL: null, legW: null, lhDrip: 0, trailD: 0, hpK: 0, hCrack: 0, hCrackT: 0, headHits: 0, hsPart: 0, hcDrip: 0, dbl: 0, dbK: 0, hsDead: 0, hsT: 0, veins: null, int: null, gut: 0, headThud: 0, gutDead: false, gutK: 0, gutPop: 0, gutCut: 0, fkSnk: 0, fk: null, fkT: 0, fkK: 0, fkPend: false, stab: 0, kneelK: 0, fst: 0, fallT: 0, fallK: 0, thud: 0, x, home: x, goal: x, vx: 0, z: 0, vz: 0, hp: n.maxhp, hurt: 0, down: 0, rot: 0, dying: 0, dead: 0, bar: 0, tumble: 0, wait: 1.5, face: -side, fid: 0, fidK: 0, headCut: 0, headK: 0, cord: null, brainOut: 0 });
         }
         function killBurst(n) {
             const S = CSc();
@@ -1484,7 +1484,7 @@
             if (n.dead > 0) { n.dead -= dt; if (n.dead <= 0) respawn(n); return }
             if (n.hsDead) n.hsT = (n.hsT || 0) + dt;
 
-            if (n.dying > 0) { n.dying -= dt; if (n.dying <= 0) { if (n.gutDead || n.hsDead) { respawn(n); return } killBurst(n); return } }
+            if (n.dying > 0) { n.dying -= dt; if (n.dying <= 0) { if (n.gutDead || n.hsDead || n.crawlDead) { respawn(n); return } killBurst(n); return } }
             if (n.bar > 0) n.bar -= dt; if (n.hurt > 0) n.hurt -= dt; if (n.down > 0) n.down -= dt;
             const isGrabbed = (P.grabbed === n && (P.cs >= 1 && P.cs <= 4 || (P.cs === 0 && P.clast >= 1 && P.clast <= 4)));
             if (isGrabbed) {
@@ -1506,10 +1506,11 @@
             }
             if (n.dbl > 0) n.dbl -= dt;
             n.dbK = (n.dbK || 0) + (((n.dbl > 0 && n.dying <= 0 && n.down <= 0) ? 1 : 0) - (n.dbK || 0)) * Math.min(1, dt * 9);
-            const grounded = n.z >= 0, stunned = n.hurt > 0 || n.down > 0 || !grounded || n.dying > 0 || n.dbl > 0 || (n.hCrack && !n.hsDead);
+            const grounded = n.z >= 0, stunned = n.hurt > 0 || n.down > 0 || !grounded || n.dying > 0 || n.dbl > 0 || (n.hCrack && !n.hsDead) || n.crawl;
             let tgt = 0;
 
-            if (n.down > 0 || (n.dying > 0 && grounded && !n.gutDead && !n.hsDead)) tgt = n.kdir * Math.PI / 2;
+            if (n.crawl) tgt = (n.crDir || 1) * Math.PI / 2;
+            else if (n.down > 0 || (n.dying > 0 && grounded && !n.gutDead && !n.hsDead)) tgt = n.kdir * Math.PI / 2;
             else if (n.hsDead && grounded) tgt = n.kdir * Math.PI / 2 * sm((n.hsT - .45) / .7);
             else if (n.gutDead && grounded) tgt = n.kdir * Math.PI / 2 * Math.min(1, (n.gutK || 0) * 1.25);   // topples flat after the split
             else if (!grounded) tgt = n.kdir * (n.tumble ? Math.PI / 2 : .5);
@@ -1575,6 +1576,7 @@
             }
             let dir = 0; const dx = P.x - n.x, near = Math.abs(dx) < 240;
             if (n.fkT > 0) { n.face = n.fkFace; }
+            else if (n.legHurt && !n.legGone && !stunned && !n.stab && !n.fst && !n.gut && Math.abs(dx) < W * 1.1) { dir = -Math.sign(dx) || 1; n.face = dir }   // limps away from you
             else if (!stunned && !n.stab && !n.fst && !n.gut) {
                 if (near) n.face = dx > 0 ? 1 : -1;
                 else {
@@ -1586,7 +1588,7 @@
                     }
                 }
             }
-            if (dir) n.vx += (dir * 170 - n.vx) * Math.min(1, dt * 5);
+            if (dir) n.vx += (dir * (n.legHurt ? 52 : 170) - n.vx) * Math.min(1, dt * 5);
             else if (grounded) { const f = (stunned ? 1800 : 1400) * dt; n.vx = Math.abs(n.vx) <= f ? 0 : n.vx - Math.sign(n.vx) * f }
             n.x += n.vx * dt;
             if (n.fkT > 0) { n.x = n.fkX; n.vx = 0; }
@@ -1594,6 +1596,7 @@
             n.gutK = (n.gutK || 0) + ((n.gutDead ? 1 : 0) - (n.gutK || 0)) * Math.min(1, dt * 3.2);
             n.headK = (n.headK || 0) + ((n.headCut ? 1 : 0) - (n.headK || 0)) * Math.min(1, dt * 6);
             if (n.cord && dt > 0) stepCord(n, dt);
+            legTick(n, dt);
             n.hpK = (n.hpK || 0) + (((n.hCrack && !n.hsDead && n.dying <= 0 && n.down <= 0) ? 1 : 0) - (n.hpK || 0)) * Math.min(1, dt * 9);
             if (n.hCrack && !n.hsDead && n.dying <= 0) {
                 n.hCrackT = (n.hCrackT || 0) + dt;
@@ -1635,7 +1638,7 @@
                 }
             }
             const sp = Math.abs(n.vx);
-            if (grounded) n.phase += sp * dt / (280 * CSc()) * Math.PI * 2;
+            if (grounded) n.phase += sp * dt / (280 * CSc()) * Math.PI * 2 * (n.legHurt ? 3 : 1);
             n.amp += (Math.min(1, sp / 200) - n.amp) * Math.min(1, dt * 10);
             n.lean += (Math.max(-1, Math.min(1, n.vx / 420)) * .4 - n.lean) * Math.min(1, dt * 6);
 
@@ -1747,6 +1750,7 @@
             ctx.strokeStyle = '#111'; ctx.lineWidth = 7; ctx.lineCap = 'round';
             ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(kx, ky); ctx.stroke();
             const sx = ax - kx, sy = ay - ky, sl = Math.hypot(sx, sy), ux = sx / sl, uy = sy / sl, px = -uy, py = ux;
+            if (CUR && CUR.legGone && legIdx === 0) { legStump(kx, ky, ax, ay, ux, uy, px, py, F); return }
             const cx2 = kx + ux * sl * .55, cy2 = ky + uy * sl * .55;
             ctx.fillStyle = '#111'; ctx.beginPath(); ctx.moveTo(kx + px * 4, ky + py * 4);
             ctx.quadraticCurveTo(cx2 + px * 6, cy2 + py * 6, ax + ux * 12 + px * 15, ay + uy * 12 + py * 15); ctx.lineTo(ax + ux * 12 - px * 15, ay + uy * 12 - py * 15);
@@ -1754,11 +1758,12 @@
             ctx.strokeStyle = PAPER; ctx.globalAlpha = .4; ctx.lineWidth = 1.3;
             for (let k = -2; k <= 2; k++) { ctx.beginPath(); ctx.moveTo(kx + ux * sl * .3 + px * k * 1.4, ky + uy * sl * .3 + py * k * 1.4); ctx.lineTo(ax - ux * 3 + px * k * 5.2, ay - uy * 3 + py * k * 5.2); ctx.stroke() }
             ctx.globalAlpha = 1;
+            if (CUR && CUR.legHurt && !CUR.legGone && legIdx === 0) legWound(kx, ky, ax, ay, ux, uy, px, py, F);
             // shoe
             const m = Math.min(1, lift / 20), pitch = m * .85 * (Math.atan2(uy, ux * F) - Math.PI / 2);
             ctx.save(); ctx.translate(fx + (ax + ux * 12 - fx) * m, fy + (ay + uy * 12 - fy) * m); ctx.scale(F * ((CUR.kneelK || 0) > .5 ? -1 : 1), 1);
             const pvx = 0; ctx.translate(pvx, 0);
-            ctx.rotate(pitch - F * ((CUR.gutDead || CUR.hsDead) ? (CUR.rot || 0) : 0));
+            ctx.rotate(pitch - F * ((CUR.gutDead || CUR.hsDead || CUR.crawl) ? (CUR.rot || 0) : 0));
             ctx.translate(-pvx, 0);
             ctx.fillStyle = '#111'; ctx.beginPath(); ctx.moveTo(-9, 0); ctx.quadraticCurveTo(-11, -12, -3, -15);
             ctx.quadraticCurveTo(8, -13, 18, -1); ctx.lineTo(18, 0); ctx.lineTo(-9, 0); ctx.closePath(); ctx.fill();
@@ -1989,6 +1994,239 @@
             ctx.restore();
         }
 
+        // ================= REVOLVER LEG SHOTS =================
+        let legIdx = 0;                 // which leg leg() is drawing right now (0 = the wounded one)
+        const boneBits = [];            // bone splinters + the severed lower leg
+
+        function boneSplinter(x, y, F, pow) {
+            if (boneBits.length > 120) return;
+            const S = CSc();
+            boneBits.push({ k: 0, x: x + (Math.random() - .5) * 10, y, vx: F * (60 + Math.random() * pow) + (Math.random() - .5) * pow * .7, vy: -(80 + Math.random() * pow), rot: Math.random() * 6, vr: (Math.random() - .5) * 26, s: (5 + Math.random() * 8) * S, bn: 0, landed: false, t: 0, bl: 0 });
+        }
+
+        // returns true when the shot was a leg shot and has been handled
+        function legShot(b, e, h, S) {
+            if (h.head || e.crawl || e.down > 0 || e.z < 0 || e.hsDead || e.gutDead || e.stab || e.fst || e.gut) return false;
+            if (h.y < -150 * S) return false;                                   // above the hips = normal body shot
+            const F = b.F, second = !!e.legHurt && !e.legGone;
+            const dmg = Math.max(0, Math.min(second ? 20 : 14, e.hp - 1));      // a leg shot never kills: he limps / crawls on
+            e.hp -= dmg; e.kdir = F; e.wait = 1; e.fid = 0;
+            combo.n++; combo.dmg += dmg; combo.t = 1.8; combo.pop = 1.3;
+
+            if (!e.legHurt) {                                                   // ---- 1st shot: bone sticks out, he starts limping
+                e.legHurt = 1; e.lgT = 0; e.bar = 2.5; e.face = -F; e.hurt = Math.max(e.hurt, .5); e.vx = F * 140;
+                spray(h.x, h.y, 26, 420, F); spray(h.x, h.y, 12, 260, -F); burst(h.x, h.y, 12, 240, F);
+                for (let i = 0; i < 5; i++) boneSplinter(h.x, h.y, F, 260);
+                impacts.push({ x: h.x, y: h.y, t: 0, life: .22, s: 80, seed: Math.random() * 50 });
+                hitstop = Math.max(hitstop, .07); shake = Math.max(shake, 6);
+                banner.t = 1; banner.text = 'BONE EXPOSED!';
+                return true;
+            }
+
+            // ---- 2nd shot: the leg shatters, he crawls
+            const wx = e.legW ? e.x + e.legW[0] * S : h.x, wy = e.legW ? e.legW[1] * S : h.y;
+            e.legGone = 1; e.crawl = 1; e.crDir = F; e.face = F;
+            e.crT = 0; e.crawlT = 0; e.cwK = 0; e.crDeadT = 0; e.hurt = 0; e.vx = 0; e.bar = 0;
+            if (P.grabbed === e) P.grabbed = null;
+            e.stumpL = e.legW ? [e.legW[0], e.legW[1]] : [0, -70];
+
+            // severed lower leg + bone splinters
+            boneBits.push({ k: 1, x: wx, y: Math.min(-30 * S, wy), vx: F * (150 + Math.random() * 170), vy: -(280 + Math.random() * 160), rot: 0, vr: (Math.random() < .5 ? -1 : 1) * (8 + Math.random() * 5), s: 14 * S, bn: 0, landed: false, t: 0, bl: 0 });
+            for (let i = 0; i < 18; i++) boneSplinter(wx, wy, F, 560);
+
+            // mini veins + a tendon hanging from the stump
+            e.lveins = [];
+            for (let i = 0; i < 6; i++) {
+                const N = 4 + (Math.random() * 4 | 0), vx = F * (20 + Math.random() * 120) * (Math.random() < .35 ? -1 : 1), vy = 20 + Math.random() * 100;
+                e.lveins.push({
+                    lx: (i - 2.5) * 1.6, rest: (3.5 + Math.random() * 3) * S, w: i === 2 ? 3 : 1.3 + Math.random() * 1.2,
+                    col: i === 2 ? '#eadfcf' : (i % 2 ? '#b3141c' : '#8c0d14'),
+                    p: Array.from({ length: N }, () => ({ x: wx, y: wy, ox: wx - vx / 60, oy: wy - vy / 60 }))
+                });
+            }
+            spray(wx, wy, 60, 640, F); spray(wx, wy, 30, 420, -F); spray(wx, wy, 20, 300, 0);
+            burst(wx, wy, 34, 460, F); burst(wx, wy, 14, 280, -F);
+            impacts.push({ x: wx, y: wy, t: 0, life: .32, s: 150, seed: Math.random() * 50 });
+            hitstop = Math.max(hitstop, .11); shake = Math.max(shake, 12);
+            banner.t = 1.2; banner.text = 'LEG SHATTERED!';
+            return true;
+        }
+
+        // per-enemy tick: limp blend, bleeding, crawling, bleeding out
+        function legTick(n, dt) {
+            const S = CSc();
+            n.lmK = (n.lmK || 0) + (((n.legHurt && !n.legGone && n.dying <= 0 && n.down <= 0) ? 1 : 0) - (n.lmK || 0)) * Math.min(1, dt * 8);
+            if (n.legHurt) n.lgT = (n.lgT || 0) + dt;
+
+            if (n.legHurt && !n.legGone && n.legW && n.dying <= 0) {            // limping: blood drips + a few drops on the ground
+                n.lhDrip = (n.lhDrip || 0) - dt;
+                if (n.lhDrip <= 0) {
+                    n.lhDrip = .1 + Math.random() * .12;
+                    blood.push({ x: n.x + n.legW[0] * S + (Math.random() - .5) * 6, y: n.legW[1] * S, vx: (Math.random() - .5) * 24, vy: 10 + Math.random() * 24, r: 1.4 + Math.random() * 1.6, t: 0 });
+                }
+                if (Math.abs(n.vx) > 10 && Math.random() < dt * 4 && splats.length < 160) splats.push({ x: n.x - Math.sign(n.vx) * 20 * S, w: 3 + Math.random() * 4, h: 1.2 + Math.random(), t: 0 });
+            }
+
+            if (!n.crawl) return;
+            n.cwK = Math.min(1, (n.cwK || 0) + dt * 3); n.vx = 0;
+            const dir = n.crDir || 1;
+            n.face = dir; n.kdir = dir;
+            const alive = !n.crawlDead && !(n.dying > 0);
+            if (alive) {
+                n.crT = (n.crT || 0) + dt; n.crawlT = (n.crawlT || 0) + dt;
+                const spd = 40 + 50 * Math.abs(Math.cos(n.crT * 5.5));          // surges with every arm pull
+                n.x += dir * spd * dt;
+                n.trailD = (n.trailD || 0) + spd * dt;
+                if (n.trailD > 12) {                                             // blood trail along the ground
+                    n.trailD = 0;
+                    if (splats.length < 160) splats.push({ x: n.x - dir * 24 * S, w: 8 + Math.random() * 7, h: 2 + Math.random() * 1.5, t: 0 });
+                }
+                if (n.crawlT >= 5) {                                             // 5 seconds of crawling, then he bleeds out
+                    n.crawlDead = 1; n.hp = 0; n.dying = 8;
+                    burst(n.x + dir * 80 * S, -8, 16, 240, dir); spray(n.x + dir * 80 * S, -30 * S, 14, 260, dir);
+                    shake = Math.max(shake, 4);
+                    banner.t = 1; banner.text = 'BLED OUT';
+                }
+            }
+            if (n.stumpL && (alive || ((n.crDeadT = (n.crDeadT || 0) + dt) < 4))) {   // stump keeps bleeding
+                n.lhDrip = (n.lhDrip || 0) - dt;
+                if (n.lhDrip <= 0) {
+                    n.lhDrip = .05 + Math.random() * .08;
+                    const A = legAttach(n, 0);
+                    blood.push({ x: A[0] + (Math.random() - .5) * 6, y: A[1], vx: (Math.random() - .5) * 40, vy: 10 + Math.random() * 40, r: 1.5 + Math.random() * 2, t: 0 });
+                }
+            }
+            if (n.lveins && dt > 0) stepLegVeins(n, dt);
+        }
+
+        // stump end in world space (follows the body's rotation while he lies down)
+        function legAttach(e, lx) {
+            const S = CSc(), h = e.stumpL || [0, -60], th = e.rot || 0, py = e.crawl ? -24 : -40, c = Math.cos(th), s = Math.sin(th), dx = h[0] + lx, dy = h[1] - py;
+            return [e.x + S * (dx * c - dy * s), S * (py + dx * s + dy * c)];
+        }
+        function stepLegVeins(e, dt) {
+            const S = CSc(), sub = 3, h = dt / sub, floor = -3 * S;
+            for (const v of e.lveins) {
+                const Q = v.p, N = Q.length, rest = v.rest;
+                for (let s = 0; s < sub; s++) {
+                    for (let i = 1; i < N; i++) { const p = Q[i], vx = (p.x - p.ox) * .98, vy = (p.y - p.oy) * .98; p.ox = p.x; p.oy = p.y; p.x += vx; p.y += vy + 1800 * h * h }
+                    for (let it = 0; it < 5; it++) {
+                        const A = legAttach(e, v.lx); Q[0].x = A[0]; Q[0].y = A[1]; Q[0].ox = A[0]; Q[0].oy = A[1];
+                        for (let i = 0; i < N - 1; i++) {
+                            const a = Q[i], b = Q[i + 1], dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || .0001, k = (d - rest) / d * .5;
+                            if (i === 0) { b.x -= dx * k * 2; b.y -= dy * k * 2 } else { a.x += dx * k; a.y += dy * k; b.x -= dx * k; b.y -= dy * k }
+                        }
+                        for (let i = 1; i < N; i++) { const p = Q[i]; if (p.y > floor) { p.y = floor; p.ox += (p.x - p.ox) * .5 } }
+                    }
+                }
+                if (Math.random() < dt * 4) { const t = Q[N - 1]; blood.push({ x: t.x, y: t.y, vx: (Math.random() - .5) * 14, vy: 10 + Math.random() * 20, r: 1.2 + Math.random() * 1.2, t: 0 }) }
+            }
+        }
+        function drawLegVeins(gy) {
+            const S = CSc();
+            for (const e of ENEMIES) {
+                if (!e.lveins || e.dead > 0) continue;
+                for (const v of e.lveins) {
+                    const p = v.p; if (Math.abs(p[0].x - P.x) > W / 2 + 300) continue;
+                    const X = q => q.x - P.x + W / 2, Y = q => gy + 4 + q.y;
+                    ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+                    const pass = (w, col, a) => { ctx.globalAlpha = a; ctx.strokeStyle = col; ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(X(p[0]), Y(p[0])); for (let i = 1; i < p.length; i++) ctx.lineTo(X(p[i]), Y(p[i])); ctx.stroke() };
+                    pass((v.w + 2.4) * S, '#111', 1); pass(v.w * S, v.col, 1); pass(v.w * .35 * S, '#fbd5cc', .6);
+                    const t = p[p.length - 1]; ctx.globalAlpha = 1; ctx.fillStyle = '#8c0d14'; ctx.beginPath(); ctx.arc(X(t), Y(t), (v.w * .6 + .8) * S, 0, 7); ctx.fill();
+                    ctx.restore();
+                }
+            }
+        }
+
+        // bone splinters + the severed lower leg
+        function boneTick(dt) {
+            const S = CSc();
+            for (let i = boneBits.length - 1; i >= 0; i--) {
+                const b = boneBits[i];
+                if (!b.landed) {
+                    b.t += dt; b.vy += 1500 * dt; b.x += b.vx * dt; b.y += b.vy * dt; b.rot += b.vr * dt;
+                    if (b.k === 1 && b.t < 1.3) {
+                        b.bl -= dt;
+                        if (b.bl <= 0) { b.bl = .035; blood.push({ x: b.x, y: b.y, vx: b.vx * .08 + (Math.random() - .5) * 30, vy: 10 + Math.random() * 30, r: 1.4 + Math.random() * 1.6, t: 0 }) }
+                    }
+                    if (b.y >= -b.s * .25) {
+                        b.y = -b.s * .25;
+                        if (Math.abs(b.vy) > 200 && b.bn < 2) { b.vy *= -.35; b.vx *= .6; b.vr *= .6; b.bn++; burst(b.x, -2, 3, 120, Math.sign(b.vx) || 1) }
+                        else {
+                            b.landed = true; b.t = 0; b.vx = 0; b.vr = 0; b.rot = Math.round(b.rot / Math.PI) * Math.PI;
+                            if (b.k === 1 && splats.length < 160) splats.push({ x: b.x, w: 16 * S, h: 4 * S, t: 0 });
+                        }
+                    }
+                } else { b.t += dt; if (b.t > 20) boneBits.splice(i, 1) }
+            }
+        }
+        function drawBones(gy) {
+            const S = CSc();
+            ctx.save(); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+            for (const b of boneBits) {
+                const sx = b.x - P.x + W / 2; if (sx < -130 || sx > W + 130) continue;
+                ctx.globalAlpha = b.landed ? Math.min(1, (20 - b.t) / 3) : 1;
+                ctx.save(); ctx.translate(sx, gy + 4 + b.y); ctx.rotate(b.rot);
+                if (b.k === 0) {                                                 // bone splinter
+                    const s = b.s;
+                    ctx.beginPath(); ctx.moveTo(-s, 0); ctx.lineTo(-s * .25, -s * .24); ctx.lineTo(s, -s * .06); ctx.lineTo(s * .35, s * .22); ctx.closePath();
+                    ctx.fillStyle = '#efe9da'; ctx.fill(); ctx.strokeStyle = '#111'; ctx.lineWidth = 1.4; ctx.stroke();
+                } else {                                                         // severed lower leg (broken end at the origin)
+                    ctx.scale(S, S);
+                    ctx.fillStyle = '#111';
+                    ctx.beginPath(); ctx.moveTo(0, -4.5); ctx.lineTo(70, -13); ctx.lineTo(70, 13); ctx.lineTo(0, 4.5); ctx.closePath(); ctx.fill();
+                    ctx.beginPath(); ctx.moveTo(62, -13); ctx.lineTo(70, -14); ctx.quadraticCurveTo(92, -14, 96, 2); ctx.lineTo(96, 6); ctx.lineTo(62, 6); ctx.closePath(); ctx.fill();
+                    ctx.fillStyle = '#a8261f'; ctx.beginPath(); ctx.moveTo(2, -6); ctx.lineTo(-4, -3); ctx.lineTo(-2, 0); ctx.lineTo(-6, 3); ctx.lineTo(2, 6); ctx.closePath(); ctx.fill();
+                    ctx.fillStyle = '#efe9da'; ctx.strokeStyle = '#7a705a'; ctx.lineWidth = 1;
+                    for (const sp of [[[0, -2], [-12, -4], [0, 0]], [[0, 0], [-16, 1], [0, 2.5]], [[0, 2], [-9, 5], [0, 4]]]) {
+                        ctx.beginPath(); sp.forEach((q, i) => i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])); ctx.closePath(); ctx.fill(); ctx.stroke();
+                    }
+                }
+                ctx.restore();
+            }
+            ctx.restore();
+        }
+
+        // 1st shot: torn flesh with a broken bone sticking out of the shin (called from leg())
+        function legWound(kx, ky, ax, ay, ux, uy, px, py, F) {
+            const sl = Math.hypot(ax - kx, ay - ky), mx = kx + ux * sl * .46, my = ky + uy * sl * .46;
+            const s = (px * F >= 0) ? 1 : -1, nx = px * s, ny = py * s;           // normal pointing out of the front of the shin
+            const pt = (a, b) => [mx + ux * a + nx * b, my + uy * a + ny * b];
+            const pul = .5 + .5 * Math.sin(performance.now() / 1000 * 3);
+            CUR.legW = pt(0, 5);
+            ctx.save(); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+            ctx.strokeStyle = '#8c0d14'; ctx.lineWidth = 3; ctx.globalAlpha = .75 + .2 * pul;   // blood running down the shin
+            const b0 = pt(6, 2), b1 = pt(sl * .4, 4); ctx.beginPath(); ctx.moveTo(b0[0], b0[1]); ctx.lineTo(b1[0], b1[1]); ctx.stroke(); ctx.globalAlpha = 1;
+            const poly = [[-12, -3], [-7, -8], [-2, -5], [3, -9], [10, -5], [13, 0], [9, 6], [3, 4], [-2, 8], [-8, 5]];
+            const path = sc => { ctx.beginPath(); poly.forEach((q, i) => { const p = pt(q[0] * sc, q[1] * sc); i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]) }); ctx.closePath() };
+            path(1); ctx.fillStyle = '#8c0d14'; ctx.fill(); ctx.strokeStyle = '#4a0508'; ctx.lineWidth = 1.6; ctx.stroke();
+            path(.6); ctx.fillStyle = '#d4443a'; ctx.fill();
+            const bone = [[-2.8, 1], [-3.4, 13], [-1.4, 17], [-.2, 14.5], [1.4, 19.5], [3.4, 13], [2.8, 1]];   // broken shaft, jagged tip
+            ctx.beginPath(); bone.forEach((q, i) => { const p = pt(q[0], q[1]); i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]) }); ctx.closePath();
+            ctx.fillStyle = '#efe9da'; ctx.fill(); ctx.strokeStyle = '#6b6350'; ctx.lineWidth = 1.4; ctx.stroke();
+            ctx.strokeStyle = '#c9bfa8'; ctx.lineWidth = 1; const m0 = pt(-.8, 3), m1 = pt(-.8, 14); ctx.beginPath(); ctx.moveTo(m0[0], m0[1]); ctx.lineTo(m1[0], m1[1]); ctx.stroke();
+            const bl = pt(0, 2); ctx.fillStyle = '#8c0d14'; ctx.beginPath(); ctx.ellipse(bl[0], bl[1], 4.5, 2.6, 0, 0, 7); ctx.fill();   // blood at the base of the bone
+            ctx.restore();
+        }
+
+        // 2nd shot: ragged stump with shattered bone ends (called from leg(), replaces the lower leg)
+        function legStump(kx, ky, ax, ay, ux, uy, px, py, F) {
+            const sl = Math.hypot(ax - kx, ay - ky), ex = kx + ux * sl * .3, ey = ky + uy * sl * .3;
+            CUR.stumpL = [ex, ey];
+            const pt = (a, b) => [ex + ux * a + px * b, ey + uy * a + py * b];
+            const poly = (arr, sc) => { ctx.beginPath(); arr.forEach((q, i) => { const p = pt(q[0] * sc, q[1] * sc); i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]) }); ctx.closePath() };
+            ctx.save(); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+            ctx.fillStyle = '#111'; ctx.beginPath(); ctx.moveTo(kx + px * 4.5, ky + py * 4.5); ctx.lineTo(ex + px * 6, ey + py * 6); ctx.lineTo(ex - px * 6, ey - py * 6); ctx.lineTo(kx - px * 4.5, ky - py * 4.5); ctx.closePath(); ctx.fill();
+            const rag = [[-1, -7], [4, -6], [2, -3.5], [9, -2], [3, 0], [8, 3], [2, 4], [6, 7], [-1, 7]];
+            poly(rag, 1); ctx.fillStyle = '#8c0d14'; ctx.fill(); ctx.strokeStyle = '#4a0508'; ctx.lineWidth = 1.5; ctx.stroke();
+            poly(rag, .6); ctx.fillStyle = '#d4443a'; ctx.fill();
+            ctx.fillStyle = '#efe9da'; ctx.strokeStyle = '#7a705a'; ctx.lineWidth = 1;          // shattered bone ends
+            for (const sp of [[[0, -2.5], [14, -5], [1, -.5]], [[0, -.5], [19, 1], [0, 2.6]], [[0, 2], [11, 6], [1, 4.5]], [[1, -4], [8, -9], [3, -2]]]) {
+                ctx.beginPath(); sp.forEach((q, i) => { const p = pt(q[0], q[1]); i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]) }); ctx.closePath(); ctx.fill(); ctx.stroke();
+            }
+            ctx.restore();
+        }
+
         function drawChar(cx, gy, P) {
             CUR = P;
             const F = P.face, S = CSc(), z = P.z / S, sp = Math.abs(P.vx), R = Rf();
@@ -2011,9 +2249,10 @@
             const sgpE = (P === PL && P.sgp > 0 && !P.sgpWalk) ? sgpEnv() : 0;   // stomp crouch weight
             const fkk = (P !== PL && P.fk) ? (P.fkK || 0) : 0;
             const dbk = (P !== PL) ? sm(P.dbK || 0) : 0;   // doubled over, clutching his stomach
+            const lmK = (P !== PL && P.legHurt && !P.legGone) ? sm(P.lmK || 0) : 0;   // limping with an exposed bone
             const hpK = (P !== PL && P.hCrack && !P.hsDead) ? sm(P.hpK || 0) : 0;   // clutching his cracked head
-            const gk = (P !== PL && P.gutDead) ? (P.gutK || 0) : ((P !== PL && P.hsDead) ? Math.min(1, Math.abs(P.rot || 0) / (Math.PI / 2)) : 0);   // headshot body: "flat" amount follows how far he has toppled
-            const gkv = (P !== PL && P.hsDead) ? 0 : gk * (1 - Math.min(1, Math.abs(P.rot || 0) / (Math.PI / 2)));   // no split for the headshot body
+            const gk = (P !== PL && P.gutDead) ? (P.gutK || 0) : ((P !== PL && (P.hsDead || P.crawl)) ? Math.min(1, Math.abs(P.rot || 0) / (Math.PI / 2)) : 0);   // headshot body: "flat" amount follows how far he has toppled
+            const gkv = (P !== PL && (P.hsDead || P.crawl)) ? 0 : gk * (1 - Math.min(1, Math.abs(P.rot || 0) / (Math.PI / 2)));   // no split for the headshot body
             let hl = 0;   // head lift: 0 = on the ground, 1 = raised looking at his guts
             if (P !== PL && P.gutDead) {
                 const lt = P.gutT || 0;
@@ -2026,6 +2265,7 @@
                 pain = Math.min(1, .35 + gt * 2) * (1 - sm((gt - 3.5) / 3));
                 spasm = Math.pow(Math.max(0, Math.sin(now * 6.2) * Math.sin(now * 2.3 + 1)), 2) * 1.6 * pain;
             }
+            if (P !== PL && P.crawl && !P.crawlDead) { pain = .4; spasm = Math.pow(Math.max(0, Math.sin(now * 6.2) * Math.sin(now * 2.3 + 1)), 2) * 1.6 * pain }
             if (P !== PL && P.hsDead) { const ht = P.hsT || 0; pain = Math.max(0, 1 - ht / 4.5) * .8; spasm = Math.pow(Math.max(0, Math.sin(now * 6.2) * Math.sin(now * 2.3 + 1)), 2) * 1.6 * pain }
             let fkPull = 0;                               // 0..1: straining on the handle, then slipping off
             if (fkk > .01) { const c = (now * .7) % 1; fkPull = c < .5 ? sm(c / .5) : c < .6 ? 1 - sm((c - .5) / .1) : 0 }
@@ -2042,6 +2282,7 @@
             hipY += 40 * fkk;
             hipY += 40 * fkk;
             hipY += 26 * dbk;   // knees buckle
+            if (lmK > .01) { const lu = (((P.phase / (2 * Math.PI)) % 1) + 1) % 1; hipY += lmK * (9 + 11 * (lu < .5 ? Math.sin(lu * 2 * Math.PI) : 0)); }
             hipY += 16 * hpK;   // knees buckle
             hipY += 80 * gkv;
             if (P === PL) hipY += 10 * Math.min(1.2, P.sgRec) + 4 * sm(P.sgK);
@@ -2087,13 +2328,13 @@
 
 
             const l = moveLean - F * .5 * sk + (z < 0 ? .1 * F : 0) + .3 * pq * F - F * .2 * st + Math.sin(now * 30) * .012 * st + F * cbLean - F * (isGrabbed ? .1 : .4) * hk + grabLean + F * kk * KNEEL_BEND + Math.sin(now * 9) * .035 * kk * (1 - fk) + (fz ? F * fz.lean : 0) + F * fk * 0.47 * (1 - gk)
-                + ((P !== PL && P.fst === 1 && PL.fin > 0 && !P.stomachStabbed) ? F * .1 * finK(PL.fin).foot : 0) - F * .07 * (P === PL ? P.recoil : 0) - F * (P === PL ? .12 * P.sgRec - .06 * sm(P.sgK) : 0) + F * fkk * (.8 - .2 * fkPull) + F * gkv * .3 + F * .25 * (gk - gkv) + F * .2 * sgpE + F * dbk * (.8 + Math.sin(now * 14) * .035) + F * hpK * (.26 + Math.sin(now * 8) * .04);   // lies flat: head on the floor, hips on the floor
+                + ((P !== PL && P.fst === 1 && PL.fin > 0 && !P.stomachStabbed) ? F * .1 * finK(PL.fin).foot : 0) - F * .07 * (P === PL ? P.recoil : 0) - F * (P === PL ? .12 * P.sgRec - .06 * sm(P.sgK) : 0) + F * fkk * (.8 - .2 * fkPull) + F * gkv * .3 + F * .25 * (gk - gkv) + F * .2 * sgpE + F * dbk * (.8 + Math.sin(now * 14) * .035) + F * lmK * .2 + F * hpK * (.26 + Math.sin(now * 8) * .04);   // lies flat: head on the floor, hips on the floor
             const rot = (x, y) => [hipX + x * Math.cos(l) - y * Math.sin(l), hipY + x * Math.sin(l) + y * Math.cos(l)];
             ctx.save(); ctx.translate(cx, gy + 4); ctx.scale(S, S); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
             if (pain > 0) ctx.translate((Math.sin(now * 47) * 1.6 + Math.sin(now * 83)) * pain, Math.sin(now * 61) * 1.2 * pain - spasm * 3);
             if (P.rot) {
                 const pk = Math.min(1, -z / 60);
-                const py = (P !== PL && (P.gutDead || P.hsDead)) ? -24 : ((cb && cb.py !== undefined) ? cb.py : (-40 * (1 - pk) + (hipY - 30) * pk));
+                const py = (P !== PL && (P.gutDead || P.hsDead || P.crawl)) ? -24 : ((cb && cb.py !== undefined) ? cb.py : (-40 * (1 - pk) + (hipY - 30) * pk));
                 const px = (cb && cb.px !== undefined) ? cb.px : 0;
                 ctx.translate(px, py); ctx.rotate(P.rot + pain * Math.sin(now * 40) * .02 + spasm * .06 * Math.sin(now * 22)); ctx.translate(-px, -py);
             }
@@ -2114,6 +2355,7 @@
                 }
                 if (sk > 0) { const tx = hipX + F * (i ? 14 : 62) + Math.sin(now * 60 + i * 2) * 1.2; fx = fx * (1 - sk) + tx * sk; lift = lift * (1 - sk) }
                 let fy = -lift, lf = lift;
+                if (lmK > .01 && i === 0) { fy *= (1 - .8 * lmK); lf *= (1 - .8 * lmK) }   // the bad foot barely leaves the ground
                 if (z < 0) { fy = z * .55 - 30 - (i ? 55 : 0); fx = F * (i ? -55 : 45); lf = 99 }
 
                 // held enemy: wide braced stance, leaning into the pull, feet scuffing
@@ -2270,6 +2512,7 @@
                     lf *= (1 - mk);
                 }
                 const so = gkv * 34 * (i ? 1 : -1), hpL = rot(so, 0);
+                legIdx = i;
                 leg(hpL[0], hpL[1], fx, fy, F, p, lf);
                 footFlat = 0;
 
@@ -2423,6 +2666,7 @@
                     const [ha, hf] = ikTo(sh, tx, ty, F);
                     ang = ang * (1 - hpK) + ha * hpK; flex = flex * (1 - hpK) + hf * hpK;
                 }
+                if (lmK > .01 && i === 0 && !isGrabbed) { const th_ = rot(F * 12, 30), [ta, tf] = ikTo(sh, th_[0], th_[1], F); ang = ang * (1 - lmK) + ta * lmK; flex = flex * (1 - lmK) + tf * lmK }
                 if (sk > .01 && !pq && P.tt <= 0) { ang = ang * (1 - sk) + ((i ? .55 : 1.3) + Math.sin(now * 18 + i) * .08) * sk; flex = flex * (1 - sk) + .25 * sk }
                 if (st > .01) { ang = ang * (1 - st) + (i ? 3.5 : 2.75) * st + Math.sin(now * 28 + i) * .03 * st; flex = flex * (1 - st) + .15 * st }
                 if (P.hsDead && pain > 0) { ang += (Math.sin(now * 13 + i * 2.1) * .5 + .5) * pain * (i ? 1 : -1) * .9; flex += Math.abs(Math.sin(now * 17 + i)) * .5 * pain }
@@ -2465,6 +2709,11 @@
                     if (pain > 0) { ang += Math.sin(now * 44 + i * 2.1) * .07 * pain + spasm * .15 * Math.sin(now * 19 + i); flex += Math.abs(Math.sin(now * 31 + i)) * .12 * pain }
                     ang = ang * (1 - gw) + (i ? -.17 : -.2) * gw; flex = flex * (1 - gw) + 0 * gw
                 }   // arms lie along the ground
+                if (P !== PL && P.crawl && gk > .01) {   // army crawl: arms reach ahead, alternating
+                    const gw = sm(gk), cs = P.crawlDead ? 0 : Math.sin((P.crT || 0) * 5.5 + i * Math.PI);
+                    ang = ang * (1 - gw) + (P.crawlDead ? 3.0 - .1 * i : 2.9 + .22 * cs) * gw;
+                    flex = flex * (1 - gw) + (P.crawlDead ? .12 : .55 - .5 * cs) * gw;
+                }
                 if (fz && fz.grip > .01 && P.finE && (P.finE.hdp || P.finE.stbStoP)) {
                     const E = P.finE, ox = (E.x - P.x) / S;
                     const hv = (keys.KeyE && !P.finDone) ? 1 : 0;
@@ -2697,6 +2946,12 @@
                     ctx.textAlign = 'center'; ctx.fillStyle = '#111'; ctx.font = 'italic bold 24px Georgia,serif'; ctx.fillText('AAARGH!', 0, 0);
                     ctx.restore();
                 }
+            }
+            if (lmK > .02 && (P.lgT || 0) < 1.3) {
+                const ct = P.lgT || 0, k = ct < .12 ? ct / .12 : 1 - sm((ct - .8) / .5);
+                ctx.save(); ctx.globalAlpha = Math.max(0, k); ctx.translate(hd[0] - F * 6, hd[1] - 74); ctx.rotate(-.08 + Math.sin(now * 40) * .03);
+                ctx.textAlign = 'center'; ctx.fillStyle = '#111'; ctx.font = 'italic bold 24px Georgia,serif'; ctx.fillText('MY LEG!', 0, 0);
+                ctx.restore();
             }
             ctx.restore(); CUR = PL;
         }
@@ -4132,7 +4387,7 @@
             for (let i = 0; i < n; i++) shells.push({ x: w[0], y: w[1], vx: (Math.random() - .5) * 110, vy: -(40 + Math.random() * 90), rot: Math.random() * 6, vr: (Math.random() - .5) * 14, landed: false, t: 0 });
         }
         function bulletHit(b, px, py, e, S) {
-            const F = b.F, lo = Math.min(px, b.x), hi = Math.max(px, b.x), down = e.down > 0;
+            const F = b.F, lo = Math.min(px, b.x), hi = Math.max(px, b.x), down = e.down > 0 || e.crawl;
             const w = (down ? 120 : 30) * S, zt = Math.min(0, e.z), top = (down ? -70 : -320) * S + zt, bot = 6 * S + zt;
             if (hi < e.x - w || lo > e.x + w) return null;
             const xe = F > 0 ? Math.max(px, e.x - w) : Math.min(px, e.x + w);
@@ -4186,7 +4441,7 @@
                     const h = bulletHit(b, px, py, e, S);
                     if (h && h.d < bd) { bd = h.d; best = { e, h } }
                 }
-                if (best) { gunHit(b, best.e, best.h, S); bullets.splice(i, 1); continue }
+                if (best) { if (!legShot(b, best.e, best.h, S)) gunHit(b, best.e, best.h, S); bullets.splice(i, 1); continue }
                 if (birdsHit(px, py, b.x, b.y, b.F, 20)) { bullets.splice(i, 1); continue }
                 if (b.y > 0) { burst(b.x, -2, 6, 180, b.F); bullets.splice(i, 1); continue }
                 if (Math.abs(b.x - b.x0) > GUN_RANGE || b.age > 1.2) bullets.splice(i, 1);
@@ -6786,7 +7041,7 @@
             let dt = dt0;
             if (hitstop > 0) { hitstop -= dt0; dt = 0 }
 
-            update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); sgTick(dt); sgGroundTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); brainTick(dt); gibTick(dt); weatherTick(dt); horseTick(dt); birdTick(dt);
+            update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); sgTick(dt); sgGroundTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); brainTick(dt); gibTick(dt); boneTick(dt); weatherTick(dt); horseTick(dt); birdTick(dt);
             shake = Math.max(0, shake - dt0 * 60);
             ctx.save();
             if (shake > .3) ctx.translate((Math.random() - .5) * shake * 1.6, (Math.random() - .5) * shake * 1.6);
@@ -6806,6 +7061,8 @@
             drawVeins(gy);
             drawBrainBits(gy);
             drawGibs(gy);
+            drawLegVeins(gy);
+            drawBones(gy);
             drawFootKnives(gy);
             drawKnives(gy);
             drawShots(gy);
