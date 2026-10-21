@@ -88,7 +88,7 @@
 <body>
     <canvas id="c"></canvas>
     <div id="hud">A / D or ← → to walk · Shift to run · Space to jump · Shift+Space (running): parkour tumble · K: knife
-        · J: stab · L: throw · V: man / woman
+        · J: stab · L: throw · M: front kick to the stomach · V: man / woman
     </div>
     <div class="btns">
         <div><span class="b" id="bl">◀</span><span class="b" id="br">▶</span></div>
@@ -99,6 +99,8 @@
             style="position:fixed; right:18px; bottom:calc(env(safe-area-inset-bottom,0px) + 178px)">H</span>
         <span class="b" id="bv"
             style="position:fixed; left:18px; bottom:calc(env(safe-area-inset-bottom,0px) + 98px)">♀</span>
+        <span class="b" id="bm"
+            style="position:fixed; left:18px; bottom:calc(env(safe-area-inset-bottom,0px) + 178px)">M</span>
     </div>
     <script>
         const cv = document.getElementById('c'), ctx = cv.getContext('2d');
@@ -142,6 +144,7 @@
             if (e.code === 'KeyE') pressFinish();
             if (e.code === 'Space') pressJump();
             if (e.code === 'KeyJ') pressAtk();
+            if (e.code === 'KeyM') pressKick();
         });
         addEventListener('keyup', e => keys[e.code] = 0);
         function hold(id, k) {
@@ -155,6 +158,13 @@
         document.getElementById('bp').addEventListener('pointerdown', e => { e.preventDefault(); pressAtk() });
         document.getElementById('bh').addEventListener('pointerdown', e => { e.preventDefault(); pressHorse() });
         document.getElementById('bv').addEventListener('pointerdown', e => { e.preventDefault(); P.female = !P.female });
+        const bmBtn = document.getElementById('bm');
+        if (bmBtn) {
+            ['pointerdown', 'click'].forEach(evt => bmBtn.addEventListener(evt, e => {
+                e.preventDefault();
+                pressKick();
+            }));
+        }
 
 
         const P = {
@@ -483,6 +493,36 @@
                 kf4: GUARD
             },
         ];
+
+        // ================= KICKS (appended to STEPS as indices 5..8) =================
+        // leg format l = [forward x, y, lift]; the foot ends at y - lift (ground = 0, up = negative)
+        const KICKS = [
+            { // 5. FRONT KICK TO THE STOMACH
+                name: 'kick_front', banner: 'GUT KICK!', label: 'KICK!', gap: 200, dur: .46, wind: .12, hit: .19, hold: .08, link: 9,
+                reach: 215, dmg: 14, kb: 300, up: 0, lv: 120, pause: .06, shake: 6, fx: 16,
+                kf0: GUARD,
+                kf1: { ...GUARD, lean: -.04, hipX: 2, hipY: 6, l0: [50, -80, 30], l1: [-40, 0, 0] },   // knee chambers up
+                kf2: { ...GUARD, lean: -.2, hipX: 6, hipY: 4, arch: -.04, hx: -4, l0: [126, -126, 30], l1: [-42, 0, 0] },   // foot lands at belly height
+                kf3: { ...GUARD, lean: -.21, hipX: 6, hipY: 4, arch: -.04, hx: -4, l0: [128, -126, 30], l1: [-42, 0, 0] },
+                kf4: GUARD
+            }
+        ];
+        STEPS.push(...KICKS);
+
+        function pressKick() {
+            console.log('[pressKick called] P.gun:', P.gun, 'P.gs:', P.gs, 'P.cs:', P.cs, 'P.z:', P.z, 'P.mount:', P.mount);
+            const why =
+                P.mount ? 'mounted' : P.sg ? 'shotgun' : P.sgp > 0 ? 'sgp' : P.pk > 0 ? 'parkour' :
+                P.fin > 0 ? 'finisher' : P.thw > 0 ? 'throw' : P.tt > 0 ? 'toss' : P.cs > 0 ? 'combo busy' :
+                P.stbk > 0 ? 'stab' : P.fs > 0 ? 'footstab' : P.gu > 0 ? 'gut' : P.yk > 0 ? 'yank' : P.z < 0 ? 'airborne' : '';
+            if (why) { banner.t = .6; banner.text = 'KICK BLOCKED: ' + why; console.warn('KICK BLOCKED:', why); return }
+            if (P.gun || P.gs === 2) { banner.t = .6; banner.text = 'HOLSTER GUN FIRST (G)'; console.warn('HOLSTER GUN FIRST (G)'); return }
+            const n = 5;   // only the front kick
+            P.idle = 0; P.fid = 0; P.grabbed = null; P.clast = 0;
+            console.log('Starting kick step:', n, STEPS[n - 1] ? STEPS[n - 1].name : 'unknown');
+            startStep(n);
+        }
+
         const combo = { n: 0, dmg: 0, t: 0, pop: 0 }, banner = { t: 0, text: '' };
         let hitstop = 0, shake = 0;
         function pressAtk() {
@@ -661,7 +701,7 @@
         }
         function respawn(n) {
             const side = Math.random() < .5 ? -1 : 1, x = P.x + side * (W / 2 + 150 + Math.random() * 250);
-            Object.assign(n, { hsDead: 0, hsT: 0, veins: null, int: null, gut: 0, headThud: 0, gutDead: false, gutK: 0, gutPop: 0, gutCut: 0, fkSnk: 0, fk: null, fkT: 0, fkK: 0, fkPend: false, stab: 0, kneelK: 0, fst: 0, fallT: 0, fallK: 0, thud: 0, x, home: x, goal: x, vx: 0, z: 0, vz: 0, hp: n.maxhp, hurt: 0, down: 0, rot: 0, dying: 0, dead: 0, bar: 0, tumble: 0, wait: 1.5, face: -side, fid: 0, fidK: 0, headCut: 0, headK: 0, cord: null, brainOut: 0 });
+            Object.assign(n, { dbl: 0, dbK: 0, hsDead: 0, hsT: 0, veins: null, int: null, gut: 0, headThud: 0, gutDead: false, gutK: 0, gutPop: 0, gutCut: 0, fkSnk: 0, fk: null, fkT: 0, fkK: 0, fkPend: false, stab: 0, kneelK: 0, fst: 0, fallT: 0, fallK: 0, thud: 0, x, home: x, goal: x, vx: 0, z: 0, vz: 0, hp: n.maxhp, hurt: 0, down: 0, rot: 0, dying: 0, dead: 0, bar: 0, tumble: 0, wait: 1.5, face: -side, fid: 0, fidK: 0, headCut: 0, headK: 0, cord: null, brainOut: 0 });
         }
         function killBurst(n) {
             const S = CSc();
@@ -712,11 +752,12 @@
                 if (st.kb >= 350 || st.up < -300) e.tumble = 1;
                 combo.n++; combo.dmg += dmg; combo.t = 1.8; combo.pop = 1.3;
                 const isPunch = st.name.startsWith('punch'), isGrab = st.name === 'grab';
-                const face = isPunch || isGrab;
+                const face = isPunch || isGrab || st.head;
                 const cy = face ? (e.hdp ? e.hdp[1] * S + 8 * S : -280 * S) : (-150 * S + Math.min(0, e.z));
                 const cx = face ? e.x + (e.hdp ? e.hdp[0] * S : 0) - F * 20 * S : e.x;
                 burst(cx, cy, st.fx, 200 + st.kb * .25, F);
                 impacts.push({ x: face ? cx : e.x - F * 10, y: cy, t: 0, life: .2 + st.dmg / 200, s: 75 + st.dmg * 3.5, seed: Math.random() * 50 });
+                if (st.name === 'kick_front' && e.hp > 0) { e.dbl = 2.4; e.fid = 0; }
                 if (e.hp <= 0) { e.hp = 0; e.dying = .5; kill = true; if (P.grabbed === e) P.grabbed = null; }
             }
             if (hits) {
@@ -729,6 +770,8 @@
                     burst(P.x + F * 70, -10, 40, 450, -F);
                 } else if (kill) {
                     banner.t = 1.1; banner.text = 'K.O.!';
+                } else if (st.banner) {
+                    banner.t = .8; banner.text = st.banner;
                 } else if (st.name === 'grab') {
                     banner.t = 0.75; banner.text = 'CLINCH!';
                 } else if (st.name === 'punch1') {
@@ -776,7 +819,7 @@
                 g.wait = 1;
             }
             if (P.cs === 0) {
-                if (P.abuf > 0 && P.z >= 0 && P.tt <= 0 && !(P.thw > 0) && !(P.fin > 0)) startStep(P.clast > 0 && P.clast < STEPS.length ? P.clast + 1 : 1);
+                if (P.abuf > 0 && P.z >= 0 && P.tt <= 0 && !(P.thw > 0) && !(P.fin > 0)) startStep(P.clast > 0 && P.clast < 4 ? P.clast + 1 : 1);
                 return;
             }
             if (P.cs >= 5 && P.grabbed) { P.grabbed = null; }
@@ -790,9 +833,9 @@
                 }
             }
             if (!P.chit && P.ct >= st.hit) doHit(st);
-            if (P.cs < STEPS.length && P.abuf > 0 && P.ct >= st.link) { startStep(P.cs + 1); return }
+            if (P.cs < 4 && P.abuf > 0 && P.ct >= st.link) { startStep(P.cs + 1); return }
             if (P.ct >= st.dur) {
-                P.clast = P.cs < STEPS.length ? P.cs : 0;
+                P.clast = P.cs < 4 ? P.cs : 0;
                 P.cgr = P.cs <= 3 ? .6 : (P.cs === 4 ? 1.0 : .24);   // was: P.cs <= 3 ? 0 : ...
                 P.cs = 0;
             }
@@ -1458,7 +1501,9 @@
                 n.vz += GRAV * dt; n.z += n.vz * dt;
                 if (n.z >= 0) { n.z = 0; n.vz = 0; if (n.tumble) { n.tumble = 0; n.down = .9; shake = Math.max(shake, 5); burst(n.x, -3, 12, 280, n.kdir) } }
             }
-            const grounded = n.z >= 0, stunned = n.hurt > 0 || n.down > 0 || !grounded || n.dying > 0;
+            if (n.dbl > 0) n.dbl -= dt;
+            n.dbK = (n.dbK || 0) + (((n.dbl > 0 && n.dying <= 0 && n.down <= 0) ? 1 : 0) - (n.dbK || 0)) * Math.min(1, dt * 9);
+            const grounded = n.z >= 0, stunned = n.hurt > 0 || n.down > 0 || !grounded || n.dying > 0 || n.dbl > 0;
             let tgt = 0;
 
             if (n.down > 0 || (n.dying > 0 && grounded && !n.gutDead && !n.hsDead)) tgt = n.kdir * Math.PI / 2;
@@ -1950,6 +1995,7 @@
             const sgW = (P === PL && P.sgK > .01 && z >= 0) ? sm(P.sgK) * (1 - Math.min(1, sp / 120)) : 0;   // shotgun stance weight
             const sgpE = (P === PL && P.sgp > 0 && !P.sgpWalk) ? sgpEnv() : 0;   // stomp crouch weight
             const fkk = (P !== PL && P.fk) ? (P.fkK || 0) : 0;
+            const dbk = (P !== PL) ? sm(P.dbK || 0) : 0;   // doubled over, clutching his stomach
             const gk = (P !== PL && P.gutDead) ? (P.gutK || 0) : ((P !== PL && P.hsDead) ? Math.min(1, Math.abs(P.rot || 0) / (Math.PI / 2)) : 0);   // headshot body: "flat" amount follows how far he has toppled
             const gkv = (P !== PL && P.hsDead) ? 0 : gk * (1 - Math.min(1, Math.abs(P.rot || 0) / (Math.PI / 2)));   // no split for the headshot body
             let hl = 0;   // head lift: 0 = on the ground, 1 = raised looking at his guts
@@ -1979,6 +2025,7 @@
 
             hipY += 40 * fkk;
             hipY += 40 * fkk;
+            hipY += 26 * dbk;   // knees buckle
             hipY += 80 * gkv;
             if (P === PL) hipY += 10 * Math.min(1.2, P.sgRec) + 4 * sm(P.sgK);
             hipY += 13 * sgW;   // sink a little so the wide legs still reach the floor
@@ -1987,7 +2034,7 @@
             let hipX = cb ? F * cb.hipX * cb.w : 0, cbLean = cb ? cb.lean * cb.w : 0;
 
             if (isGrabbed) hipX = -F * 8;
-            hipX += Math.sin(now * 17) * 1.3 * kk;
+            hipX += Math.sin(now * 17) * 1.3 * kk + Math.sin(now * 23) * 1.1 * dbk;   // shaking
             if (P === PL) hipX -= F * 7 * P.sgRec;
             hipX -= 24 * F * (gk - gkv);   // slides the hips down to ground level when lying flat
             const grabLean = isGrabbed ? F * (.16 + Math.sin(now * 21) * .012) : 0;
@@ -2022,7 +2069,7 @@
 
 
             const l = moveLean - F * .5 * sk + (z < 0 ? .1 * F : 0) + .3 * pq * F - F * .2 * st + Math.sin(now * 30) * .012 * st + F * cbLean - F * (isGrabbed ? .1 : .4) * hk + grabLean + F * kk * KNEEL_BEND + Math.sin(now * 9) * .035 * kk * (1 - fk) + (fz ? F * fz.lean : 0) + F * fk * 0.47 * (1 - gk)
-                + ((P !== PL && P.fst === 1 && PL.fin > 0 && !P.stomachStabbed) ? F * .1 * finK(PL.fin).foot : 0) - F * .07 * (P === PL ? P.recoil : 0) - F * (P === PL ? .12 * P.sgRec - .06 * sm(P.sgK) : 0) + F * fkk * (.8 - .2 * fkPull) + F * gkv * .3 + F * .25 * (gk - gkv) + F * .2 * sgpE;   // lies flat: head on the floor, hips on the floor
+                + ((P !== PL && P.fst === 1 && PL.fin > 0 && !P.stomachStabbed) ? F * .1 * finK(PL.fin).foot : 0) - F * .07 * (P === PL ? P.recoil : 0) - F * (P === PL ? .12 * P.sgRec - .06 * sm(P.sgK) : 0) + F * fkk * (.8 - .2 * fkPull) + F * gkv * .3 + F * .25 * (gk - gkv) + F * .2 * sgpE + F * dbk * (.8 + Math.sin(now * 14) * .035);   // lies flat: head on the floor, hips on the floor
             const rot = (x, y) => [hipX + x * Math.cos(l) - y * Math.sin(l), hipY + x * Math.sin(l) + y * Math.cos(l)];
             ctx.save(); ctx.translate(cx, gy + 4); ctx.scale(S, S); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
             if (pain > 0) ctx.translate((Math.sin(now * 47) * 1.6 + Math.sin(now * 83)) * pain, Math.sin(now * 61) * 1.2 * pain - spasm * 3);
@@ -2347,6 +2394,10 @@
                     ang = .12; flex = .15;     // arms just hang while he is held
                 } else if (hk > 0) {
                     ang = ang * (1 - hk) + (i ? -.5 : -1.1) * hk; flex = flex * (1 - hk) + .3 * hk;
+                }
+                if (dbk > .01) {   // both arms wrapped over the stomach
+                    const so = rot(F * 8, -30), [da, df] = ik2(sh, so[0] + F * (i ? 3 : -3), so[1] + (i ? 4 : 0), F);
+                    ang = ang * (1 - dbk) + da * dbk; flex = flex * (1 - dbk) + df * dbk;
                 }
                 if (sk > .01 && !pq && P.tt <= 0) { ang = ang * (1 - sk) + ((i ? .55 : 1.3) + Math.sin(now * 18 + i) * .08) * sk; flex = flex * (1 - sk) + .25 * sk }
                 if (st > .01) { ang = ang * (1 - st) + (i ? 3.5 : 2.75) * st + Math.sin(now * 28 + i) * .03 * st; flex = flex * (1 - st) + .15 * st }
