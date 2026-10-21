@@ -4509,7 +4509,7 @@
             if (P.ammo <= 0) { banner.t = .5; banner.text = 'CLICK! (R)'; P.fireCd = .3; return }
             const S = CSc(), F = P.face, m = P.muzzle || [P.x + F * 60 * S, -250 * S];
             P.ammo--; P.fireCd = FIRE_CD; P.recoil = 1; P.idle = 0; P.fid = 0;
-            bullets.push({ x: m[0], y: m[1], x0: m[0], F, th: P.gunA, age: 0 });
+            bullets.push({ x: m[0], y: m[1], x0: m[0], F, th: P.gunA, age: 0, sp: BULLET_V });
             burst(m[0], m[1], 8, 260, F);
             if (typeof puff === 'function') puff(m[0], m[1], 5, F * 70, -12, 3, 10, 1.8, .28);
             shake = Math.max(shake, 3.5);
@@ -4565,8 +4565,8 @@
             }
             for (let i = bullets.length - 1; i >= 0; i--) {
                 const b = bullets[i]; b.age += dt;
-                const px = b.x, py = b.y, step = BULLET_V * dt;
-                b.x += b.F * Math.cos(b.th) * step; b.y += Math.sin(b.th) * step;
+                const px = b.x, py = b.y;
+                projMove(b, dt);
                 let best = null, bd = 1e9;
                 for (const e of ENEMIES) {
                     if (e.dead > 0 || e.dying > 0) continue;
@@ -4575,8 +4575,9 @@
                 }
                 if (best) { if (!legShot(b, best.e, best.h, S)) gunHit(b, best.e, best.h, S); bullets.splice(i, 1); continue }
                 if (birdsHit(px, py, b.x, b.y, b.F, 20)) { bullets.splice(i, 1); continue }
-                if (b.y > 0) { burst(b.x, -2, 6, 180, b.F); bullets.splice(i, 1); continue }
-                if (Math.abs(b.x - b.x0) > GUN_RANGE || b.age > 1.2) bullets.splice(i, 1);
+                if (waterStep(b, px, py, dt)) { bullets.splice(i, 1); continue }
+                if (!b.m && b.y > 0 && !inPond(b.x)) { burst(b.x, -2, 6, 180, b.F); bullets.splice(i, 1); continue }
+                if (b.m ? b.age > 8 : (Math.abs(b.x - b.x0) > GUN_RANGE || b.age > 1.2)) bullets.splice(i, 1);
             }
             for (let i = shells.length - 1; i >= 0; i--) {
                 const s = shells[i];
@@ -4708,6 +4709,7 @@
             ctx.save(); ctx.lineCap = 'round'; ctx.strokeStyle = '#111';
             for (const b of bullets) {
                 const sx = b.x - P.x + W / 2, sy = gy + 4 + b.y, ux = b.F * Math.cos(b.th), uy = Math.sin(b.th);
+                if (b.m) { ctx.globalAlpha = .9; ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(sx, sy, 3.2, 0, 7); ctx.fill(); continue }
                 ctx.globalAlpha = .9; ctx.lineWidth = 3.4; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx - ux * 26, sy - uy * 26); ctx.stroke();
                 ctx.globalAlpha = .35; ctx.lineWidth = 1.6;
                 for (let j = -1; j <= 1; j += 2) { ctx.beginPath(); ctx.moveTo(sx - ux * 30 - uy * j * 4, sy - uy * 30 + ux * j * 4); ctx.lineTo(sx - ux * 110 - uy * j * 4, sy - uy * 110 + ux * j * 4); ctx.stroke() }
@@ -4895,8 +4897,8 @@
             }
             for (let i = pellets.length - 1; i >= 0; i--) {
                 const p = pellets[i]; p.age += dt;
-                const px = p.x, py = p.y, step = p.v * dt;
-                p.x += p.F * Math.cos(p.th) * step; p.y += Math.sin(p.th) * step;
+                const px = p.x, py = p.y;
+                projMove(p, dt);
                 let best = null, bd = 1e9;
                 for (const e of ENEMIES) {
                     if (e.dead > 0 || e.dying > 0) continue;
@@ -4905,8 +4907,9 @@
                 }
                 if (best) { pelletHit(p, best.e, best.h); pellets.splice(i, 1); continue }
                 if (birdsHit(px, py, p.x, p.y, p.F, 22)) { pellets.splice(i, 1); continue }
-                if (p.y > 0) { burst(p.x, -2, 2, 140, p.F); pellets.splice(i, 1); continue }
-                if (Math.abs(p.x - p.x0) > SG_RANGE || p.age > .6) pellets.splice(i, 1);
+                if (waterStep(p, px, py, dt)) { pellets.splice(i, 1); continue }
+                if (!p.m && p.y > 0 && !inPond(p.x)) { burst(p.x, -2, 2, 140, p.F); pellets.splice(i, 1); continue }
+                if (p.m ? p.age > 6 : (Math.abs(p.x - p.x0) > SG_RANGE || p.age > .6)) pellets.splice(i, 1);
             }
         }
 
@@ -5042,6 +5045,7 @@
             ctx.save(); ctx.lineCap = 'round'; ctx.strokeStyle = '#111';
             for (const p of pellets) {
                 const sx = p.x - P.x + W / 2, sy = gy + 4 + p.y, ux = p.F * Math.cos(p.th), uy = Math.sin(p.th);
+                if (p.m) { ctx.globalAlpha = .9; ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(sx, sy, 1.8, 0, 7); ctx.fill(); continue }
                 ctx.globalAlpha = .85; ctx.lineWidth = 2.2; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx - ux * 16, sy - uy * 16); ctx.stroke();
                 ctx.globalAlpha = .25; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(sx - ux * 18, sy - uy * 18); ctx.lineTo(sx - ux * 46, sy - uy * 46); ctx.stroke();
             }
@@ -8475,6 +8479,13 @@
             stillT = (pspd < 8 && Math.abs(swim.vy) < 15) ? stillT + dt : 0;
 
             for (const f of fish) {
+                if (f.dead) {
+                    f.deadT += dt; f.vx *= Math.exp(-2 * dt);
+                    f.x = clampN(f.x + f.vx * dt, -POND_RX + 30, POND_RX - 30);
+                    f.y += (7 - f.y) * Math.min(1, dt * 1.2);               // floats up
+                    if (f.deadT > 25) { f.dead = 0; f.fear = 0; f.y = 60; f.vx = 0; }
+                    continue;
+                }
                 f.fear = Math.max(0, f.fear - dt * .45);
                 if (f.fear < .05) f.fx = null;
 
@@ -8571,12 +8582,12 @@
                 ctx.globalAlpha = 1;
                 // fish
                 for (const f of fish) {
-                    const fy = top + f.y + Math.sin(now * 2 + f.ph) * 2 * (1 - f.fear);
+                    const fy = f.dead ? surfY(top, sx, sx + f.x) + f.y : top + f.y + Math.sin(now * 2 + f.ph) * 2 * (1 - f.fear);
                     ctx.save(); ctx.translate(sx + f.x, fy);
-                    ctx.rotate(Math.atan2(f.vy, Math.abs(f.vx) + 10) * f.dir);    // nose tilts up/down
-                    ctx.scale(f.face * f.s, f.s);
+                    if (!f.dead) ctx.rotate(Math.atan2(f.vy, Math.abs(f.vx) + 10) * f.dir);
+                    ctx.scale(f.face * f.s, f.dead ? -f.s : f.s);               // belly-up when dead
                     ctx.fillStyle = 'rgba(215,150,90,.75)'; ctx.lineWidth = 1.2; ctx.strokeStyle = '#111';
-                    const tw = Math.sin(now * (8 + f.fear * 14) + f.ph) * (3 + f.fear * 3);   // tail beats faster when scared
+                    const tw = f.dead ? 0 : Math.sin(now * (8 + f.fear * 14) + f.ph) * (3 + f.fear * 3);
                     ctx.beginPath(); ctx.ellipse(0, 0, 13, 5.5, 0, 0, 7); ctx.fill(); ctx.stroke();
                     ctx.beginPath(); ctx.moveTo(-12, 0); ctx.lineTo(-21, -6 + tw); ctx.lineTo(-21, 6 + tw); ctx.closePath(); ctx.fill(); ctx.stroke();
                     ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(7, -1.2, 1.2, 0, 7); ctx.fill();
@@ -8744,6 +8755,140 @@
             ctx.restore();
         }
 
+        // ================= WATER BALLISTICS =================
+        const WB_DRAG_Q = 0.012;   // quadratic drag (v²): bigger = stops sooner
+        const WB_DRAG_L = 10;      // linear drag (1/s): finishes it off once it's slow
+        const WB_BEND   = 1.2;     // bends toward vertical on entry (1 = no bend)
+        const WB_SKIP   = 0.3;     // grazing angle (rad, about 17°) below which a fast bullet skips off the water
+        const WB_SINK_V = 240;     // below this speed it stops and sinks
+        const wTrails = [], wClouds = [];
+
+        function waterSurfaceY(wx) {   // world y of the live water surface (0 = ground line)
+            const t = Math.max(0, Math.min(WN - .001, (wx - (POND_X - POND_RX)) / WSP)), i = Math.floor(t), f = t - i;
+            return wh[i] * (1 - f) + wh[i + 1] * f;
+        }
+        function shockFish(wx, y, R) {
+            for (const f of fish) {
+                if (f.dead) continue;
+                if (Math.hypot(POND_X + f.x - wx, f.y - y) < R) { f.fear = Math.max(f.fear, .9); f.fx = wx - POND_X; }
+            }
+        }
+        function killFish(f, p) {
+            f.dead = 1; f.deadT = 0; f.vx = p.F * 90; f.vy = 0; f.fear = 0;
+            for (let i = 0; i < 5; i++) wClouds.push({ x: POND_X + f.x + (Math.random() - .5) * 16, y: f.y + (Math.random() - .5) * 10, r: 6, g: 20 + Math.random() * 16, t: 0, life: 2.2 + Math.random(), k: 0 });
+            shockFish(POND_X + f.x, f.y, 180);
+            banner.t = .7; banner.text = 'FISH!';
+        }
+        function addBubble(x, y) { if (bubs.length < 160) bubs.push({ wx: x + (Math.random() - .5) * 6, y, r: 1.4 + Math.random() * 2.4, ph: Math.random() * 6 }); }
+
+        // replaces the plain "x += cos*step" movement; applies drag / wobble / sinking when wet
+        function projMove(p, dt) {
+            const key = ('sp' in p) ? 'sp' : 'v', pel = key === 'v';
+            if (p.m === 2) {                                           // sinking slug
+                p.vy = (p.vy || 40) + (500 - 4 * (p.vy || 40)) * dt;   // gravity vs. water drag -> slow terminal speed
+                p.dx = (p.dx || 0) * Math.exp(-4 * dt);
+                p.x += p.dx * dt; p.y += p.vy * dt;
+                p.sinkT = (p.sinkT || 0) + dt; p.bt = (p.bt || 0) - dt;
+                if (p.bt <= 0) { p.bt = .15; addBubble(p.x, p.y); }
+                return;
+            }
+            if (p.m === 1) {
+                let v = p[key]; const k = pel ? 3 : 1;
+                v = v / (1 + WB_DRAG_Q * k * v * dt);                  // exact solution of dv/dt = -c v²  (stable at any dt)
+                v *= Math.exp(-WB_DRAG_L * k * dt);
+                p[key] = v;
+                const tum = 1 + 3 * (1 - v / (p.v0 || v));             // tumbles more as it slows
+                p.th = Math.max(.25, Math.min(1.45, p.th + (Math.random() - .5) * 7 * dt * tum));
+                if (v < WB_SINK_V * (pel ? .5 : 1)) {                  // out of energy: stop and sink
+                    p.m = 2; p.vy = Math.sin(p.th) * v; p.dx = p.F * Math.cos(p.th) * v; p[key] = 0; return;
+                }
+            }
+            const step = p[key] * dt;
+            p.x += p.F * Math.cos(p.th) * step; p.y += Math.sin(p.th) * step;
+        }
+
+        // returns true when the projectile is finished
+        function waterStep(p, px, py, dt) {
+            const key = ('sp' in p) ? 'sp' : 'v', pel = key === 'v';
+
+            // dock deck is solid from above
+            if (!p.m && p.x >= DOCK_X0 && p.x <= DOCK_X1 && py < -2 && p.y >= -2) { burst(p.x, -3, 5, 150, p.F); return true; }
+
+            if (!p.m) {                                                // ---- in the air: watch for the surface ----
+                if (!inPond(p.x)) return false;
+                const sy = waterSurfaceY(p.x);
+                if (p.y < sy) return false;
+                const v = p[key];
+                if (py < sy) {                                         // crossed the surface this frame
+                    const t = Math.max(0, Math.min(1, (sy - py) / ((p.y - py) || 1)));
+                    p.x = px + (p.x - px) * t; p.y = sy;
+                    const graze = Math.abs(p.th);
+                    if (graze < WB_SKIP && v > 700) {                  // shallow + fast = ricochet off the water
+                        p.th = -Math.max(.05, graze * .5); p[key] = v * .7; p.y = sy - 1;
+                        splash(p.x, 3, 6);
+                        return false;
+                    }
+                    const th2 = Math.asin(Math.min(1, Math.sin(Math.PI / 2 - graze) / WB_BEND));   // bends toward vertical
+                    p.th = Math.PI / 2 - th2 + (Math.random() - .5) * .12;
+                    p.v0 = v; p[key] = v * (pel ? .8 : .93);           // some energy goes into the splash / cavity
+                    splash(p.x, Math.max(1.6, Math.min(9, 2 + v / 600) * (pel ? .35 : 1)), pel ? 1 : 10);
+                    if (!pel) for (let i = 0; i < 6; i++) wSpray.push({ wx: p.x + (Math.random() - .5) * 8, y: 0, vx: -p.F * (30 + Math.random() * 90), vy: -(180 + Math.random() * 260), r: 1.2 + Math.random() * 1.6, fresh: true });
+                    for (let i = 0; i < 4; i++) addBubble(p.x, 4 + Math.random() * 20);
+                } else p.v0 = p.v0 || v;                               // muzzle was already underwater
+                p.m = 1;
+                shockFish(p.x, p.y, 140);                              // the pressure wave scares nearby fish
+                return false;
+            }
+
+            // ---- underwater ----
+            if (p.m === 1) {
+                if (wTrails.length < 220) wTrails.push({ x0: px, y0: py, x1: p.x, y1: p.y, t: 0 });
+                p.bd = (p.bd || 0) + Math.hypot(p.x - px, p.y - py);
+                while (p.bd > 16) { p.bd -= 16; addBubble(p.x, p.y); }
+                if (p[key] > 350) {                                    // fish hits (segment vs circle, so fast bullets can't tunnel)
+                    for (const f of fish) {
+                        if (f.dead) continue;
+                        const fx = POND_X + f.x, r = 14 * f.s, dx = p.x - px, dy = p.y - py, l2 = dx * dx + dy * dy || 1;
+                        let t = ((fx - px) * dx + (f.y - py) * dy) / l2; t = Math.max(0, Math.min(1, t));
+                        if ((px + dx * t - fx) ** 2 + (py + dy * t - f.y) ** 2 < r * r) { killFish(f, p); p[key] *= .55; break; }
+                    }
+                }
+            }
+            if (p.y >= pondDepth(p.x - POND_X)) {                      // hit the pond floor / bank
+                wClouds.push({ x: p.x, y: p.y - 2, r: 5, g: 14, t: 0, life: 1, k: 1 });
+                for (let i = 0; i < 3; i++) addBubble(p.x, p.y - 3);
+                return true;
+            }
+            return (p.sinkT || 0) > 8;
+        }
+
+        function waterFXTick(dt) {
+            for (let i = wTrails.length - 1; i >= 0; i--) { wTrails[i].t += dt; if (wTrails[i].t > .8) wTrails.splice(i, 1); }
+            for (let i = wClouds.length - 1; i >= 0; i--) {
+                const c = wClouds[i]; c.t += dt; c.r += c.g * dt; c.g *= Math.exp(-1.5 * dt); c.y -= 6 * dt;
+                if (c.t > c.life) wClouds.splice(i, 1);
+            }
+        }
+        function drawWaterFX(gy) {
+            if (!wTrails.length && !wClouds.length) return;
+            const sx = W / 2 + POND_X - P.x, top = gy + 4;
+            if (Math.abs(sx - W / 2) > W / 2 + POND_RX + 100) return;
+            ctx.save(); waterShape(sx, top); ctx.clip(); ctx.lineCap = 'round';
+            for (const c of wClouds) {                                 // blood / silt clouds
+                const k = c.t / c.life; ctx.globalAlpha = (1 - k) * .5;
+                ctx.fillStyle = c.k ? 'rgb(170,150,110)' : 'rgb(140,15,25)';
+                ctx.beginPath(); ctx.arc(sx + c.x - POND_X, top + c.y, c.r, 0, 7); ctx.fill();
+            }
+            for (const s of wTrails) {                                 // cavity trail
+                const k = s.t / .8, X = x => sx + x - POND_X;
+                ctx.globalAlpha = (1 - k) * .55; ctx.strokeStyle = 'rgb(235,245,250)'; ctx.lineWidth = 5 * (1 - k * .5);
+                ctx.beginPath(); ctx.moveTo(X(s.x0), top + s.y0); ctx.lineTo(X(s.x1), top + s.y1); ctx.stroke();
+                ctx.globalAlpha = (1 - k) * .4; ctx.strokeStyle = '#111'; ctx.lineWidth = 1; ctx.setLineDash([3, 5]);
+                ctx.beginPath(); ctx.moveTo(X(s.x0), top + s.y0); ctx.lineTo(X(s.x1), top + s.y1); ctx.stroke(); ctx.setLineDash([]);
+            }
+            ctx.restore();
+        }
+
         function frame(now) {
 
 
@@ -8751,7 +8896,7 @@
             let dt = dt0;
             if (hitstop > 0) { hitstop -= dt0; dt = 0 }
 
-            update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); sgTick(dt); sgGroundTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); brainTick(dt); gibTick(dt); boneTick(dt); weatherTick(dt); horseTick(dt); birdTick(dt); dayTick(dt0); fireflyTick(dt0);
+            update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); sgTick(dt); sgGroundTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); waterFXTick(dt); brainTick(dt); gibTick(dt); boneTick(dt); weatherTick(dt); horseTick(dt); birdTick(dt); dayTick(dt0); fireflyTick(dt0);
             shake = Math.max(0, shake - dt0 * 60);
             ctx.save();
             if (shake > .3) ctx.translate((Math.random() - .5) * shake * 1.6, (Math.random() - .5) * shake * 1.6);
@@ -8778,6 +8923,7 @@
             drawKnives(gy);
             drawShots(gy);
             drawPellets(gy);
+            drawWaterFX(gy);
             drawBirds(gy);
             drawHorse(gy);
             beginSwimDraw(gy);
