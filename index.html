@@ -703,7 +703,7 @@
         }
         function respawn(n) {
             const side = Math.random() < .5 ? -1 : 1, x = P.x + side * (W / 2 + 150 + Math.random() * 250);
-            Object.assign(n, { dbl: 0, dbK: 0, hsDead: 0, hsT: 0, veins: null, int: null, gut: 0, headThud: 0, gutDead: false, gutK: 0, gutPop: 0, gutCut: 0, fkSnk: 0, fk: null, fkT: 0, fkK: 0, fkPend: false, stab: 0, kneelK: 0, fst: 0, fallT: 0, fallK: 0, thud: 0, x, home: x, goal: x, vx: 0, z: 0, vz: 0, hp: n.maxhp, hurt: 0, down: 0, rot: 0, dying: 0, dead: 0, bar: 0, tumble: 0, wait: 1.5, face: -side, fid: 0, fidK: 0, headCut: 0, headK: 0, cord: null, brainOut: 0 });
+            Object.assign(n, { hCrack: 0, hCrackT: 0, headHits: 0, hsPart: 0, hcDrip: 0, dbl: 0, dbK: 0, hsDead: 0, hsT: 0, veins: null, int: null, gut: 0, headThud: 0, gutDead: false, gutK: 0, gutPop: 0, gutCut: 0, fkSnk: 0, fk: null, fkT: 0, fkK: 0, fkPend: false, stab: 0, kneelK: 0, fst: 0, fallT: 0, fallK: 0, thud: 0, x, home: x, goal: x, vx: 0, z: 0, vz: 0, hp: n.maxhp, hurt: 0, down: 0, rot: 0, dying: 0, dead: 0, bar: 0, tumble: 0, wait: 1.5, face: -side, fid: 0, fidK: 0, headCut: 0, headK: 0, cord: null, brainOut: 0 });
         }
         function killBurst(n) {
             const S = CSc();
@@ -1594,6 +1594,15 @@
             n.gutK = (n.gutK || 0) + ((n.gutDead ? 1 : 0) - (n.gutK || 0)) * Math.min(1, dt * 3.2);
             n.headK = (n.headK || 0) + ((n.headCut ? 1 : 0) - (n.headK || 0)) * Math.min(1, dt * 6);
             if (n.cord && dt > 0) stepCord(n, dt);
+            if (n.hCrack && !n.hsDead && n.dying <= 0) {
+                n.hCrackT = (n.hCrackT || 0) + dt;
+                n.hcDrip = (n.hcDrip || 0) - dt;
+                if (n.hcDrip <= 0) {
+                    n.hcDrip = .08 + Math.random() * .1;
+                    const hw = headWorld(n), S_ = CSc();
+                    blood.push({ x: hw[0] - n.face * 8 * S_ + (Math.random() - .5) * 8, y: hw[1] - 8 * S_, vx: (Math.random() - .5) * 30, vy: 10 + Math.random() * 30, r: 1.4 + Math.random() * 1.6, t: 0 });
+                }
+            }
             if (n.veins && dt > 0) stepVeins(n, dt);
             if (n.gutDead) {
                 n.fallK = n.gutK; n.vx = 0; n.gutT = (n.gutT || 0) + dt;
@@ -2604,6 +2613,8 @@
                     ctx.restore();
                 }
                 ctx.restore();
+            } else if (P.hsDead && P.hsPart) {
+                drawHeadRemnant(hd, F, l, P, now);
             } else if (P.hsDead) {
                 ctx.fillStyle = '#7a0b11'; ctx.strokeStyle = '#111'; ctx.lineWidth = 3;
                 ctx.beginPath(); ctx.ellipse(nk[0], nk[1] - 1, 8, 5, l, 0, 7); ctx.fill(); ctx.stroke();
@@ -2620,6 +2631,7 @@
                     ctx.beginPath(); ctx.moveTo(hd[0] + F * 7, hd[1] + 5); ctx.lineTo(hd[0] + F * 13, hd[1] + 5); ctx.stroke()
                 }
                 if (P.female) femaleHairFront(hd, F);
+                if (P.hCrack > 0) drawHeadCrack(hd, F, P, now);
             }
             if (P === PL && P.sm) drawSmokeProps(F, hd, S, now);
             if (cb && cb.sw > .02) { if (cb.st.line !== undefined) punchLines(P.fistInfo[cb.st.line], cb.sw); else swoosh(sh[0], sh[1], F, cb.st, cb.sw) }
@@ -4089,7 +4101,12 @@
             return { x: xe, y, head: !down && Math.abs(y - hy) < 26 * S, d: Math.abs(xe - px) };
         }
         function gunHit(b, e, h, S) {
-            const F = b.F, dmg = h.head ? GUN_HEAD_DMG : GUN_BODY_DMG;
+            const F = b.F;
+            // 2nd headshot on an already-cracked skull: blow most of the head off
+            if (h.head && e.hCrack && !e.hsDead) { headBlast(e, F); return }
+            let dmg = h.head ? GUN_HEAD_DMG : GUN_BODY_DMG;
+            const firstHead = h.head && !e.hCrack;
+            if (firstHead) dmg = Math.max(0, Math.min(dmg, e.hp - 1));   // the 1st headshot never kills, it only cracks the skull
             e.hp -= dmg; e.bar = 2.5; e.kdir = F; e.face = -F; e.hurt = Math.max(e.hurt, .3); e.vx = F * (h.head ? 220 : 130); e.wait = 1; e.fid = 0;
             combo.n++; combo.dmg += dmg; combo.t = 1.8; combo.pop = 1.3;
             burst(h.x, h.y, h.head ? 20 : 12, 260, F);
@@ -4097,7 +4114,8 @@
             spray(h.x, h.y, 10, 200, 0);
             impacts.push({ x: h.x, y: h.y, t: 0, life: .18, s: h.head ? 80 : 55, seed: Math.random() * 50 });
             hitstop = Math.max(hitstop, h.head ? .06 : .035); shake = Math.max(shake, h.head ? 7 : 4);
-            if (e.hp <= 0) { e.hp = 0; e.dying = .5; banner.t = 1.1; banner.text = 'K.O.!'; if (P.grabbed === e) P.grabbed = null }
+            if (firstHead) headCrack(e, F);
+            else if (e.hp <= 0) { e.hp = 0; e.dying = .5; banner.t = 1.1; banner.text = 'K.O.!'; if (P.grabbed === e) P.grabbed = null }
             else if (h.head) { banner.t = .8; banner.text = 'HEADSHOT!' }
         }
         function gunTick(dt) {
@@ -4718,6 +4736,140 @@
             streaks.push({ x0: e.x + F * 20, x1: e.x + F * 220, off: 0, dy: 9, w: 14, live: false, t: .5, seed: Math.random() * 100 });
             hitstop = Math.max(hitstop, .12); shake = Math.max(shake, 15);
             banner.t = 1.2; banner.text = 'HEAD SHATTERED!';
+        }
+
+        // ================= REVOLVER HEADSHOTS: CRACK (1st) + BLOWN-OPEN SKULL (2nd) =================
+        function headCrack(e, F) {
+            const S = CSc(), hw = headWorld(e);
+            e.hCrack = 1; e.hCrackT = 0; e.headHits = 1;
+            e.hurt = Math.max(e.hurt, .6); e.vx = F * 260; e.hcDrip = 0;
+            spray(hw[0] + F * 6, hw[1] - 6 * S, 34, 520, F);        // exit spray out the back of the skull
+            spray(hw[0], hw[1], 14, 300, -F);
+            burst(hw[0], hw[1], 16, 300, F);
+            for (let i = 0; i < 4 && brainBits.length < 140; i++) brainBits.push({   // a few chunks of brain thrown out
+                x: hw[0] + (Math.random() - .5) * 16 * S, y: Math.min(-8, hw[1]) - Math.random() * 8 * S,
+                vx: F * (120 + Math.random() * 260) + (Math.random() - .5) * 120, vy: -(120 + Math.random() * 220),
+                r: (2.5 + Math.random() * 3) * S, rot: Math.random() * 6, vr: (Math.random() - .5) * 14,
+                k: Math.random() < .6 ? 0 : 1, landed: false, bounced: 0, t: 0
+            });
+            impacts.push({ x: hw[0], y: hw[1], t: 0, life: .26, s: 110, seed: Math.random() * 50 });
+            hitstop = Math.max(hitstop, .09); shake = Math.max(shake, 9);
+            banner.t = 1; banner.text = 'SKULL CRACKED!';
+        }
+
+        function headBlast(e, F) {
+            const S = CSc(), hw = headWorld(e);
+            e.hp = 0; e.dying = 9; e.hsDead = 1; e.hsPart = 1; e.hsT = 0; e.bar = 0; e.hurt = 0;
+            e.kdir = F; e.face = -F; e.wait = 1; e.fid = 0; e.vx = F * 320; e.stab = 0; e.kneelK = 0; e.brainOut = 1;
+            for (let i = knives.length - 1; i >= 0; i--) if (knives[i].st === e) knives.splice(i, 1);
+            if (P.grabbed === e) P.grabbed = null;
+            combo.n++; combo.dmg += 60; combo.t = 2; combo.pop = 1.4;
+
+            // skull shards
+            for (let i = 0; i < 6 && gibs.length < 60; i++) gibs.push({
+                k: 0, x: hw[0] + (Math.random() - .5) * 24 * S, y: Math.min(-8, hw[1] + (Math.random() - .5) * 24 * S),
+                vx: F * (240 + Math.random() * 600) + (Math.random() - .5) * 300, vy: -(120 + Math.random() * 520),
+                rot: Math.random() * 6, vr: (Math.random() - .5) * 26, s: (8 + Math.random() * 9) * S, seed: Math.random() * 100, bn: 0, landed: false, t: 0, bl: 0
+            });
+            if (e.hat) gibs.push({ k: 2, x: hw[0], y: hw[1] - 22 * S, vx: -F * 60 + (Math.random() - .5) * 200, vy: -(480 + Math.random() * 200), rot: 0, vr: (Math.random() - .5) * 14, s: 20 * S, seed: 2, bn: 0, landed: false, t: 0, bl: 0 });
+
+            // brain scattered out of the back of the head
+            for (let i = 0; i < 28 && brainBits.length < 140; i++) brainBits.push({
+                x: hw[0] + (Math.random() - .5) * 30 * S, y: Math.min(-6, hw[1]) - Math.random() * 14 * S,
+                vx: F * (100 + Math.random() * 560) + (Math.random() - .5) * 320, vy: -(100 + Math.random() * 480),
+                r: (3.5 + Math.random() * 6) * S, rot: Math.random() * 6, vr: (Math.random() - .5) * 18,
+                k: Math.random() < .5 ? 0 : Math.random() < .6 ? 1 : 2, landed: false, bounced: 0, t: 0
+            });
+
+            // torn neck veins (reuses the shotgun-headshot rope physics)
+            e.veins = [];
+            for (let i = 0; i < 3; i++) {
+                const lx = (i - 1) * 3 + (Math.random() - .5) * 2, N = 7 + (Math.random() * 5 | 0), A = neckAttach(e, lx);
+                const vx = F * (30 + Math.random() * 120) * (Math.random() < .3 ? -1 : 1), vy = 20 + Math.random() * 100;
+                e.veins.push({
+                    lx, rest: (5.5 + Math.random() * 3) * S, w: 2.4 + Math.random() * 1.6, col: i % 2 ? '#b3141c' : '#8c0d14',
+                    p: Array.from({ length: N }, (_, j) => ({ x: A[0] + F * j * 1.5, y: A[1] - j, ox: A[0] - vx / 60, oy: A[1] - vy / 60 }))
+                });
+            }
+
+            spray(hw[0], hw[1], 70, 720, F); spray(hw[0], hw[1], 30, 480, -F); spray(hw[0], hw[1], 24, 320, 0);
+            burst(hw[0], hw[1], 44, 500, F); burst(hw[0], hw[1], 16, 280, -F);
+            impacts.push({ x: hw[0], y: hw[1], t: 0, life: .35, s: 180, seed: Math.random() * 50 });
+            streaks.push({ x0: e.x + F * 20, x1: e.x + F * 200, off: 0, dy: 9, w: 13, live: false, t: .5, seed: Math.random() * 100 });
+            hitstop = Math.max(hitstop, .11); shake = Math.max(shake, 14);
+            banner.t = 1.2; banner.text = 'BRAIN SPLATTER!';
+        }
+
+        // 1st shot: cracked skull with exposed brain patch (drawn on top of the head)
+        function drawHeadCrack(hd, F, e, now) {
+            const k = sm((e.hCrackT || 0) / .16), ink = e.dark ? PAPER : '#111', c0 = [-6, -9];
+            const T = p => [c0[0] + (p[0] - c0[0]) * k, c0[1] + (p[1] - c0[1]) * k];
+            ctx.save(); ctx.translate(hd[0], hd[1]); ctx.scale(F, 1); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+            ctx.beginPath(); ctx.arc(0, 0, 23.5, 0, 7); ctx.clip();
+
+            // cracks spreading over the skull
+            ctx.strokeStyle = ink; ctx.lineWidth = 1.8;
+            for (const c of [[[-8, -10], [-4, -4], [-9, 2], [-6, 9]], [[-4, -4], [3, -1], [8, 5]], [[-12, -6], [-17, -2], [-16, 5]], [[3, -1], [7, -7]], [[-9, 2], [-14, 8]]]) {
+                ctx.beginPath(); c.forEach((p, i) => { const q = T(p); i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]) }); ctx.stroke();
+            }
+
+            // exposed brain patch
+            const poly = [[-17, -8], [-12, -14], [-8, -12], [-4, -20], [2, -13], [7, -16], [6, -7], [0, -3], [-6, -7], [-11, -3]];
+            const path = sc => { ctx.beginPath(); poly.forEach((p, i) => { const q = T([c0[0] + (p[0] - c0[0]) * sc, c0[1] + (p[1] - c0[1]) * sc]); i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]) }); ctx.closePath() };
+            path(1.2); ctx.fillStyle = '#7a0b11'; ctx.fill();                       // bloody torn edge
+            path(1); ctx.fillStyle = '#e9786c'; ctx.fill(); ctx.strokeStyle = '#5a0a10'; ctx.lineWidth = 1.5; ctx.stroke();
+            ctx.save(); path(1); ctx.clip();                                         // folds (gyri)
+            for (let j = 0; j < 4; j++) {
+                const yy = -19 + j * 3.6;
+                for (const [col, off, w] of [['#a93a34', 0, 1.6], ['#f8c2b8', -1.6, .9]]) {
+                    ctx.strokeStyle = col; ctx.lineWidth = w; ctx.beginPath();
+                    for (let x = -18; x <= 8; x += 2) { const y = yy + off + Math.sin(x * .6 + j * 1.7) * 1.8; x === -18 ? ctx.moveTo(x, y) : ctx.lineTo(x, y) }
+                    ctx.stroke();
+                }
+            }
+            ctx.restore();
+
+            // entry hole + blood running down the face and the back of the head
+            const run = Math.min(12, 3 + (e.hCrackT || 0) * 6);
+            ctx.fillStyle = '#5a0a10'; ctx.strokeStyle = ink; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(19, -4, 2.6, 0, 7); ctx.fill(); ctx.stroke();
+            ctx.strokeStyle = '#8c0d14'; ctx.lineWidth = 2.6; ctx.beginPath(); ctx.moveTo(19, -3); ctx.lineTo(19.5, -3 + run); ctx.stroke();
+            ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(-14, -3); ctx.lineTo(-15, -3 + run * 1.3); ctx.stroke();
+            ctx.restore();
+        }
+
+        // 2nd shot: only the lower-front quarter of the head is left (jaw/cheek), torn open, brain strands dangling
+        function drawHeadRemnant(hd, F, lean, e, now) {
+            const col = e.dark ? '#111' : PAPER, ink = e.dark ? PAPER : '#111';
+            ctx.save(); ctx.translate(hd[0], hd[1]); ctx.rotate(lean * .6); ctx.scale(F, 1); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+            const a0 = -.24, a1 = 2.0, R = 24;
+            const sx = Math.cos(a0) * R, sy = Math.sin(a0) * R, ex = Math.cos(a1) * R, ey = Math.sin(a1) * R;
+            const rim = [[-4, 12], [-10, 5], [-1, 0], [5, -4], [12, -2], [17, -9]];   // jagged torn edge, back of jaw -> front
+
+            // remaining skull piece
+            ctx.beginPath(); ctx.arc(0, 0, R, a0, a1, false); for (const p of rim) ctx.lineTo(p[0], p[1]); ctx.closePath();
+            ctx.fillStyle = col; ctx.fill(); ctx.strokeStyle = '#111'; ctx.lineWidth = 4; ctx.stroke();
+
+            // bloody flesh band along the torn edge
+            const sh = rim.map(p => [p[0] + (p[0] < 0 ? 3 : 0), p[1] + 6]).reverse();
+            ctx.beginPath(); ctx.moveTo(ex, ey); for (const p of rim) ctx.lineTo(p[0], p[1]); ctx.lineTo(sx, sy);
+            for (const p of sh) ctx.lineTo(p[0], p[1]); ctx.closePath();
+            ctx.fillStyle = '#a8261f'; ctx.fill();
+            ctx.beginPath(); ctx.moveTo(ex, ey); for (const p of rim) ctx.lineTo(p[0], p[1]); ctx.lineTo(sx, sy);
+            ctx.strokeStyle = '#5a0a10'; ctx.lineWidth = 2; ctx.stroke();
+            ctx.fillStyle = '#e9786c';                                                    // brain residue stuck to the edge
+            for (const [x, y, r] of [[-6, 8, 3], [0, 2, 2.6], [8, -2, 2.4], [14, -6, 2]]) { ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill() }
+
+            // dangling brain strands
+            const t = e.hsT || 0, sw = Math.sin(now * 3) * 1.5;
+            for (const [x0, y0, x1, y1] of [[-10, 5, -15, 19], [-1, 1, -4, 15], [5, -4, 8, 8]]) {
+                ctx.strokeStyle = '#5a0a10'; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.quadraticCurveTo(x0 - 3 + sw, (y0 + y1) / 2, x1 + sw * .6, y1); ctx.stroke();
+                ctx.strokeStyle = '#e9786c'; ctx.lineWidth = 2.6; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.quadraticCurveTo(x0 - 3 + sw, (y0 + y1) / 2, x1 + sw * .6, y1); ctx.stroke();
+            }
+
+            // dead X eye
+            ctx.strokeStyle = ink; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(10, 4); ctx.lineTo(15, 9); ctx.moveTo(15, 4); ctx.lineTo(10, 9); ctx.stroke();
+            ctx.restore();
         }
 
         function stepVeins(e, dt) {
