@@ -5324,6 +5324,7 @@
 
         // ================= HORSE (mount, ride, jump, trample) =================
         const HR_MOUNT_R = 170, HR_SEAT = -240, HR_WALK = 215, HR_RUN = 790, HR_JUMP = 640, HR_REAR_T = 1.0;
+        const HORSE_W = 1.55, HORSE_H = 1.60;
         const HRS = { x: 1840, vx: 0, z: 0, vz: 0, face: -1, ph: 0, amp: 0, rg: 0, home: 1840, goal: 1840, wait: 2, gz: 0, gT: 3, gk: 0, rear: 0, muz: [123, -158], tied: true };
         P.mount = 0; P.mountT = 0; P.mx0 = 0; P.mk = 0;   // mount: 0 off, 1 climbing on, 2 riding, 3 climbing off
         const clamp01 = v => Math.max(0, Math.min(1, v));
@@ -5521,8 +5522,7 @@
 
             const air = h.z < 0 ? clamp01(-h.z / (40 * S)) : 0;
 
-            const HORSE_W = 1.55;
-            const HORSE_H = 1.60;
+
 
             ctx.save();
             ctx.translate(sx, gy + 4 + h.z);
@@ -6894,12 +6894,14 @@
 
 
 
-        function drawReins(F) {          // called inside drawChar (character space): thin line from his fist to the bit
+        function drawReins(F) {
             const A = P.armPts && P.armPts[0]; if (!A || !HRS.muz) return;
-            const w = A[1], mx = F * HRS.muz[0], my = HRS.muz[1] + HRS.z / CSc();
+            const w = A[1];
+            const mx = F * HRS.muz[0] * HORSE_W, my = HRS.muz[1] * HORSE_H + HRS.z / CSc();
             ctx.save(); ctx.strokeStyle = '#111'; ctx.lineWidth = 1.8; ctx.lineCap = 'round';
             ctx.beginPath(); ctx.moveTo(w[0], w[1]); ctx.quadraticCurveTo((w[0] + mx) / 2, Math.max(w[1], my) + 10, mx, my); ctx.stroke(); ctx.restore();
         }
+
 
         // ================= FINGER SPIN / HOLSTER =================
         const TAU = Math.PI * 2;
