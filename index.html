@@ -497,13 +497,15 @@
         // ================= KICKS (appended to STEPS as indices 5..8) =================
         // leg format l = [forward x, y, lift]; the foot ends at y - lift (ground = 0, up = negative)
         const KICKS = [
-            { // 5. FRONT KICK TO THE STOMACH
-                name: 'kick_front', banner: 'GUT KICK!', label: 'KICK!', gap: 200, dur: .46, wind: .12, hit: .19, hold: .08, link: 9,
-                reach: 215, dmg: 14, kb: 300, up: 0, lv: 120, pause: .06, shake: 6, fx: 16,
+            { // FRONT KICK TO THE STOMACH
+                name: 'kick_front', banner: 'GUT KICK!', label: 'KICK!', gap: 150, dur: .55, wind: .13, hit: .20, hold: .07, link: 9,
+                reach: 215, dmg: 14, kb: 480, up: 0, lv: 100, pause: .07, shake: 6, fx: 16,
                 kf0: GUARD,
-                kf1: { ...GUARD, lean: -.04, hipX: 2, hipY: 6, l0: [50, -80, 30], l1: [-40, 0, 0] },   // knee chambers up
-                kf2: { ...GUARD, lean: -.2, hipX: 6, hipY: 4, arch: -.04, hx: -4, l0: [126, -126, 30], l1: [-42, 0, 0] },   // foot lands at belly height
-                kf3: { ...GUARD, lean: -.21, hipX: 6, hipY: 4, arch: -.04, hx: -4, l0: [128, -126, 30], l1: [-42, 0, 0] },
+                // chamber: knee driven forward and up to hip height, shin hanging, support leg planted under the hips
+                kf1: { ...GUARD, lean: -.06, hipX: 0, hipY: 6, hx: -2, l0: [44, -22, 30], l1: [-16, 0, 0] },
+                // snap: leg almost fully straight, foot at belly height, hips thrust forward, torso leans back
+                kf2: { ...GUARD, a0: .6, f0: 2.2, a1: .9, f1: 1.9, lean: -.24, hipX: 10, hipY: 2, arch: -.05, hx: -5, l0: [140, -118, 28], l1: [-12, 0, 0] },
+                kf3: { ...GUARD, a0: .6, f0: 2.2, a1: .9, f1: 1.9, lean: -.25, hipX: 11, hipY: 2, arch: -.05, hx: -5, l0: [142, -118, 28], l1: [-12, 0, 0] },
                 kf4: GUARD
             }
         ];
@@ -513,8 +515,8 @@
             console.log('[pressKick called] P.gun:', P.gun, 'P.gs:', P.gs, 'P.cs:', P.cs, 'P.z:', P.z, 'P.mount:', P.mount);
             const why =
                 P.mount ? 'mounted' : P.sg ? 'shotgun' : P.sgp > 0 ? 'sgp' : P.pk > 0 ? 'parkour' :
-                P.fin > 0 ? 'finisher' : P.thw > 0 ? 'throw' : P.tt > 0 ? 'toss' : P.cs > 0 ? 'combo busy' :
-                P.stbk > 0 ? 'stab' : P.fs > 0 ? 'footstab' : P.gu > 0 ? 'gut' : P.yk > 0 ? 'yank' : P.z < 0 ? 'airborne' : '';
+                    P.fin > 0 ? 'finisher' : P.thw > 0 ? 'throw' : P.tt > 0 ? 'toss' : P.cs > 0 ? 'combo busy' :
+                        P.stbk > 0 ? 'stab' : P.fs > 0 ? 'footstab' : P.gu > 0 ? 'gut' : P.yk > 0 ? 'yank' : P.z < 0 ? 'airborne' : '';
             if (why) { banner.t = .6; banner.text = 'KICK BLOCKED: ' + why; console.warn('KICK BLOCKED:', why); return }
             if (P.gun || P.gs === 2) { banner.t = .6; banner.text = 'HOLSTER GUN FIRST (G)'; console.warn('HOLSTER GUN FIRST (G)'); return }
             const n = 5;   // only the front kick
@@ -749,7 +751,8 @@
                 const dmg = Math.round(st.dmg * mul);
                 e.hp -= dmg; e.bar = 2.5; e.kdir = F; e.face = -F; e.hurt = Math.max(e.hurt, .38); e.vx = F * (st.name === 'grab' ? 120 : st.kb); e.wait = 1; e.fid = 0;
                 if (st.up) { if (e.z >= 0) e.z = -1; e.vz = st.up }
-                if (st.kb >= 350 || st.up < -300) e.tumble = 1;
+                if ((st.kb >= 350 && st.name !== 'kick_front') || st.up < -300) e.tumble = 1;
+                if (st.name === 'kick_front') e.hurt = Math.max(e.hurt, .5);
                 combo.n++; combo.dmg += dmg; combo.t = 1.8; combo.pop = 1.3;
                 const isPunch = st.name.startsWith('punch'), isGrab = st.name === 'grab';
                 const face = isPunch || isGrab || st.head;
@@ -825,7 +828,7 @@
             if (P.cs >= 5 && P.grabbed) { P.grabbed = null; }
             const st = STEPS[P.cs - 1]; P.ct += dt;
             if (!P.gt) P.gt = 0; P.gt += dt;
-            if (P.ct >= st.wind * 0.7 && P.ct <= st.hit + st.hold * 0.8) {
+            if (P.cs < 5 && P.ct >= st.wind * 0.7 && P.ct <= st.hit + st.hold * 0.8) {
                 if (P.gt >= 0.03) {
                     P.gt = 0;
                     const p = comboPose(P);
@@ -1728,7 +1731,9 @@
             if (CUR && CUR.pk > 0) { nx = uy0 * F; ny = -ux0 * F; }   // knee always on the front of the thigh
             else if (nx * F < 0) { nx = -nx; ny = -ny }
             if (footFlat > .5 && ny > 0) { nx = -nx; ny = -ny }   // stomping leg: knee points up, shin comes down onto the head
-            const hf = 1 - .7 * (1 - Rf()) * (1 - (CUR.kneelK || 0)), hs = h * (hf + (.55 - hf) * (CUR.mk || 0)), kx = mx + nx * hs, ky = my + ny * hs;
+            const kickLeg2 = CUR === PL && CUR.cs === 5 && F * (fx - hx) > 30;   // the leg that is kicking
+            if (kickLeg2 && ny > 0) { nx = -nx; ny = -ny }                       // knee always ABOVE the hip→foot line
+            const hf = kickLeg2 ? 1 : 1 - .7 * (1 - Rf()) * (1 - (CUR.kneelK || 0)), hs = h * (hf + (.55 - hf) * (CUR.mk || 0)), kx = mx + nx * hs, ky = my + ny * hs;
             ctx.strokeStyle = '#111'; ctx.lineWidth = 7; ctx.lineCap = 'round';
             ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(kx, ky); ctx.stroke();
             const sx = ax - kx, sy = ay - ky, sl = Math.hypot(sx, sy), ux = sx / sl, uy = sy / sl, px = -uy, py = ux;
