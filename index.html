@@ -1505,6 +1505,20 @@
         }
 
 
+        // NPCs can't enter the pond: they stop at the bank, and are pushed out if they end up inside
+        function pondGuard(n, px0) {
+            const L = POND_X - POND_RX - 30, R = POND_X + POND_RX + 30;
+            if (n.x <= L || n.x >= R) return;                                   // outside the pond, nothing to do
+            let side;
+            if (px0 <= L) side = -1;                                            // came from the left bank
+            else if (px0 >= R) side = 1;                                        // came from the right bank
+            else side = n.x < POND_X ? -1 : 1;                                  // already inside (spawned / knocked in): nearest bank
+            n.x = side < 0 ? L : R;
+            if (n.vx * side > 0) n.vx = 0;                                      // kill momentum into the water
+            if (n.crawl) n.crDir = -side;                                       // a crawling NPC turns back
+            n.home = n.x - side * 200; n.goal = n.home; n.wait = 2 + Math.random() * 2;   // wander somewhere else
+        }
+
         // ---- enemies ----
         function updateEnemy(n, dt) {
             if (n.fk || n.fkPend) {
@@ -1620,13 +1634,15 @@
             }
             if (dir) n.vx += (dir * (n.legHurt ? 52 : 170) - n.vx) * Math.min(1, dt * 5);
             else if (grounded) { const f = (stunned ? 1800 : 1400) * dt; n.vx = Math.abs(n.vx) <= f ? 0 : n.vx - Math.sign(n.vx) * f }
+            const px0 = n.x;
             n.x += n.vx * dt;
+            pondGuard(n, px0);
             if (n.fkT > 0) { n.x = n.fkX; n.vx = 0; }
             n.fkK = (n.fkK || 0) + (((n.fkT > 0 && n.fk) ? 1 : 0) - (n.fkK || 0)) * Math.min(1, dt * 6);
             n.gutK = (n.gutK || 0) + ((n.gutDead ? 1 : 0) - (n.gutK || 0)) * Math.min(1, dt * 3.2);
             n.headK = (n.headK || 0) + ((n.headCut ? 1 : 0) - (n.headK || 0)) * Math.min(1, dt * 6);
             if (n.cord && dt > 0) stepCord(n, dt);
-            legTick(n, dt);
+            legTick(n, dt); pondGuard(n, px0);
             n.hpK = (n.hpK || 0) + (((n.hCrack && !n.hsDead && n.dying <= 0 && n.down <= 0) ? 1 : 0) - (n.hpK || 0)) * Math.min(1, dt * 9);
             if (n.hCrack && !n.hsDead && n.dying <= 0) {
                 n.hCrackT = (n.hCrackT || 0) + dt;
