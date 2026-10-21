@@ -4638,6 +4638,51 @@
             const w = P.sgBreechW || [P.x, -150], F = P.face;
             for (let i = 0; i < n; i++) shells.push({ x: w[0], y: w[1], vx: -F * (40 + Math.random() * 90) + (Math.random() - .5) * 60, vy: -(120 + Math.random() * 140), rot: Math.random() * 6, vr: (Math.random() - .5) * 16, landed: false, t: 0, sg: 1 });
         }
+
+
+
+        function bodyBlast(e, F, h, d) {
+            const S = CSc(), close = d < 230;
+            const dmg = close ? 70 : Math.round(40 * Math.max(.5, 1 - d / 450));
+            e.hp -= dmg; e.bar = 2.5; e.kdir = F; e.face = -F; e.wait = 1; e.fid = 0;
+            e.hurt = Math.max(e.hurt, .5); e.vx = F * (close ? 620 : 380);
+            combo.n++; combo.dmg += dmg; combo.t = 2; combo.pop = 1.4;
+
+            // blood, bone and flesh
+            spray(h.x, h.y, 70, 720, F); spray(h.x, h.y, 40, 500, -F); spray(h.x, h.y, 24, 320, 0);
+            burst(h.x, h.y, 40, 500, F); burst(h.x, h.y, 16, 280, -F);
+            for (let i = 0; i < 9; i++) boneSplinter(h.x, h.y, F, 520);           // rib fragments
+            for (let i = 0; i < 12 && brainBits.length < 140; i++) brainBits.push({   // flesh chunks
+                x: h.x + (Math.random() - .5) * 20 * S, y: h.y + (Math.random() - .5) * 20 * S,
+                vx: F * (80 + Math.random() * 480) + (Math.random() - .5) * 300, vy: -(100 + Math.random() * 380),
+                r: (3.5 + Math.random() * 5) * S, rot: Math.random() * 6, vr: (Math.random() - .5) * 16,
+                k: Math.random() < .5 ? 0 : 2, landed: false, bounced: 0, t: 0
+            });
+            impacts.push({ x: h.x, y: h.y, t: 0, life: .3, s: 150, seed: Math.random() * 50 });
+            streaks.push({ x0: e.x + F * 20, x1: e.x + F * 190, off: 0, dy: 9, w: 13, live: false, t: .5, seed: Math.random() * 100 });
+            hitstop = Math.max(hitstop, close ? .12 : .08); shake = Math.max(shake, close ? 14 : 10);
+
+            if (close) {                                   // torso blown open: intestines spill, he drops
+                for (let i = knives.length - 1; i >= 0; i--) if (knives[i].st === e) knives.splice(i, 1);
+                e.hp = 0; e.dying = 7; e.gutDead = true; e.gutT = 0; e.gutPop = 1; e.gutCut = 1;
+                e.stab = 0; e.kneelK = 0; if (P.grabbed === e) P.grabbed = null;
+                const A = intAttach(e), N = 26;
+                e.int = {
+                    t: 0, p: Array.from({ length: N }, () => {
+                        const vx = F * (60 + Math.random() * 200), vy = 60 + Math.random() * 140;
+                        return { x: A[0], y: A[1], ox: A[0] - vx / 60, oy: A[1] - vy / 60 };
+                    })
+                };
+                banner.t = 1.2; banner.text = 'TORSO BLOWN OPEN!';
+            } else if (e.hp <= 0) {
+                e.hp = 0; e.dying = .5; banner.t = 1.1; banner.text = 'K.O.!';
+                if (P.grabbed === e) P.grabbed = null;
+            } else {
+                if (e.z >= 0) e.z = -1; e.vz = -300; e.tumble = 1;
+                banner.t = 1; banner.text = 'CHEST BLASTED!';
+            }
+        }
+
         function pelletHit(p, e, h) {
             if (h.head && !(e.dying > 0) && !(e.dead > 0)) { headShatter(e, p.F, Math.abs(h.x - p.x0)); return }
 
@@ -4650,7 +4695,15 @@
                     return;
                 }
             }
+
             const F = p.F, d = Math.abs(h.x - p.x0), fall = Math.max(.3, 1 - d / 700);
+
+            // torso blast: one gore event per shot, not per pellet
+            if (!h.head && h.y < -150 * CSc() && !(e.dying > 0)) {
+                if (e.bodyBlast === p.id) return;
+                const dd = Math.abs(h.x - p.x0);
+                if (dd < 450) { e.bodyBlast = p.id; bodyBlast(e, p.F, h, dd); return; }
+            }
             const dmg = Math.max(1, Math.round((h.head ? SG_HEAD : SG_BODY) * fall));
             e.hp -= dmg; e.bar = 2.5; e.kdir = F; e.face = -F; e.wait = 1; e.fid = 0; e.hurt = Math.max(e.hurt, .35);
             combo.dmg += dmg;
