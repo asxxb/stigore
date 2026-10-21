@@ -363,6 +363,10 @@
         function stretchEnv(u) { return u < .25 ? sm(u / .25) : u < .75 ? 1 : 1 - sm((u - .75) / .25) }
 
         function update(dt) {
+            if (typeof updateSwim === 'function' && updateSwim()) {
+                P.vz = 0; P.z = 0;
+                return;
+            }
             if (P.pk > 0) {
                 parkourTick(dt);
                 if (P.atk > 0) P.atk -= dt;
@@ -1422,6 +1426,7 @@
 
 
         function comboPose(Q) {
+            if (Q === PL && swim.on) { const sp = swimPose(); if (sp) return sp }
             if (Q === PL && Q.stbk > 0) return stabPose(Q);
             if (Q === PL && Q.gu > 0) return guPose(Q);
             if (Q === PL && Q.yk > 0) return ykPose(Q);
@@ -7868,7 +7873,7 @@
         // POND + DOCK (centre of the forest)
         // =====================================================================
         const POND_X = 5250;                 // world x of the pond centre
-        const POND_RX = 700, POND_RY_MAX = 230;   // half-width / max depth of the water (side-view cross-section)
+        const POND_RX = 700, POND_RY_MAX = 520;   // half-width / max depth of the water (side-view cross-section)
         let POND_RY = POND_RY_MAX;                // actual depth this frame (shrinks if the screen has no room below the ground line)
         const DOCK_X0 = POND_X - POND_RX - 130, DOCK_X1 = POND_X + 150;   // dock starts on the left bank and reaches into the water
         const F_POND_WASH = 'rgba(100,140,160,.40)', F_WOOD = 'rgba(150,120,85,.6)';
@@ -7901,6 +7906,7 @@
 
         // world x -> push the water down there and throw some droplets
         function splash(wx, power, drops) {
+            scareFish(wx, power);
             const t = (wx - (POND_X - POND_RX)) / WSP, c = Math.round(t);
             for (let k = -3; k <= 3; k++) {
                 const i = c + k;
@@ -7943,6 +7949,315 @@
             }
         }
 
+        // ---------- swimming / wading (SWIM v2) ----------
+        const PL_H = () => 277 * CSc();
+        const swim = {
+            on: false, cy: 0, vy: 0, vx: 0, tilt: 0, h: 0, pw: 0, sp: 0, kp: 0, ef: 0, out: 0, breath: 1,
+            df: 1, tf: 1, turn: 0, lock: 0, cd: 0, bt: 0, st: 0, wk: 0, dPrev: false, uPrev: false, drawing: false,
+            y: 0, in: false, sub: 0, ext: 0, th: 0, headY: 0, pHY: 0, gnd: false, dive: 0
+        };
+        const swimHooks = { start() { }, end() { }, drown() { } };
+        const swimKeys = {}, bubs = [];
+        addEventListener('keydown', e => swimKeys[e.code] = true);
+        addEventListener('keyup', e => swimKeys[e.code] = false);
+        let sLast = 0, swimSx = 0, swimTop = 0;
+        const cl01 = v => Math.max(0, Math.min(1, v));
+
+        function floorDepth(wx) {
+            const rx = wx - POND_X, rel = Math.min(1, Math.abs(rx) / POND_RX);
+            const bowl = POND_RY * Math.sqrt(Math.max(0, 1 - rel * rel));
+            const bed = POND_RY * (.8 + .04 * Math.sin(rx * .02) + .03 * Math.sin(rx * .07));
+            return Math.min(bowl, bed);
+        }
+        function waterShape(sx, top) {
+            ctx.beginPath(); ctx.moveTo(sx - POND_RX, top);
+            for (let i = 0; i <= WN; i++) ctx.lineTo(sx - POND_RX + i * WSP, top + wh[i]);
+            ctx.ellipse(sx, top, POND_RX, POND_RY, 0, 0, Math.PI); ctx.closePath();
+        }
+
+        // body geometry: th = body angle from upright (0 = standing, PI/2 = flat), ext = half vertical extent,
+        // sub = how submerged the body is (0..1), headY = head depth below the surface
+        function swimGeom(H0, S) {
+            const s = swim, th = s.tilt * (Math.PI / 2 + s.h), c = Math.abs(Math.cos(th));
+            s.th = th; s.ext = H0 / 2 * c + 14 * S * (1 - c);
+            s.sub = cl01((s.cy + s.ext) / (2 * s.ext));
+            s.headY = s.cy - H0 / 2 * Math.cos(th);
+        }
+        function swimExit(out, vx) {
+            const s = swim;
+            s.out = out; s.on = false; s.cd = .6; s.tilt = 0; s.pw = 0; s.turn = 0; s.gnd = false;
+            P.vx = vx * .6; P.lean = 0; P.amp = 0; splash(P.x, 4, 6); swimHooks.end();
+        }
+
+        function updateSwim() {
+            const now = performance.now() / 1000, dt = Math.min(.05, sLast ? now - sLast : 1 / 60); sLast = now;
+            const S = CSc(), H0 = PL_H(), k = swimKeys, sw = swim;
+            for (let i = bubs.length - 1; i >= 0; i--) {                       // exhaled bubbles
+                const b = bubs[i]; b.y -= 55 * dt; b.wx += Math.sin(now * 3 + b.ph) * 8 * dt;
+                if (b.y <= 0) { const c = Math.round((b.wx - (POND_X - POND_RX)) / WSP); if (c > 1 && c < WN - 1) wv[c] += .5; bubs.splice(i, 1); }
+            }
+            sw.out = Math.max(0, sw.out - 320 * dt); sw.cd = Math.max(0, sw.cd - dt);
+            const L = k.ArrowLeft || k.KeyA, R = k.ArrowRight || k.KeyD, U = k.ArrowUp || k.KeyW || k.Space, D = k.ArrowDown || k.KeyS;
+            const dPress = D && !sw.dPrev, uPress = U && !sw.uPrev; sw.dPrev = !!D; sw.uPrev = !!U;
+            const onDock = P.x >= DOCK_X0 && P.x <= DOCK_X1;
+
+            // ---------- entry: starts UPRIGHT with the run's momentum, then sinks / pitches over ----------
+            if (!sw.on) {
+                if (sw.cd <= 0 && P.z >= 0 && inPond(P.x, -20) && (!onDock || dPress)) {
+                    Object.assign(sw, { on: true, lock: 0, cy: -H0 / 2, vy: dPress ? 420 : 40, vx: P.vx * .8, tilt: 0, h: 0, pw: 0, ef: 0, turn: 0, df: P.face || 1, in: false, gnd: false, dive: dPress ? 1 : 0, wk: 0, pHY: -99 });
+                    if (P.skid) endSkid(); swimHooks.start();
+                } else return false;
+            }
+            P.jbuf = 0; P.abuf = 0;
+            const locked = sw.lock > 0; sw.lock = Math.max(0, sw.lock - dt);
+            const ax = locked ? 0 : (R ? 1 : 0) - (L ? 1 : 0), d = floorDepth(P.x);
+            swimGeom(H0, S);
+
+            // ---------- facing / smooth turn (body rolls through a narrow edge-on frame) ----------
+            if (ax && (sw.gnd || sw.tilt <= .5)) sw.df = ax;
+            else if (ax && ax !== sw.df && !sw.turn) { sw.turn = .0001; sw.tf = ax }
+            if (sw.turn > 0) { sw.turn += dt; if (sw.turn >= .14 && sw.df !== sw.tf) sw.df = sw.tf; if (sw.turn >= .28) sw.turn = 0 }
+            P.face = sw.df;
+
+            // ---------- posture: upright -> horizontal once submerged & deep enough; stands back up in shallows ----------
+            let tt = 0;
+            if (d >= H0 * .9) tt = sw.sub < .3 ? (sw.dive ? .5 : .1) : ((ax || U || D || Math.abs(sw.vx) > 30) ? 1 : .8);
+            if (sw.sub > .3) sw.dive = 0;
+            sw.tilt += (tt - sw.tilt) * Math.min(1, dt * (tt > sw.tilt ? 2.6 : 4));
+            const hT = sw.sub < .3 ? 0 : D ? .9 : U ? -.75 : Math.max(-.5, Math.min(.5, sw.vy * .004));
+            sw.h += (hT - sw.h) * Math.min(1, dt * 4);
+            swimGeom(H0, S);
+            const swimming = sw.tilt > .5;
+
+            // ---------- vertical: gravity, buoyancy (lung air), water drag, dive / resurface ----------
+            if (!sw.gnd) {
+                let bf = .9 + .32 * sw.breath, ay = 1100;
+                if (D && sw.sub > .3 && !locked) { bf *= .3; ay += 420 }
+                ay -= sw.sub * 1100 * bf;
+                if (U && sw.sub > .15 && !locked) ay -= 650 * Math.max(.5, sw.sub);
+                if (locked) ay = -700;
+                sw.vy += ay * dt; sw.vy *= Math.exp(-(.25 + 3.4 * sw.sub) * dt); sw.cy += sw.vy * dt;
+                swimGeom(H0, S);
+            }
+            // seabed: stand on it when upright, otherwise just don't sink through
+            const low = sw.cy + sw.ext;
+            sw.gnd = low >= d - 1.5 && sw.vy >= 0 && sw.tilt < .5;
+            if (low > d) { sw.cy = d - sw.ext; if (sw.vy > 0) sw.vy = 0; swimGeom(H0, S) }
+
+            // ---------- horizontal: thrust pulses with arm pulls, linear + quadratic drag, real momentum ----------
+            const ef0 = (swimming && sw.sub > .2 && (ax || U || D)) ? 1 : 0;
+            sw.ef += (ef0 - sw.ef) * Math.min(1, dt * 5);
+            if (sw.gnd) {                                                      // wading: slow, heavy, gradual accel
+                const spd = 150 - 85 * sw.sub;
+                sw.vx += (ax * spd - sw.vx) * Math.min(1, dt * (ax ? 3.5 : 5));
+                if (uPress && !locked) { sw.vy = -380; sw.gnd = false }       // hop off the bottom
+            } else {
+                const pulse = .55 + .9 * Math.abs(Math.cos(sw.sp - 1.73));
+                const thrust = sw.sub > .25 ? ax * (swimming ? 360 * pulse * (.6 + .4 * sw.ef) : 170) : 0;
+                sw.vx += thrust * dt;
+                const wet = sw.sub > .05 ? 1 : 0;
+                sw.vx -= sw.vx * (wet ? 1.1 : .05) * dt + Math.sign(sw.vx) * sw.vx * sw.vx * .004 * sw.sub * dt;
+            }
+            P.x += sw.vx * dt;
+            const dx1 = P.x - POND_X;
+            if (sw.gnd && Math.abs(dx1) >= POND_RX * .985) { P.x = POND_X + Math.sign(dx1) * (POND_RX + 8); swimExit(sw.cy + sw.ext, sw.vx); return false }
+            if (onDock && U && !locked && sw.cy < 14 * S && sw.vy > -400) { swimExit(H0 * .45, 0); return false }   // haul out onto the dock
+            if (!sw.gnd) { const lim = POND_RX - 14; P.x = POND_X + Math.max(-lim, Math.min(lim, P.x - POND_X)) }
+
+            // ---------- stroke / kick clocks ----------
+            const f0 = Math.floor(sw.sp / (2 * Math.PI)), f1 = Math.floor((sw.sp + Math.PI) / (2 * Math.PI));
+            sw.sp += dt * (1.6 + 5.2 * sw.ef); sw.kp += dt * (5 + 11 * sw.ef);
+            const nearSurf = sw.sub > .05 && sw.cy < sw.ext + 40 * S;
+            if (nearSurf && sw.ef > .2 && (Math.floor(sw.sp / (2 * Math.PI)) !== f0 || Math.floor((sw.sp + Math.PI) / (2 * Math.PI)) !== f1))
+                splash(P.x + sw.df * H0 * .48 * sw.tilt, 1.6 + sw.ef * 1.4, 2);          // hand slaps in
+
+            // ---------- splashes, wake, breath ----------
+            if (!sw.in && sw.sub > .04) {                                      // surface impact
+                sw.in = true; const pw = Math.min(14, 3 + Math.abs(sw.vy) / 50 + Math.abs(sw.vx) / 70);
+                splash(P.x, pw, 8 + (pw | 0));
+                for (let i = 0; i < 6; i++) bubs.push({ wx: P.x + (Math.random() - .5) * 40, y: 10 + Math.random() * 40, r: 2 + Math.random() * 2.5, ph: Math.random() * 6 });
+            } else if (sw.in && sw.sub < .01) sw.in = false;
+            if (sw.in && sw.pHY > 10 * S && sw.headY <= 10 * S && sw.vy < -80) splash(P.x + sw.df * H0 * .4 * sw.tilt, Math.min(6, 2 - sw.vy / 80), 6);   // head breaks surface
+            sw.pHY = sw.headY;
+            sw.wk -= dt;
+            if (nearSurf && Math.abs(sw.vx) > 45 && sw.wk <= 0) { splash(P.x + sw.df * H0 * .38 * sw.tilt, Math.min(3.4, Math.abs(sw.vx) * .014), 0); sw.wk = .12 }
+            const under = sw.headY > 10 * S && sw.sub > .5;
+            sw.breath = under ? Math.max(0, sw.breath - dt / 18) : Math.min(1, sw.breath + dt / 2.5);
+            if (sw.breath <= 0 && !locked) { sw.lock = 1; swimHooks.drown() }
+            if (under) {
+                sw.bt -= dt;
+                if (sw.bt <= 0 && bubs.length < 40) { bubs.push({ wx: P.x + sw.df * H0 / 2 * Math.sin(sw.th), y: sw.headY, r: 2 + Math.random() * 2.5, ph: Math.random() * 6 }); sw.bt = sw.breath < .3 ? .12 : .4 + Math.random() * .3 }
+            }
+
+            // ---------- feed the normal run/walk animation while wading, fade it out while swimming ----------
+            if (sw.gnd) {
+                const sp = Math.abs(sw.vx);
+                P.phase += sp * dt / (280 * S) * Math.PI * 2;
+                P.amp += (Math.min(1, sp / 200) - P.amp) * Math.min(1, dt * 10);
+                P.lean += (Math.max(-1, Math.min(1, sw.vx / 420)) * .4 - P.lean) * Math.min(1, dt * 6);
+                sw.st -= dt; if (sp > 10 && sw.sub < .8 && sw.st <= 0) { splash(P.x, 1.3, 0); sw.st = .3 }
+            } else { P.amp += (0 - P.amp) * Math.min(1, dt * 10); P.lean *= Math.max(0, 1 - dt * 8) }
+            sw.pw += (sm((sw.tilt - .2) / .5) - sw.pw) * Math.min(1, dt * 8);
+            sw.y = Math.max(0, sw.cy);                                         // read by the fish AI
+            return true;
+        }
+
+        // Crawl stroke + flutter kick, fed to drawChar through comboPose (blends in via pw)
+        function swimPose() {
+            const s = swim; if (!s.on || s.pw < .01) return null;
+            const T = Math.PI * 2, A0 = Math.PI * .96;
+            const arm = p => {                                                 // pull under the body, recover high over the back
+                const u = (((p / T) % 1) + 1) % 1;
+                if (u < .55) { const k = u / .55; return [A0 - k * (A0 - .35), .25 + .5 * Math.sin(Math.PI * k)] }
+                const k = (u - .55) / .45; return [.35 - k * (.35 - (A0 - T)), .25 + 1.5 * Math.sin(Math.PI * k)];
+            };
+            const mixA = (i) => {
+                const a = arm(s.sp + i * Math.PI), G = A0 - .1 + .05 * Math.sin(s.sp * .7 + i * 2);
+                return [G + wrapA(a[0] - G) * s.ef, a[1] * s.ef + .12 * (1 - s.ef)];
+            };
+            const m0 = mixA(0), m1 = mixA(1);
+            const foot = i => {
+                const q = Math.sin(s.kp + i * Math.PI), a = .4 + .6 * s.ef;
+                return [8 + (10 + 8 * s.ef) * q, -(4 + 12 * (.5 + .5 * Math.sin(s.kp + i * Math.PI - .9))) * a, 0];
+            };
+            return {
+                w: s.pw, a0: m0[0], f0: m0[1], a1: m1[0], f1: m1[1],
+                lean: .06 + .05 * Math.sin(s.sp) * s.ef, hipX: 0, hipY: 0, arch: .02, hx: 4, hy: -2,
+                l0: foot(0), l1: foot(1), st: STEPS[0], sw: 0, ik: 0
+            };
+        }
+
+        // Wrap the player draw: rotates the whole body about its centre so the waterline cuts through it
+        function beginSwimDraw(gy) {
+            const top = gy + 4, sx = W / 2 + POND_X - P.x; swimTop = top; swimSx = sx;
+            if (!swim.on) { if (swim.out > .5) { swim.drawing = true; ctx.save(); ctx.translate(0, swim.out); } return; }
+            swim.drawing = true; ctx.save();
+            const H0 = PL_H(), s = swim, wave = surfY(top, sx, W / 2) - top;
+            const bob = wave * cl01(1 - (s.cy - s.ext) / 70) * (s.sub > .01 ? 1 : 0);
+            ctx.translate(W / 2, top + s.cy + bob);
+            if (s.turn > 0) ctx.scale(Math.max(.2, Math.abs(Math.cos(Math.PI * s.turn / .28))), 1);
+            ctx.rotate(s.df * s.tilt * (Math.PI / 2 + s.h));
+            ctx.translate(0, H0 / 2); ctx.translate(-W / 2, -top);
+        }
+
+        function endSwimDraw() {
+            if (!swim.drawing) return;
+            ctx.restore(); swim.drawing = false;
+            if (!swim.on) return;
+            const s = swim, H0 = PL_H(), top = swimTop, sx = swimSx, cy = top + s.cy, now = performance.now() / 1000;
+            // water tint on the submerged part of the body
+            ctx.save(); waterShape(sx, top); ctx.clip();
+            const g = ctx.createRadialGradient(W / 2, cy, 0, W / 2, cy, H0 * .8);
+            g.addColorStop(0, 'rgba(60,110,140,.4)'); g.addColorStop(1, 'rgba(60,110,140,.06)');
+            ctx.fillStyle = g; ctx.fillRect(W / 2 - H0, cy - H0, H0 * 2, H0 * 2); ctx.restore();
+            if (s.sub > .02 && s.cy < s.ext + 60) {
+                const R = H0 * .62, v = Math.min(1, Math.abs(s.vx) / 200), hx = W / 2 + s.df * H0 * .45 * s.tilt;
+                ctx.save(); ctx.lineCap = 'round'; ctx.strokeStyle = '#111';
+                ctx.globalAlpha = .75; ctx.lineWidth = 2.2; ctx.beginPath();            // waterline drawn across the body
+                for (let x = -R; x <= R; x += 8) { const y = surfY(top, sx, W / 2 + x); x === -R ? ctx.moveTo(W / 2 + x, y) : ctx.lineTo(W / 2 + x, y) }
+                ctx.stroke();
+                if (v > .1) {                                                           // bow wave + foam trailing behind the head
+                    const Ln = 40 + 110 * v;
+                    for (let i = 0; i < 4; i++) {
+                        ctx.globalAlpha = (.55 - i * .12) * v; ctx.lineWidth = 1.7 - i * .3; ctx.beginPath();
+                        for (let j = 0; j <= 10; j++) {
+                            const x = hx - s.df * Ln * j / 10, y = surfY(top, sx, x) - 3 - i * 3 - 6 * v * Math.sin(Math.PI * j / 10) * (1 - i * .2);
+                            j ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+                        }
+                        ctx.stroke();
+                    }
+                    ctx.globalAlpha = .5 * v; ctx.lineWidth = 1.4;
+                    for (let i = 0; i < 6; i++) {
+                        const x = hx - s.df * (12 + i * Ln / 6 + 4 * Math.sin(now * 6 + i)), y = surfY(top, sx, x) - 1 - hash(i + Math.floor(now * 8)) * 4;
+                        ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - s.df * 6, y); ctx.stroke();
+                    }
+                }
+                ctx.restore();
+            }
+        }
+
+        // Breath meter: a row of bubbles that empties and turns red when low. Call after drawing the player.
+        function drawBreath(gy) {
+            if (!swim.on || swim.breath >= 1) return;
+            const n = 10, lit = Math.ceil(swim.breath * n), low = swim.breath < .3;
+            ctx.save(); ctx.lineWidth = 1.2; ctx.strokeStyle = '#111';
+            for (let i = 0; i < n; i++) {
+                const x = W / 2 + (i - (n - 1) / 2) * 16, y = gy - 40 + (low ? Math.sin(performance.now() / 80 + i) * 1.5 : 0);
+                ctx.fillStyle = i < lit ? (low ? 'rgba(200,70,60,.8)' : 'rgba(170,215,230,.85)') : 'rgba(0,0,0,.06)';
+                ctx.beginPath(); ctx.arc(x, y, 5.5, 0, 7); ctx.fill(); ctx.stroke();
+            }
+            ctx.restore();
+        }
+
+        // ---------- reactive fish ----------
+        const fish = [];
+        let fLast = 0, fPX = null, stillT = 0;
+        const clampN = (v, a, b) => Math.max(a, Math.min(b, v));
+
+        function initFish() {
+            for (let i = 0; i < 5; i++) fish.push({
+                x: (hash(i * 3.7) - .5) * POND_RX * 1.6, y: 40 + hash(i * 5.3) * 80, vx: 0, vy: 0,
+                dir: i % 2 ? -1 : 1, face: i % 2 ? -1 : 1, s: .9 + hash(i * 2.2) * .5, ph: i * 1.7,
+                fear: 0, fx: null, tx: 0, ty: 60, wt: 0
+            });
+        }
+
+        // Called from splash(): big splashes scare nearby fish.
+        function scareFish(wx, power) {
+            if (power < 1.5) return;                       // small rain drops are ignored
+            const R = power * 30, px = wx - POND_X;
+            for (const f of fish) {
+                const d = Math.hypot(f.x - px, f.y);       // splash is at the surface (y = 0)
+                if (d < R) { f.fear = Math.max(f.fear, 1 - d / R * .5); f.fx = px; }
+            }
+        }
+
+        function updateFish(now) {
+            if (!fish.length) initFish();
+            const dt = Math.min(.05, fLast ? now - fLast : 1 / 60); fLast = now;
+            const px = P.x - POND_X, py = swim.on ? swim.y : 24;
+            const pspd = fPX === null ? 0 : Math.abs(P.x - fPX) / Math.max(dt, .001); fPX = P.x;
+            stillT = (pspd < 8 && Math.abs(swim.vy) < 15) ? stillT + dt : 0;
+
+            for (const f of fish) {
+                f.fear = Math.max(0, f.fear - dt * .45);
+                if (f.fear < .05) f.fx = null;
+
+                // 1) wave disturbance (wv[]) above the fish; shallow fish feel it more
+                const c = clampN(Math.round((f.x + POND_RX) / WSP), 1, WN - 1);
+                const dist = Math.abs(wv[c]) + Math.abs(wh[c]) * .15;
+                f.fear = Math.min(1, f.fear + dist * Math.max(0, 1 - f.y / (POND_RY * .7)) * dt * 1.2);
+                // 2) player moving fast nearby
+                if ((pspd > 90 || Math.abs(swim.vy) > 100) && Math.hypot(f.x - px, f.y - py) < 160) { f.fear = Math.max(f.fear, .6); f.fx = px; }
+                if (f.fear > .2 && f.fx === null) f.fx = f.x - f.dir * 50;     // no known source: bolt forward
+
+                let spd;
+                if (f.fear > .15) {                                            // FLEE
+                    const away = Math.sign(f.x - f.fx) || f.dir;
+                    f.tx = f.x + away * 220; f.ty = POND_RY * .6;
+                    spd = 50 + f.fear * 150;
+                } else if (stillT > 1.5 && Math.hypot(f.x - px, f.y - py) < 380) {   // CURIOUS: player is still, drift over and orbit
+                    const a = now * .6 + f.ph;
+                    f.tx = px + Math.cos(a) * 50; f.ty = py + 15 + Math.sin(a) * 20;
+                    spd = 32;
+                } else {                                                       // WANDER
+                    f.wt -= dt;
+                    if (f.wt <= 0 || Math.hypot(f.tx - f.x, f.ty - f.y) < 14) {
+                        f.tx = (Math.random() - .5) * POND_RX * 1.6; f.ty = 25 + Math.random() * POND_RY * .55; f.wt = 3 + Math.random() * 4;
+                    }
+                    spd = 18 + f.s * 6;
+                }
+
+                const dx = f.tx - f.x, dy = f.ty - f.y, L = Math.hypot(dx, dy) || 1, k = Math.min(1, dt * (f.fear > .15 ? 6 : 2));
+                f.vx += (dx / L * spd - f.vx) * k; f.vy += (dy / L * spd * .6 - f.vy) * k;
+                if (Math.abs(f.vx) > 6) f.dir = Math.sign(f.vx);
+                f.face += (f.dir - f.face) * Math.min(1, dt * 8);              // smooth turn-around
+                f.x = clampN(f.x + f.vx * dt, -POND_RX + 30, POND_RX - 30);
+                const rel = f.x / POND_RX, maxY = Math.max(20, POND_RY * .78 * Math.sqrt(Math.max(0, 1 - rel * rel)) - 12);
+                f.y = clampN(f.y + f.vy * dt, 12, maxY);
+            }
+        }
+
         function drawPond(gy, mode) {
             const sx = W / 2 + POND_X - P.x;
             if (Math.abs(sx - W / 2) > W / 2 + POND_RX + 300) return;
@@ -7956,6 +8271,7 @@
                 ctx.fillStyle = PAPER; ctx.beginPath(); ctx.ellipse(sx, gy + 4, POND_RX + 14, POND_RY + 8, 0, 0, Math.PI); ctx.closePath(); ctx.fill();
                 const top = gy + 4;
                 updateWater(top, sx, now);
+                updateFish(now);
                 function waterPath() {
                     ctx.beginPath();
                     ctx.moveTo(sx - POND_RX, top);
@@ -8004,12 +8320,13 @@
                 }
                 ctx.globalAlpha = 1;
                 // fish
-                for (let i = 0; i < 5; i++) {
-                    const dir = i % 2 ? -1 : 1, span = POND_RX * 2.2;
-                    const fx = sx + dir * (((now * (12 + i * 5) + i * 280) % span) - span / 2), fy = top + dep * (.25 + .14 * i) + Math.sin(now * 2 + i) * 5;
-                    ctx.save(); ctx.translate(fx, fy); ctx.scale(dir, 1);
-                    ctx.fillStyle = 'rgba(215,150,90,.75)'; ctx.lineWidth = 1.2;
-                    const tw = Math.sin(now * 8 + i) * 3;
+                for (const f of fish) {
+                    const fy = top + f.y + Math.sin(now * 2 + f.ph) * 2 * (1 - f.fear);
+                    ctx.save(); ctx.translate(sx + f.x, fy);
+                    ctx.rotate(Math.atan2(f.vy, Math.abs(f.vx) + 10) * f.dir);    // nose tilts up/down
+                    ctx.scale(f.face * f.s, f.s);
+                    ctx.fillStyle = 'rgba(215,150,90,.75)'; ctx.lineWidth = 1.2; ctx.strokeStyle = '#111';
+                    const tw = Math.sin(now * (8 + f.fear * 14) + f.ph) * (3 + f.fear * 3);   // tail beats faster when scared
                     ctx.beginPath(); ctx.ellipse(0, 0, 13, 5.5, 0, 0, 7); ctx.fill(); ctx.stroke();
                     ctx.beginPath(); ctx.moveTo(-12, 0); ctx.lineTo(-21, -6 + tw); ctx.lineTo(-21, 6 + tw); ctx.closePath(); ctx.fill(); ctx.stroke();
                     ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(7, -1.2, 1.2, 0, 7); ctx.fill();
@@ -8022,6 +8339,8 @@
                     ctx.globalAlpha = .7 * (1 - ph); ctx.beginPath(); ctx.arc(bx, top + dep * .78 - ph * dep * .78, 2 + hash(i * 1.3) * 2.5, 0, 7); ctx.stroke();
                 }
                 ctx.globalAlpha = 1;
+                ctx.strokeStyle = '#111'; ctx.lineWidth = .9; ctx.fillStyle = 'rgba(200,230,240,.35)';
+                for (const b of bubs) { ctx.beginPath(); ctx.arc(sx + b.wx - POND_X, top + b.y, b.r, 0, 7); ctx.fill(); ctx.stroke(); }
                 ctx.restore();
                 ctx.strokeStyle = '#111';
                 ctx.lineWidth = 1.7; ctx.beginPath(); ctx.ellipse(sx, top, POND_RX, POND_RY, 0, .06, Math.PI - .06); ctx.stroke();
@@ -8207,7 +8526,10 @@
             drawPellets(gy);
             drawBirds(gy);
             drawHorse(gy);
+            beginSwimDraw(gy);
             drawChar(W / 2, gy, P);
+            endSwimDraw();
+            drawBreath(gy);
             drawForest(gy, 1);
             drawSgProp(gy, true);
             drawSmoke(gy);
