@@ -5510,6 +5510,28 @@
             P.idle = 0; P.fid = 0; P.abuf = 0; P.clast = 0; P.cgr = 0; P.grabbed = null;
         }
 
+        // ---- hoof dust: puffs where each hoof lands while running ----
+        const HR_LEGS = [[46, .50, .10], [-52, .25, .62], [46, 0, 0], [-52, .75, .50]];   // [anchor x, walk offset, gallop offset] (same as drawHorse)
+        function hrsDust(sp, g, S) {
+            const h = HRS;
+            if (!h.pu) h.pu = [];
+            const kk = sm(sp / 50);
+            for (let i = 0; i < 4; i++) {
+                const L = HR_LEGS[i];
+                const u = (((h.ph + lerp(L[1], L[2], h.rg)) % 1) + 1) % 1, pu = h.pu[i];
+                h.pu[i] = u;
+                if (pu === undefined || pu - u < .5 || sp < 200) continue;           // only on touchdown
+                const fx = h.x + h.face * (L[0] + g.A * kk) * S * HORSE_W;
+                const k = .8 + 1.0 * h.rg, n = 6 + (h.rg > .5 ? 4 : 0);
+                for (let j = 0; j < n; j++) flecks.push({
+                    x: fx + (Math.random() - .5) * 14, y: -2,
+                    vx: -h.face * (50 + Math.random() * 140) * k, vy: -(60 + Math.random() * 150) * k,
+                    r: 3 + Math.random() * 4, t: 0, life: .45 + Math.random() * .4
+                });
+                puff(fx, -8, 2, -h.face * 40, -22, 9, 26, 1.3, .5);                   // bigger, denser cloud
+            }
+        }
+
         function horseTick(dt) {
             const h = HRS, S = CSc(), st = P.mount;
             for (const e of ENEMIES) if (e.trampT > 0) e.trampT -= dt;
@@ -5576,7 +5598,7 @@
             const sp = Math.abs(h.vx);
             h.rg += (clamp01((sp - 380) / 260) - h.rg) * Math.min(1, dt * 5);
             h.amp += (Math.min(1, sp / 160) - h.amp) * Math.min(1, dt * 10);
-            if (h.z >= 0) { const g = hrsGait(sp); h.ph = (h.ph + sp * dt / ((2 * g.A / g.st) * S)) % 1 }
+            if (h.z >= 0) { const g = hrsGait(sp); h.ph = (h.ph + sp * dt / ((2 * g.A / g.st) * S)) % 1; hrsDust(sp, g, S) }
 
             // ---- rider sync ----
 
