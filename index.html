@@ -1382,6 +1382,7 @@
 
 
         function parkourTick(dt) {
+            if (typeof swim !== 'undefined' && swim.on) { P.pk = 0; P.pkT = 0; P.pkRun = 0; P.rot = 0; return; }
             if (P.hurt > 0 || P.down > 0 || P.dying > 0) { P.pk = 0; P.pkT = 0; P.rot = 0; P.z = 0; return }
             const prevT = P.pkT, S = CSc();
             P.pkT += dt;
@@ -1775,7 +1776,8 @@
             if (footFlat > .5 && ny > 0) { nx = -nx; ny = -ny }   // stomping leg: knee points up, shin comes down onto the head
             const kickLeg2 = CUR === PL && CUR.cs === 5 && F * (fx - hx) > 30;   // the leg that is kicking
             if (kickLeg2 && ny > 0) { nx = -nx; ny = -ny }                       // knee always ABOVE the hip→foot line
-            const hf = kickLeg2 ? 1 : 1 - .7 * (1 - Rf()) * (1 - (CUR.kneelK || 0)), hs = h * (hf + (.55 - hf) * (CUR.mk || 0)), kx = mx + nx * hs, ky = my + ny * hs;
+            const clmb = CUR === PL && swim.on && swim.cl > 0 && swim.cl < 3.7;
+            const hf = (kickLeg2 || clmb) ? 1 : 1 - .7 * (1 - Rf()) * (1 - (CUR.kneelK || 0)), hs = h * (hf + (.55 - hf) * (CUR.mk || 0)), kx = mx + nx * hs, ky = my + ny * hs;
             ctx.strokeStyle = '#111'; ctx.lineWidth = 7; ctx.lineCap = 'round';
             ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(kx, ky); ctx.stroke();
             const sx = ax - kx, sy = ay - ky, sl = Math.hypot(sx, sy), ux = sx / sl, uy = sy / sl, px = -uy, py = ux;
@@ -2815,6 +2817,7 @@
 
                 if (P === PL && P.ln > 0 && P.lnB) { const o = lnArm(i, sh, F); if (o[2] > .001) { ang = ang * (1 - o[2]) + o[0] * o[2]; flex = flex * (1 - o[2]) + o[1] * o[2] } }
                 if (P === PL && P.lb > 0 && P.lnB) { const o = lbArm(i, sh, F); if (o[2] > .001) { ang = ang * (1 - o[2]) + o[0] * o[2]; flex = flex * (1 - o[2]) + o[1] * o[2] } }
+                if (P === PL && swim.on && swim.cl > 0) { const o = climbArm(i, sh, F, S); if (o && o[2] > .001) { ang = ang * (1 - o[2]) + o[0] * o[2]; flex = flex * (1 - o[2]) + o[1] * o[2]; } }
                 wristKick = (i === 0 && P === PL && P.gunK > .02) ? RC_WRIST * P.recoil * P.recoil + (P.rl > 0 ? rlTilt(P.rl / RELOAD_T) : 0) : 0;
                 arm(sh, ang, flex, F, (i === 0 && !P.pk) ? P.kt : 0, Math.max(pq, (cb && !(P === PL && P.stbk > 0)) ? cb.w : 0), (i === 0 && !P.pk) ? P.tt / TOSS_T : 0);
                 if (i === 1 && P === PL && P.rl > 0) {
@@ -8000,38 +8003,120 @@
             s.out = out || 0; P.vx = vx; P.vz = 0; P.z = 0; P.face = dir || s.df; swimHooks.end();
         }
 
-        // ---------- ledge climb: reach -> pull -> leg lift -> weight shift -> stand ----------
-        const CL_END = 2.9;
-        const CL_R = [[0, 0], [.5, .08], [1.2, .6], [1.8, .82], [2, .8], [2.25, .9], [2.9, 1]];          // body rise
-        const CL_P = [[0, 0], [.5, .1], [1.2, .3], [1.8, .55], [2.25, .85], [2.9, 1]];                    // travel onto land
-        const CL_LEAN = [[0, 0], [.5, .18], [1.2, .8], [1.8, 1], [2.25, .72], [2.9, 0]];                  // torso lean toward the bank
-        const CL_A = [[0, 2.35], [.5, 2.5], [1.2, 1.15], [1.8, .55], [2.25, .4], [2.9, .1]];              // arm angle (reach up, push down)
-        const CL_F = [[0, .25], [.5, .2], [1.2, .8], [1.8, .35], [2.25, .3], [2.9, .15]];                 // elbow flex
-        const CL_L0X = [[0, 8], [1.2, 20], [1.55, 75], [1.8, 95], [2.25, 44], [2.9, 28]];                 // leg that goes up on the bank
-        const CL_L0Y = [[0, -6], [1.2, -8], [1.55, -85], [1.8, -30], [2.25, 0], [2.9, 0]];
-        const CL_L1X = [[0, -8], [1.8, -20], [2.25, -18], [2.9, -16]];
-        const CL_L1Y = [[0, -10], [1.2, -24], [1.8, -10], [2.25, 0], [2.9, 0]];
+        // ---------- ledge climb v2: reach -> grip -> heave -> press -> knee up -> step over -> stand -> shake off ----------
+        const CL_END = 4.0;
+        // body rise as a fraction of what is needed to get the hips above the ledge (until t = 2.45)
+        const CL_DY    = [[0, 0], [.75, 0], [.95, .1], [1.1, .1], [1.35, .28], [1.5, .28], [1.6, .38], [2.0, .85], [2.45, 1]];
+        const CL_P     = [[0, 0], [.75, 0], [1.6, .05], [2.0, .1], [2.45, .2], [3.0, .55], [3.45, .88], [4, 1]];     // travel onto land
+        const CL_OFF   = [[0, 0], [.4, 8], [.75, 10], [1.3, 2], [2.0, -2], [2.45, 6], [2.9, 20], [3.3, 6], [3.75, 0]]; // hips sink (+) / lift (-)
+        const CL_LEAN  = [[0, .1], [.4, .22], [1.0, .3], [1.6, .28], [2.0, .2], [2.45, .18], [2.9, .42], [3.3, .3], [3.7, .05], [4, 0]];
+        const CL_HX    = [[0, 0], [.75, -2], [1.6, 2], [2.0, 4], [2.45, 8], [3.0, 10], [3.5, 3], [4, 0]];
+        const CL_ARCH  = [[0, 0], [1.1, .05], [2.0, .06], [2.6, -.08], [3.3, -.02], [4, 0]];
+        const CL_HEADX = [[0, 2], [.8, 5], [1.6, 8], [2.45, 6], [3.2, 2], [4, 0]];
+        const CL_HEADY = [[0, -2], [.8, -5], [1.6, -3], [2.45, 2], [3.0, 0], [3.6, -4], [3.75, -4], [4, 0]];
+        const CL_A0    = [[0, .62], [.45, 1.5], [2.5, .2], [3.0, .9], [3.4, .5], [3.75, .12], [4, .08]];             // fallback arms (IK owns them while the hands are on the ledge)
+        const CL_F0    = [[0, .95], [.45, .5], [2.5, .6], [3.0, .9], [3.4, .6], [3.75, .25], [4, .1]];
+
+        function clRise(t, u0) {                 // how far the body has risen (character units)
+            const need = Math.max(0, u0 - 128), a = need * kf(Math.min(t, 2.45), CL_DY);
+            return t <= 2.45 ? a : a + (u0 - a) * sm((t - 2.45) / .95);
+        }
 
         function startClimb(dir, landX) {
-            const s = swim;
-            Object.assign(s, { cl: .0001, clD: dir, clX0: P.x, clCy0: s.cy, clL: landX, clLn0: s.lean, clF: 0, df: dir, turn: 0, dv: 0, vy: 0 });
+            const s = swim, S = CSc(), H0 = PL_H();
+            const u0 = Math.max(12, (s.cy + H0 / 2) / S);                                   // bank height above the feet
+            const edge = P.x + dir * Math.max(26 * S, Math.abs(landX - P.x) - 34 * S);      // the lip his hands grab
+            Object.assign(s, { cl: .0001, clD: dir, clX0: P.x, clCy0: s.cy, clL: landX, clLn0: s.lean, clF: 0, clU0: u0, clE: edge, clFl: {}, clDrip: 0, df: dir, turn: 0, dv: 0, vy: 0 });
             P.face = dir; banner.t = .7; banner.text = 'CLIMBING OUT';
         }
+
         function climbTick(dt, H0, S) {
-            const s = swim; s.cl += dt; const t = s.cl, dir = s.clD;
-            s.cy = s.clCy0 + (-H0 / 2 - s.clCy0) * kf(t, CL_R);
+            const s = swim; s.cl += dt;
+            const t = s.cl, dir = s.clD, u0 = s.clU0, fl = s.clFl;
+            const u = Math.max(0, u0 - clRise(t, u0));                      // feet depth below the ledge shrinks as he rises
+            s.cy = u * S - H0 / 2;
             const nx = s.clX0 + (s.clL - s.clX0) * kf(t, CL_P); s.vx = (nx - P.x) / Math.max(dt, .001); P.x = nx;
-            s.lean = kf(t, CL_LEAN) + s.clLn0 * (1 - sm(t / .3)); s.vl = 0;
-            s.tilt *= Math.max(0, 1 - dt * 6); s.h *= Math.max(0, 1 - dt * 6); s.vy = 0; s.gnd = false; s.turn = 0;
+            s.lean = s.clLn0 * (1 - sm(t / .25)); s.vl = 0;                 // torso lean is done by the pose now, not by rotating the whole body
+            s.tilt *= Math.max(0, 1 - dt * 10); s.h *= Math.max(0, 1 - dt * 10); s.vy = 0; s.gnd = false; s.turn = 0;
             swimGeom(H0, S);
-            if (!s.clF && t >= 1.5) { s.clF = 1; splash(P.x - dir * 14 * S, 3.5, 6) }         // hips clear the water
-            if (t >= CL_END) { P.x = s.clL; swimExit(dir * 70, dir) }
+
+            // ---- moments: splashes, effort, landings, breath ----
+            if (!fl.grab && t >= .42) { fl.grab = 1; splash(s.clE, 2.4, 5); }                                   // hands slap onto the ledge
+            if (!fl.h1 && t >= 1.0) { fl.h1 = 1; shake = Math.max(shake, 1.6); }                                 // first heave
+            if (!fl.h2 && t >= 1.35) { fl.h2 = 1; shake = Math.max(shake, 2.4); splash(P.x - dir * 8 * S, 3.2, 6); }   // second, harder heave
+            if (!fl.knee && t >= 2.15) { fl.knee = 1; splash(P.x + dir * 12 * S, 2.6, 5); }                      // knee comes out of the water
+            if (!fl.land && t >= 2.42) { fl.land = 1; shake = Math.max(shake, 2.5); burst(s.clE + dir * 46 * S, -2, 6, 150, dir); }   // lead foot lands
+            if (!fl.tr1 && t >= 3.0) { fl.tr1 = 1; splash(P.x - dir * 18 * S, 4, 8); }                           // trailing leg leaves the water
+            if (!fl.tr2 && t >= 3.42) { fl.tr2 = 1; shake = Math.max(shake, 2); burst(s.clL - dir * 16 * S, -2, 5, 130, dir); }   // trailing foot lands
+            if (!fl.br && t >= 3.6 && P.hdp) { fl.br = 1; puff(P.x + (P.hdp[0] + dir * 19) * S, (P.hdp[1] + 8) * S, 7, dir * 90, -8, 3, 9, 1.2, .28); }   // gasp
+
+            // water running off the body while it comes out
+            s.clDrip -= dt;
+            if (t > 1.2 && t < 3.9 && s.clDrip <= 0) {
+                s.clDrip = .06 + Math.random() * .05;
+                const wet = Math.min(1, (t - 1.2) / 1.5);
+                wSpray.push({ wx: P.x + dir * (-26 + Math.random() * 40) * S, y: swimTop - Math.random() * 140 * S * wet, vx: -dir * Math.random() * 25, vy: 10 + Math.random() * 30, r: 1.2 + Math.random() * 1.4, fresh: false });
+            }
+
+            if (t >= CL_END) { P.x = s.clL; swimExit(0, dir); }
         }
+
+        // both hands planted on top of the ledge (arm IK) -> [ang, flex, weight]
+        function climbArm(i, sh, F, S) {
+            const s = swim, t = s.cl, u0 = s.clU0 || 100;
+            const wH = sm(t / .4) * (1 - sm((t - 2.5) / .35));
+            if (wH < .001) return null;
+            const u = Math.max(0, u0 - clRise(t, u0));
+            const gx = (s.clE - P.x) / S + F * (i ? -9 : 7);                // fingers just over the lip, the other hand a bit behind
+            const effort = (t > .75 && t < 2.1) ? 1 : .3;
+            const tr = (t > .42 && t < 2.5) ? Math.sin(t * 34 + i * 2) * .8 * effort : 0;   // arms tremble under load
+            const [a, f] = ikTo(sh, gx + tr, -u - 4 + tr * .5, F);
+            return [a, f, wH];
+        }
+
         function climbPose() {
-            const s = swim, t = s.cl, a = kf(t, CL_A), f = kf(t, CL_F), w = 1 - sm((t - 2.55) / .35);
+            const s = swim, t = s.cl, S = CSc(), F = s.clD, u0 = s.clU0 || 100;
+            const u = Math.max(0, u0 - clRise(t, u0)), ledgeY = -u;               // ledge top in character space (up = negative)
+            const cw = x => (x - P.x) / S, ex = cw(s.clE);                        // world x -> character space; ex = the lip
+            const w = sm(t / .2) * (1 - sm((t - 3.75) / .25));
+            const low = cl01((140 - u0) / 140);                                   // low bank -> hunch over it
+            const off = kf(t, CL_OFF), hipP = kf(t, CL_HX), hy = -169 + off, hxA = F * hipP * w;
+            const lean = kf(t, CL_LEAN) + .45 * low * sm(t / .4) * (1 - sm((t - 2.6) / .6));
+            const plant = s.clE + F * 46 * S, fin = s.clL + F * 28 * S, finT = s.clL - F * 16 * S;
+            const am = t < .75 ? 1 : 1 - .75 * sm((t - .75) / .3);                // kicking dies down while he hauls
+            const k1 = Math.sin(t * 13) * am, k2 = Math.sin(t * 13 + Math.PI) * am, sink = sm((t - .15) / .6);
+            let ax, ay, aL, bx, by, bL;
+
+            // ---- lead leg: treads -> walks up the wall -> knee drive -> lands on the bank -> pushes up ----
+            if (t < .75) { ax = hxA + F * (lerp(20, 14, sink) + 6 * k1); ay = lerp(0, hy + 146, sink) - 7 * (k1 * .5 + .5); aL = 20 * sink; }
+            else if (t < 1.6) {
+                const v = sm((t - .75) / .85), b = Math.sin(Math.PI * v);
+                ax = lerp(hxA + F * 14, ex - F * 8, v) + F * 3 * b * Math.sin(t * 9);
+                ay = lerp(hy + 146, hy + 92, v) + 7 * b * Math.sin(t * 9 + 1); aL = lerp(20, 8, v);
+            } else if (t < 2.15) {
+                const v = sm((t - 1.6) / .55);
+                ax = lerp(ex - F * 8, ex + F * 14, v); ay = lerp(hy + 92, ledgeY - 12, v); aL = lerp(8, 14, v);
+            } else if (t < 2.45) {
+                const v = sm((t - 2.15) / .3);
+                ax = lerp(ex + F * 14, cw(plant), v); ay = lerp(ledgeY - 12, ledgeY, v); aL = 14 * (1 - v);
+            } else {
+                const v = sm((t - 3.4) / .4);
+                ax = cw(lerp(plant, fin, v)); ay = ledgeY; aL = 0;
+            }
+
+            // ---- trailing leg: dangles in the water -> bends up -> swings over the lip -> lands ----
+            const hx2 = hxA - F * (lerp(20, 8, sink) + 6 * k2), hy2 = lerp(0, hy + 150, sink) - 8 * (k2 * .5 + .5);
+            if (t < 2.7) { bx = hx2; by = hy2; bL = 20 * sink; }
+            else if (t < 3.05) { const v = sm((t - 2.7) / .35); bx = lerp(hx2, hxA + F * 8, v); by = lerp(hy2, hy + 78, v); bL = lerp(20, 14, v); }
+            else if (t < 3.45) {
+                const v = sm((t - 3.05) / .4);
+                bx = lerp(hxA + F * 8, cw(finT), v); by = lerp(hy + 78, ledgeY, v) - 30 * Math.sin(Math.PI * v); bL = 14 * (1 - v);
+            } else { bx = cw(finT); by = ledgeY; bL = 0; }
+
+            const a0 = kf(t, CL_A0), f0 = kf(t, CL_F0);
             return {
-                w, a0: a, f0: f, a1: a - .15, f1: f + .1, lean: 0, hipX: 0, hipY: 0, arch: -.03, hx: 4, hy: -2,
-                l0: [kf(t, CL_L0X), kf(t, CL_L0Y), 0], l1: [kf(t, CL_L1X), kf(t, CL_L1Y), 0], st: STEPS[0], sw: 0, ik: 0
+                w, a0, f0, a1: a0 - .12, f1: f0 + .08, lean, hipX: hipP, hipY: off, arch: kf(t, CL_ARCH), hx: kf(t, CL_HEADX), hy: kf(t, CL_HEADY),
+                l0: [F * ax - hipP * w, ay + aL, aL], l1: [F * bx - hipP * w, by + bL, bL], st: STEPS[0], sw: 0, ik: 0
             };
         }
 
@@ -8062,11 +8147,19 @@
             if (!sw.on) {
                 const air = P.z < 0;
                 if (sw.cd <= 0 && !P.mount && inPond(P.x, -10) && (air ? !onDock : (!onDock || dPress))) {
+                    const wasLeaping = P.pk > 0;
+                    if (wasLeaping) {                       // cancel the parkour leap, otherwise its pose stays frozen
+                        P.pk = 0; P.pkT = 0; P.pkRun = 0; P.rot = 0; P.pkHit = [0];
+                        P.vz = 0;
+                    }
                     Object.assign(sw, {
-                        on: true, lock: 0, cy: air ? P.z - H0 / 2 : -H0 / 2, vy: air ? P.vz : (dPress ? 420 : 0), vx: P.vx, tilt: 0, h: 0, lean: 0, vl: P.vx * .0012,
+                        on: true, lock: 0, cy: air ? P.z - H0 / 2 : -H0 / 2,
+                        vy: wasLeaping ? 200 : (air ? P.vz : (dPress ? 420 : 0)),   // the leap sets z directly, so give it a plain falling speed
+                        vx: wasLeaping ? Math.max(-520, Math.min(520, P.vx)) : P.vx,   // leap speed is 700-900, cap it for the water
+                        tilt: 0, h: 0, lean: 0, vl: P.vx * .0012,
                         pw: 0, gk: 0, ef: 0, turn: 0, df: P.face || 1, in: false, fin: false, gnd: false, dv: dPress ? 1.2 : 0, wk: 0, pHY: -99, cl: 0, wall: 0
                     });
-                    if (P.skid) endSkid(); swimHooks.start();
+                    if (P.skid) endSkid(); P.skidK = 0; swimHooks.start();
                 } else return false;
             }
             P.jbuf = 0; P.abuf = 0;
