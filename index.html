@@ -105,6 +105,9 @@
     <script>
         const cv = document.getElementById('c'), ctx = cv.getContext('2d');
         let W, H, DPR, paper, vig;
+
+        let vigN;
+        const nightC = document.createElement('canvas'), nctx = nightC.getContext('2d');
         function hash(n) { const s = Math.sin(n * 127.1) * 43758.5453; return s - Math.floor(s) }
         function makePaper() {
             const p = document.createElement('canvas'); p.width = p.height = 512; const g = p.getContext('2d');
@@ -121,6 +124,9 @@
             cv.width = W * DPR; cv.height = H * DPR; ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
             vig = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * .35, W / 2, H / 2, Math.max(W, H) * .8);
             vig.addColorStop(0, 'rgba(0,0,0,0)'); vig.addColorStop(1, 'rgba(60,50,40,.28)');
+            nightC.width = W * DPR; nightC.height = H * DPR; nctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+            vigN = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * .22, W / 2, H / 2, Math.max(W, H) * .75);
+            vigN.addColorStop(0, 'rgba(0,0,0,0)'); vigN.addColorStop(1, 'rgba(4,5,12,.6)');
         }
         makePaper(); resize(); addEventListener('resize', resize);
 
@@ -131,6 +137,8 @@
             if (e.repeat) return;
             if (e.code === 'KeyV') { P.female = !P.female; banner.t = .8; banner.text = P.female ? 'WOMAN' : 'MAN'; }
             if (e.code === 'KeyC') pressSmoke();
+            if (e.code === 'KeyN') { const toNight = DN.d < .5; DN.t = toNight ? 0 : .5; banner.t = .8; banner.text = toNight ? 'MIDNIGHT' : 'NOON'; }
+            if (e.code === 'KeyO') { DN.lantern = !DN.lantern; banner.t = .6; banner.text = DN.lantern ? 'LANTERN ON' : 'LANTERN OFF'; }
             if (P.sm === 1) return;                 // no actions while lighting up
             if (P.sgp > 0) return;    // no actions mid-stomp
             if (e.code === 'KeyG') pressG();
@@ -3174,11 +3182,15 @@
             const cam = P.x;
             ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#111';
 
-            // sun: wobbly double ring, nearly fixed to the screen
+            // sun: travels across the sky, hidden at night
             {
-                const sx = W * .78 - cam * .02, sy = H * .2, r = Math.min(W, H) * .07;
-                ctx.globalAlpha = .28; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(sx, sy, r, 0, 7); ctx.stroke();
-                ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(sx + 3, sy - 2, r * .94, .3, 6.0); ctx.stroke();
+                const sb = skyBody().sun;
+                if (sb) {
+                    const sx = sb[0], sy = sb[1], r = Math.min(W, H) * .07, f = sb[2];
+                    ctx.globalAlpha = .5 * f; ctx.fillStyle = 'rgba(238,200,110,.55)'; ctx.beginPath(); ctx.arc(sx + 3, sy + 2, r, 0, 7); ctx.fill();
+                    ctx.globalAlpha = .28 * f; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(sx, sy, r, 0, 7); ctx.stroke();
+                    ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(sx + 3, sy - 2, r * .94, .3, 6.0); ctx.stroke();
+                }
             }
 
             // far hills: one ridge line with sparse hatching underneath
@@ -7124,6 +7136,131 @@
             ctx.font = 'italic 20px Georgia,serif'; ctx.fillText('birds: ' + birdKills, W - 24, 30); ctx.restore();
         }
 
+
+
+        // ================= DAY / NIGHT =================
+        const DN = { t: .45, len: 240, d: 0, dusk: 0, sunH: 1, lantern: true };   // t: 0 midnight, .25 sunrise, .5 noon, .75 sunset
+        function dayTick(dt) {
+            DN.t = (DN.t + dt / DN.len) % 1;
+            DN.sunH = -Math.cos(DN.t * Math.PI * 2);
+            DN.d = sm((.1 - DN.sunH) / .6);                                  // 0 = day, 1 = full night
+            DN.dusk = Math.max(0, 1 - Math.abs(DN.sunH - .02) / .3);         // warm tint at sunrise / sunset
+        }
+        function skyBody() {
+            const cam = P.x, t = DN.t, out = { sun: null, moon: null };
+            const arc = p => [W * (.08 + .84 * p) - cam * .02, H * (.58 - .46 * Math.sin(Math.PI * p)), Math.min(1, Math.sin(Math.PI * p) * 4)];
+            const sp = (t - .25) / .5; if (sp > 0 && sp < 1) out.sun = arc(sp);
+            const mq = ((t < .25 ? t + 1 : t) - .75) / .5; if (mq > 0 && mq < 1) out.moon = arc(mq);
+            return out;
+        }
+        function lanternPos() {
+            const h = P.hipP; if (!h) return null;
+            return [W / 2 + (h[0] + P.face * 17) * CSc(), groundY() + 4 + (h[1] + 4) * CSc()];
+        }
+        // { wx: world x, sc: scale, r: [x, y, w, h, brightness, mullions] in the building's local space }
+        const NIGHT_LIGHTS = [
+            { wx: -1500, sc: 2.5, r: [[-70, -100, 30, 34, 1, 1], [40, -100, 30, 34, 1, 1], [-86, -34, 26, 34, .9, 0], [-17, -46, 34, 34, .6, 0]] },   // saloon
+            { wx: -2500, sc: 2.5, r: [[-46, -52, 18, 18, 1, 1]] },                                                                                    // shack
+            { wx: 2200, sc: 3.5, r: [[-17, -152, 34, 30, 1, 1]] }                                                                                     // barn loft
+        ];
+        function nPunch(x, y, R, a) {
+            const g = nctx.createRadialGradient(x, y, 0, x, y, R);
+            g.addColorStop(0, 'rgba(0,0,0,' + a + ')'); g.addColorStop(.45, 'rgba(0,0,0,' + (a * .55) + ')'); g.addColorStop(1, 'rgba(0,0,0,0)');
+            nctx.fillStyle = g; nctx.fillRect(x - R, y - R, R * 2, R * 2);
+        }
+        function nGlow(x, y, R, a) {
+            const g = ctx.createRadialGradient(x, y, 0, x, y, R);
+            g.addColorStop(0, 'rgba(255,176,80,' + a + ')'); g.addColorStop(1, 'rgba(255,176,80,0)');
+            ctx.fillStyle = g; ctx.fillRect(x - R, y - R, R * 2, R * 2);
+        }
+        function drawLantern(x, y, S, now) {
+            ctx.save(); ctx.translate(x, y); ctx.scale(S, S); ctx.rotate(Math.sin(now * 2.1) * .06 - clamp01(Math.abs(P.vx) / 600) * P.face * .35);
+            ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.strokeStyle = '#111'; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(-4, -2); ctx.quadraticCurveTo(0, -11, 4, -2); ctx.stroke();                    // handle
+            ctx.fillStyle = '#3a3a3a'; ctx.beginPath(); ctx.rect(-6, -3, 12, 3.5); ctx.fill(); ctx.stroke();           // cap
+            ctx.fillStyle = 'rgba(255,200,96,.96)'; ctx.beginPath(); ctx.rect(-5, .5, 10, 12); ctx.fill(); ctx.stroke(); // glass
+            ctx.fillStyle = '#3a3a3a'; ctx.beginPath(); ctx.rect(-6, 12.5, 12, 3); ctx.fill(); ctx.stroke();           // base
+            const fl = 1 + .15 * Math.sin(now * 25) + .1 * Math.sin(now * 11);
+            ctx.fillStyle = '#fff6d0'; ctx.beginPath(); ctx.ellipse(0, 8, 1.8 * fl, 3.6 * fl, 0, 0, 7); ctx.fill();    // flame
+            ctx.restore();
+        }
+        function drawMoon(m, d) {
+            const r = Math.min(W, H) * .06, x = m[0], y = m[1], a = m[2] * sm(d * 3);
+            if (a < .01) return;
+            ctx.save(); ctx.globalAlpha = a; ctx.lineCap = 'round';
+            ctx.fillStyle = '#f4f1e4'; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
+            ctx.save(); ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.clip();
+            ctx.fillStyle = 'rgba(90,86,80,.22)'; ctx.beginPath(); ctx.arc(x, y, r * 1.02, 0, 7);                       // shaded crescent
+            ctx.moveTo(x - r * .42 + r * .86, y - r * .1); ctx.arc(x - r * .42, y - r * .1, r * .86, 0, 7, true); ctx.fill();
+            ctx.strokeStyle = 'rgba(90,86,80,.4)'; ctx.lineWidth = 1.4;
+            for (const [cx, cy, cr] of [[.3, -.25, .18], [.5, .22, .12], [-.1, .38, .1], [.05, -.05, .08]]) { ctx.beginPath(); ctx.arc(x + cx * r, y + cy * r, cr * r, 0, 7); ctx.stroke(); }
+            ctx.restore();
+            ctx.strokeStyle = '#111'; ctx.globalAlpha = a * .65; ctx.lineWidth = 2.6; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.stroke();
+            ctx.globalAlpha = a * .3; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(x + 2, y - 2, r * .93, .3, 6); ctx.stroke();
+            ctx.restore();
+        }
+        function drawStars(gy, d, now) {
+            const sa = sm((d - .45) / .4); if (sa < .01) return;
+            const top = Math.max(60, gy - 300);
+            ctx.save(); ctx.strokeStyle = '#f4f1e4'; ctx.fillStyle = '#f4f1e4'; ctx.lineCap = 'round';
+            for (let i = 0; i < 46; i++) {
+                const x = (((hash(i * 3.7) * W - P.x * .02) % W) + W) % W, y = 14 + hash(i * 5.3 + 9) * top, r = .8 + hash(i + 40) * 1.4;
+                ctx.globalAlpha = sa * (.35 + .45 * (.5 + .5 * Math.sin(now * 1.6 + i * 2.1)));
+                ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
+                if (r > 1.6) { ctx.lineWidth = .9; ctx.beginPath(); ctx.moveTo(x - r * 3, y); ctx.lineTo(x + r * 3, y); ctx.moveTo(x, y - r * 3); ctx.lineTo(x, y + r * 3); ctx.stroke(); }
+            }
+            ctx.restore();
+        }
+        function drawNight(gy) {
+            if (DN.dusk > .01) { ctx.save(); ctx.globalAlpha = .15 * DN.dusk; ctx.fillStyle = '#c8783c'; ctx.fillRect(0, 0, W, H); ctx.restore(); }   // warm dawn/dusk wash
+            const d = DN.d; if (d < .01) return;
+            const S = CSc(), now = performance.now() / 1000, sb = skyBody(), wa = sm((d - .2) / .4);
+            const lights = [];   // [x, y, radius, cut-out strength, warm glow strength]
+
+            const lan = DN.lantern ? lanternPos() : null;
+            if (lan) lights.push([lan[0], lan[1], 340 * S * (1 + Math.sin(now * 13) * .03 + Math.sin(now * 7.3 + 1) * .03), .97, .26]);
+
+            for (const B of NIGHT_LIGHTS) {
+                const sx = W / 2 + B.wx - P.x; if (sx < -700 || sx > W + 700) continue;
+                for (const q of B.r) lights.push([sx + (q[0] + q[2] / 2) * B.sc, gy + (q[1] + q[3] / 2) * B.sc, ((q[2] + q[3]) * 1.3 + 40) * B.sc, .85 * wa * q[4], .2 * wa * q[4]]);
+            }
+            if (P.gunK > .3 && P.recoil > .45 && P.muzzle) lights.push([P.muzzle[0] - P.x + W / 2, gy + 4 + P.muzzle[1], 300 * S * P.recoil, .9, .3]);       // revolver flash
+            if (P.sgFlash > .1 && P.sgMuz) lights.push([(P.sgMuz[0][0] + P.sgMuz[1][0]) / 2 - P.x + W / 2, gy + 4 + (P.sgMuz[0][1] + P.sgMuz[1][1]) / 2, 480 * S * P.sgFlash * P.sgBig, .95, .35]);   // shotgun flash
+
+            // darkness layer with the lights cut out of it
+            nctx.globalCompositeOperation = 'source-over'; nctx.clearRect(0, 0, W, H);
+            nctx.fillStyle = 'rgba(26,28,40,' + (.74 * d) + ')'; nctx.fillRect(0, 0, W, H);
+            nctx.globalCompositeOperation = 'destination-out';
+            for (const L of lights) nPunch(L[0], L[1], L[2], L[3]);
+            if (sb.moon) nPunch(sb.moon[0], sb.moon[1], Math.min(W, H) * .36, .8 * sb.moon[2]);
+            nctx.globalCompositeOperation = 'source-over';
+            ctx.drawImage(nightC, 0, 0, W, H);
+
+            for (const L of lights) nGlow(L[0], L[1], L[2] * .8, L[4] * d);     // warm tint
+
+            // glowing windows
+            for (const B of NIGHT_LIGHTS) {
+                const sx = W / 2 + B.wx - P.x; if (sx < -700 || sx > W + 700 || wa < .01) continue;
+                ctx.save(); ctx.translate(sx, gy); ctx.scale(B.sc, B.sc);
+                B.r.forEach((q, i) => {
+                    const fk = 1 - .06 * (.5 + .5 * Math.sin(now * 3.1 + i * 2 + B.wx));
+                    ctx.fillStyle = 'rgba(255,206,104,' + (.93 * wa * q[4] * fk) + ')'; ctx.fillRect(q[0], q[1], q[2], q[3]);
+                    if (q[5]) {
+                        ctx.strokeStyle = 'rgba(58,38,12,' + (.85 * wa) + ')'; ctx.lineWidth = 1.2; ctx.beginPath();
+                        ctx.moveTo(q[0] + q[2] / 2, q[1]); ctx.lineTo(q[0] + q[2] / 2, q[1] + q[3]); ctx.moveTo(q[0], q[1] + q[3] / 2); ctx.lineTo(q[0] + q[2], q[1] + q[3] / 2); ctx.stroke();
+                        ctx.strokeStyle = '#111'; ctx.lineWidth = 1.5; ctx.strokeRect(q[0], q[1], q[2], q[3]);
+                    }
+                });
+                ctx.restore();
+            }
+
+            if (lan) drawLantern(lan[0], lan[1], S, now);
+            drawStars(gy, d, now);
+            if (sb.moon) drawMoon(sb.moon, d);
+
+            ctx.save(); ctx.globalAlpha = d; ctx.fillStyle = vigN; ctx.fillRect(0, 0, W, H); ctx.restore();   // deeper vignette
+        }
+
         function frame(now) {
 
 
@@ -7131,7 +7268,7 @@
             let dt = dt0;
             if (hitstop > 0) { hitstop -= dt0; dt = 0 }
 
-            update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); sgTick(dt); sgGroundTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); brainTick(dt); gibTick(dt); boneTick(dt); weatherTick(dt); horseTick(dt); birdTick(dt);
+            update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); sgTick(dt); sgGroundTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); brainTick(dt); gibTick(dt); boneTick(dt); weatherTick(dt); horseTick(dt); birdTick(dt); dayTick(dt0);
             shake = Math.max(0, shake - dt0 * 60);
             ctx.save();
             if (shake > .3) ctx.translate((Math.random() - .5) * shake * 1.6, (Math.random() - .5) * shake * 1.6);
@@ -7165,6 +7302,7 @@
             drawBlood(gy);
             drawWeather(gy);
             ctx.restore();
+            drawNight(gy);
             ctx.fillStyle = vig; ctx.fillRect(0, 0, W, H);
             drawHUD();
             drawGunHUD();
