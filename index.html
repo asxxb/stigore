@@ -1117,6 +1117,7 @@
         function brainTick(dt) {
             for (let i = brainBits.length - 1; i >= 0; i--) {
                 const b = brainBits[i];
+                if (waterBit(b, dt, brainBits, i, 14, 65, .09)) continue;
                 if (!b.landed) {
                     b.vy += 1500 * dt; b.x += b.vx * dt; b.y += b.vy * dt; b.rot += b.vr * dt;
                     if (b.y >= -b.r * .4) {
@@ -1131,7 +1132,7 @@
             ctx.save(); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
             for (const b of brainBits) {
                 const sx = b.x - P.x + W / 2; if (sx < -30 || sx > W + 30) continue;
-                ctx.globalAlpha = b.landed ? Math.min(1, (14 - b.t) / 3) : 1;
+                ctx.globalAlpha = (b.landed ? Math.min(1, (14 - b.t) / 3) : 1) * (b.w ? .72 : 1);
                 ctx.save(); ctx.translate(sx, gy + 4 + b.y); ctx.rotate(b.landed ? b.rot * .2 : b.rot); ctx.scale(1, b.landed ? .55 : 1);
                 ctx.fillStyle = b.k === 0 ? '#e9786c' : b.k === 1 ? '#f8c2b8' : '#8c0d14'; ctx.strokeStyle = '#5a0a10'; ctx.lineWidth = 1.6;
                 const r = b.r;
@@ -2190,6 +2191,7 @@
             const S = CSc();
             for (let i = boneBits.length - 1; i >= 0; i--) {
                 const b = boneBits[i];
+                if (waterBit(b, dt, boneBits, i, 20, b.k === 1 ? 130 : 75, b.k === 1 ? .1 : 0)) continue;
                 if (!b.landed) {
                     b.t += dt; b.vy += 1500 * dt; b.x += b.vx * dt; b.y += b.vy * dt; b.rot += b.vr * dt;
                     if (b.k === 1 && b.t < 1.3) {
@@ -2212,7 +2214,7 @@
             ctx.save(); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
             for (const b of boneBits) {
                 const sx = b.x - P.x + W / 2; if (sx < -130 || sx > W + 130) continue;
-                ctx.globalAlpha = b.landed ? Math.min(1, (20 - b.t) / 3) : 1;
+                ctx.globalAlpha = (b.landed ? Math.min(1, (20 - b.t) / 3) : 1) * (b.w ? .72 : 1);
                 ctx.save(); ctx.translate(sx, gy + 4 + b.y); ctx.rotate(b.rot);
                 if (b.k === 0) {                                                 // bone splinter
                     const s = b.s;
@@ -4176,6 +4178,11 @@
                 const b = blood[i]; b.t += dt;
                 b.vy += 1500 * dt; b.x += b.vx * dt; b.y += b.vy * dt;
                 if (b.y >= 0) {
+                    if (onWater(b.x)) {
+                        if (b.r > 1.4) splash(b.x, .3 + b.r * .12, 0);
+                        if (wClouds.length < 160 && Math.random() < .5) wClouds.push({ x: b.x, y: 3, r: 2 + b.r, g: 8 + b.r * 3, t: 0, life: 1.2 + Math.random() * .6, k: 0 });
+                        blood.splice(i, 1); continue;
+                    }
                     if (splats.length < 160 && Math.random() < .75) splats.push({ x: b.x, w: b.r * (2.5 + Math.random() * 3.5), h: b.r * (.7 + Math.random() * .6), t: 0 });
                     blood.splice(i, 1);
                 } else if (b.t > 2.5) blood.splice(i, 1);
@@ -4187,6 +4194,7 @@
             for (const s of splats) {
                 const sx = s.x - P.x + W / 2;
                 if (sx < -40 || sx > W + 40) continue;
+                if (onWater(s.x)) continue;
                 ctx.globalAlpha = Math.min(1, (10 - s.t) / 3) * .9;
                 ctx.fillStyle = '#7a0b11';
                 ctx.beginPath(); ctx.ellipse(sx, gy + 5, s.w, s.h, 0, 0, 7); ctx.fill();
@@ -5461,6 +5469,7 @@
         function gibTick(dt) {
             for (let i = gibs.length - 1; i >= 0; i--) {
                 const g = gibs[i];
+                if (waterBit(g, dt, gibs, i, 16, g.k === 1 ? 110 : 95, g.k === 2 ? 0 : .12, g.k === 2)) continue;
                 if (!g.landed) {
                     g.t += dt; g.vy += 1500 * dt; g.x += g.vx * dt; g.y += g.vy * dt; g.rot += g.vr * dt;
                     g.bl -= dt; if (g.bl <= 0 && g.t < 1.4) { g.bl = .04; blood.push({ x: g.x, y: g.y, vx: g.vx * .1 + (Math.random() - .5) * 30, vy: 10 + Math.random() * 30, r: 1.2 + Math.random() * 1.5, t: 0 }) }
@@ -5480,7 +5489,7 @@
             ctx.save(); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
             for (const g of gibs) {
                 const sx = g.x - P.x + W / 2; if (sx < -60 || sx > W + 60) continue;
-                ctx.globalAlpha = g.landed ? Math.min(1, (16 - g.t) / 3) : 1;
+                ctx.globalAlpha = (g.landed ? Math.min(1, (16 - g.t) / 3) : 1) * (g.w ? .72 : 1);
                 ctx.save(); ctx.translate(sx, gy + 4 + g.y); ctx.rotate(g.rot);
                 const r = g.s;
                 if (g.k === 0) {                                          // skull shard: bone outside, bloody flesh inside
@@ -9564,12 +9573,12 @@
             for (let i = bg.organs.length - 1; i >= 0; i--) {
                 const o = bg.organs[i];
                 o.sq = Math.max(0, o.sq - dt * 5);
+                if (waterBit(o, dt, bg.organs, i, 40, 85, .1)) continue;
                 if (!o.landed) {
                     o.t += dt; o.vy += BG_GRAV * dt; o.vx *= Math.exp(-.6 * dt);
                     o.x += o.vx * dt; o.y += o.vy * dt; o.rot += o.vr * dt;
                     o.bl -= dt;
                     if (o.bl <= 0 && o.t < 1.8) { o.bl = .035; bgDrop(o.x, o.y, o.vx * .05 + (R() - .5) * 30, 10 + R() * 30, 1 + R() * 1.4) }   // bleeds in flight
-                    if (inPond(o.x, -6) && o.y >= waterSurfaceY(o.x) - o.r * .3) { splash(o.x, 1.2, 2); bg.organs.splice(i, 1); continue }
                     if (o.y >= -o.r * .5) {
                         o.y = -o.r * .5;
                         if (Math.abs(o.vy) > 200 && o.bn < 2) {          // wet bounce, squashes and sprays
@@ -9689,7 +9698,7 @@
             }
             for (const o of bg.organs) {                                 // organs
                 const sx = o.x - P.x + W / 2; if (sx < -40 || sx > W + 40) continue;
-                ctx.globalAlpha = o.landed ? Math.min(1, (40 - o.t) / 4) : 1;
+                ctx.globalAlpha = (o.landed ? Math.min(1, (40 - o.t) / 4) : 1) * (o.w ? .72 : 1);
                 ctx.save(); ctx.translate(sx, gy + 4 + o.y); ctx.rotate(o.landed ? o.rot * .15 : o.rot);
                 ctx.scale(1 + .35 * o.sq, (o.landed ? .65 : 1) * (1 - .3 * o.sq));
                 bgOrgan(o.k, o.r, o.seed); ctx.restore();
@@ -10291,6 +10300,76 @@
                 ctx.strokeRect(bx, by, 80, 9); ctx.fillRect(bx + 2, by + 2, 76 * c.hp / 100, 5);
             }
             ctx.restore();
+        }
+
+        // ================= SINKING GORE =================
+        const onWater = x => inPond(x, -6) && !(x >= DOCK_X0 && x <= DOCK_X1);   // the dock deck stays solid
+
+        // Handles a gore piece that is over the pond. Returns true when it handled the piece this frame.
+        // sink = max sink speed (px/s), bleed = seconds between blood puffs (0 = none), float = floats (hat)
+        function waterBit(b, dt, arr, i, life, sink, bleed, float) {
+            const size = b.r || b.s || 5;
+            if (!onWater(b.x)) {
+                if (b.w) { b.w = 0; b.landed = false; b.y = Math.min(b.y, -size * .4); b.vy = 0 }
+                return false;
+            }
+            const sy = waterSurfaceY(b.x);
+
+            // ---- entering the water ----
+            if (!b.w) {
+                if (!b.landed && b.y < sy - size * .5) return false;                  // still in the air
+                const imp = b.landed ? 0 : Math.abs(b.vy || 0);
+                b.w = 1; b.wt = 0; b.wb = 0; b.t = 0; b.landed = false; b.bn = 9; b.bounced = 1; b.y = sy;
+                b.vy = b.landed ? 60 : Math.min(imp, 500) * .4; b.vx *= .55;
+                splash(b.x, Math.min(8, 1 + imp / 200), Math.min(8, 2 + (imp / 150 | 0)));
+                for (let k = 0; k < 3; k++) addBubble(b.x, 4 + Math.random() * 10);
+                if (bleed && wClouds.length < 160) wClouds.push({ x: b.x, y: 4, r: 4, g: 14, t: 0, life: 1.4, k: 0 });
+            }
+
+            // ---- resting on the pond floor ----
+            if (b.w === 2) { b.t += dt; if (b.t > life) arr.splice(i, 1); return true }
+
+            // ---- minimal blood that trails the flesh, fading as it bleeds out ----
+            b.wt += dt;
+            if (bleed && b.wt < 4.5) {
+                b.wb -= dt;
+                if (b.wb <= 0) {
+                    b.wb = bleed * (1 + b.wt * .4);
+                    const f = 1 - b.wt / 4.5;
+                    if (wClouds.length < 160) wClouds.push({ x: b.x + (Math.random() - .5) * 4, y: b.y, r: 1.6 + 2 * f, g: 4 + 5 * f, t: 0, life: 1.1 + .6 * f, k: 0 });
+                    if (Math.random() < .3) addBubble(b.x, b.y);
+                }
+            }
+
+            // ---- floating (top hat) ----
+            if (float) {
+                b.t += dt; b.rot = wrapA(b.rot);
+                b.vy += ((sy + size * .3 - b.y) * 40 - b.vy * 6) * dt;
+                b.vx += (wind.v * .1 - b.vx) * .8 * dt;
+                b.x += b.vx * dt; b.y += b.vy * dt;
+                b.rot += (Math.sin(b.t * 1.6 + (b.seed || 0)) * .3 - b.rot) * Math.min(1, dt * 3);
+                if (Math.random() < dt * .8) splash(b.x, .25, 0);
+                if (b.t > life) arr.splice(i, 1);
+                return true;
+            }
+
+            // ---- sinking: gravity vs. water drag, slow flutter, tumbling ----
+            b.vy += 260 * dt;
+            const d = Math.exp(-2.6 * dt); b.vx *= d; b.vy *= d; b.vr *= Math.exp(-2 * dt);
+            if (b.vy > sink) b.vy += (sink - b.vy) * Math.min(1, dt * 6);
+            b.vx += Math.sin(b.wt * 3.2 + (b.seed || 0)) * 45 * dt;
+            b.x += b.vx * dt; b.y += b.vy * dt;
+            b.rot += b.vr * dt + Math.sin(b.wt * 2.1 + (b.seed || 0)) * .4 * dt;
+
+            const fl = pondDepth(b.x - POND_X) - size * .4;
+            if (b.y >= fl) {                                                            // lands on the bed
+                b.y = fl; b.landed = true; b.w = 2; b.t = 0; b.vx = b.vy = b.vr = 0;
+                b.rot = Math.round(b.rot / Math.PI) * Math.PI;
+                if (wClouds.length < 160) wClouds.push({ x: b.x, y: b.y - 2, r: 3, g: 10, t: 0, life: .9, k: 1 });   // silt puff
+                if (bleed && wClouds.length < 160) wClouds.push({ x: b.x, y: b.y - 3, r: 2.5, g: 6, t: 0, life: 1.2, k: 0 });
+                addBubble(b.x, b.y - 3);
+            }
+            return true;
         }
 
         function frame(now) {
