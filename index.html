@@ -3591,8 +3591,85 @@
             ctx.restore();
         }
 
+
+
+        function drawLiquorShop(x, gy, s) {
+            bdBegin(x, gy, s);
+            bdLine([[-170, 4], [-50, 7], [70, 6], [170, 4]], 2.4, 11, .22);
+
+            // main body + stepped false front
+            bdShape([[-120, 0], [-120, -125], [120, -125], [120, 0]], C_WALL, 1.8, 3);
+            bdPlanks(-120, 120, -4, -123, 13, 5);
+            bdShape([[-132, -125], [-132, -168], [-92, -168], [-92, -182], [-48, -182], [-48, -196], [48, -196], [48, -182], [92, -182], [92, -168], [132, -168], [132, -125]], C_WALL2, 1.9, 7);
+            for (const sx of [-112, 112]) bdLine([[sx, -128], [sx, -165]], .8, sx, .35);   // false-front board lines
+
+            // sign board
+            bdRect(-78, -184, 156, 46, C_WOOD, 1.8, 9);
+            ctx.fillStyle = '#111'; ctx.textAlign = 'center';
+            ctx.font = 'italic bold 30px Georgia,serif'; ctx.fillText('LIQUOR', 0, -158);
+            bdLine([[-66, -150], [66, -150]], 1, 4, .6);
+            ctx.font = 'italic 10px Georgia,serif'; ctx.fillText('WINE  ·  WHISKEY  ·  SPIRITS', 0, -142);
+
+            // striped awning (two wash tones only)
+            for (let k = 0; k < 12; k++) {
+                const x0 = -126 + k * 21;
+                bdShape([[x0, -100], [x0 + 21, -100], [x0 + 23, -80], [x0 - 2, -80]], k % 2 ? C_WALL : C_ROOF, 1.2, 30 + k);
+            }
+            for (const px of [-122, 122]) bdLine([[px, -80], [px, 0]], 2.2, px, 1);          // porch posts
+            bdLine([[-122, -26], [-48, -26]], 1.4, 14, .8);                                    // rail
+
+            // display window with bottles
+            bdRect(-100, -72, 62, 60, C_DARK, 1.6, 12);
+            bdLine([[-100, -42], [-38, -42]], 1.4, 13, .9);                                    // shelf
+            bdLine([[-69, -72], [-69, -12]], .8, 14, .5);                                      // mullion
+            for (let row = 0; row < 2; row++) {
+                for (let i = 0; i < 5; i++) {
+                    const bx = -95 + i * 11.5, by = row ? -12 : -42, h = 16 + (i % 2) * 5;
+                    ctx.fillStyle = (i + row) % 2 ? C_WALL : C_WOOD;
+                    ctx.fillRect(bx, by - h, 7, h);
+                    ctx.fillRect(bx + 2.5, by - h - 7, 2, 7);
+                    ctx.lineWidth = 1; ctx.strokeRect(bx, by - h, 7, h);
+                }
+            }
+            ctx.fillStyle = '#111';
+
+            // door
+            bdRect(-18, -78, 36, 78, C_DARK, 1.6, 15);
+            bdShape([[-13, -70], [13, -70], [13, -40], [-13, -40]], C_WOOD, 1.2, 16);
+            bdRect(-10, -34, 20, 11, C_WALL, 1.2, 17);                                         // OPEN plaque
+            ctx.font = 'bold 7px Georgia,serif'; ctx.fillText('OPEN', 0, -26);
+            ctx.beginPath(); ctx.arc(12, -40, 1.7, 0, 7); ctx.fill();
+
+            // barrel
+            bdShape([[56, 0], [51, -22], [56, -46], [92, -46], [97, -22], [92, 0]], C_WOOD, 1.7, 21);
+            for (const f of [.25, .75]) bdLine([[54, -46 * f], [94, -46 * f]], 1.8, 22 + f, .9);
+            ctx.beginPath(); ctx.ellipse(74, -46, 18, 5, 0, 0, 7); ctx.stroke();
+            bdLine([[74, -32], [74, -24]], 2.4, 23, 1);                                        // tap
+
+            // crate of bottles
+            bdRect(102, -32, 34, 32, C_WOOD, 1.6, 24);
+            bdLine([[102, -32], [136, 0]], 1, 25, .6);
+            for (let i = 0; i < 4; i++) {
+                ctx.fillStyle = i % 2 ? C_WALL : C_WOOD; ctx.fillRect(106 + i * 7.5, -44, 5, 12);
+                ctx.lineWidth = 1; ctx.strokeRect(106 + i * 7.5, -44, 5, 12);
+            }
+            ctx.fillStyle = '#111';
+
+            // hanging bottle sign on a bracket
+            bdLine([[120, -122], [158, -122]], 2, 26, 1);
+            bdLine([[146, -122], [146, -114]], 1, 27, .9); bdLine([[153, -122], [153, -114]], 1, 28, .9);
+            bdShape([[146, -114], [146, -102], [141, -96], [141, -72], [158, -72], [158, -96], [153, -102], [153, -114]], C_WALL, 1.5, 29);
+            bdLine([[144, -86], [155, -86]], .8, 30, .6);
+
+            bdLine([[-120, 0], [-120, -125]], 2.2, 20); bdLine([[120, 0], [120, -125]], 2.2, 21);
+            ctx.restore();
+        }
+
+
+
         function drawBuildings(gy) {
             const list = [
+                [drawLiquorShop, -4600, 3.2],
                 [drawGraves, -3400, 2.2], [drawShack, -2500, 2.5], [drawSaloon, -1500, 2.5], [drawBarrels, -1220, 2.2],
                 [drawWagon, -950, 2.2], [drawSignpost, 700, 2.4], [drawWell, 1000, 2.3], [drawBarrels, 2780, 2.2],
                 [drawWindmill, 3300, 2.8], [drawWaterTower, 4100, 2.7]
@@ -7104,6 +7181,7 @@
             add(-1220, 2.2, -30, -40); add(-1220, 2.2, 28, -52); add(-1220, 2.2, -4, -38);                                  // barrels + crates
             add(-950, 2.2, -10, -99);                                                                                       // wagon cover
             add(-3400, 2.2, -30, -44); add(-3400, 2.2, 56, -46); add(-3400, 2.2, -70, -54); add(-3400, 2.2, 14, -60);       // graves
+            add(-4600, 3.2, -90, -168); add(-4600, 3.2, 90, -168); add(-4600, 3.2, 0, -196);                               // liquor shop
             PERCH.push({ x: 1602, y: -72, by: null }, { x: 1638, y: -72, by: null });                                       // hitching post
         })();
         function freePerch(b) { if (b.perch) { if (b.perch.by === b) b.perch.by = null; b.perch = null } }
@@ -7466,6 +7544,7 @@
 
         // { wx: world x, sc: scale, r: [x, y, w, h, brightness, mullions] in the building's local space }
         const NIGHT_LIGHTS = [
+            { wx: -4600, sc: 3.2 * BLD, r: [[-100, -72, 62, 60, 1, 1], [-13, -70, 26, 30, .7, 0]] },   // liquor shop
             { wx: -1500, sc: 2.5 * BLD, r: [[-70, -100, 30, 34, 1, 1], [40, -100, 30, 34, 1, 1], [-86, -34, 26, 34, .9, 0], [-17, -46, 34, 34, .6, 0]] },   // saloon
             { wx: -2500, sc: 2.5 * BLD, r: [[-46, -52, 18, 18, 1, 1]] },                                                                                    // shack
             { wx: 2200, sc: 3.5 * BLD, r: [[-17, -152, 34, 30, 1, 1]] }                                                                                     // barn loft
