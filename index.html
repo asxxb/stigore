@@ -703,7 +703,7 @@
         }
         function respawn(n) {
             const side = Math.random() < .5 ? -1 : 1, x = P.x + side * (W / 2 + 150 + Math.random() * 250);
-            Object.assign(n, { hCrack: 0, hCrackT: 0, headHits: 0, hsPart: 0, hcDrip: 0, dbl: 0, dbK: 0, hsDead: 0, hsT: 0, veins: null, int: null, gut: 0, headThud: 0, gutDead: false, gutK: 0, gutPop: 0, gutCut: 0, fkSnk: 0, fk: null, fkT: 0, fkK: 0, fkPend: false, stab: 0, kneelK: 0, fst: 0, fallT: 0, fallK: 0, thud: 0, x, home: x, goal: x, vx: 0, z: 0, vz: 0, hp: n.maxhp, hurt: 0, down: 0, rot: 0, dying: 0, dead: 0, bar: 0, tumble: 0, wait: 1.5, face: -side, fid: 0, fidK: 0, headCut: 0, headK: 0, cord: null, brainOut: 0 });
+            Object.assign(n, { hpK: 0, hCrack: 0, hCrackT: 0, headHits: 0, hsPart: 0, hcDrip: 0, dbl: 0, dbK: 0, hsDead: 0, hsT: 0, veins: null, int: null, gut: 0, headThud: 0, gutDead: false, gutK: 0, gutPop: 0, gutCut: 0, fkSnk: 0, fk: null, fkT: 0, fkK: 0, fkPend: false, stab: 0, kneelK: 0, fst: 0, fallT: 0, fallK: 0, thud: 0, x, home: x, goal: x, vx: 0, z: 0, vz: 0, hp: n.maxhp, hurt: 0, down: 0, rot: 0, dying: 0, dead: 0, bar: 0, tumble: 0, wait: 1.5, face: -side, fid: 0, fidK: 0, headCut: 0, headK: 0, cord: null, brainOut: 0 });
         }
         function killBurst(n) {
             const S = CSc();
@@ -1506,7 +1506,7 @@
             }
             if (n.dbl > 0) n.dbl -= dt;
             n.dbK = (n.dbK || 0) + (((n.dbl > 0 && n.dying <= 0 && n.down <= 0) ? 1 : 0) - (n.dbK || 0)) * Math.min(1, dt * 9);
-            const grounded = n.z >= 0, stunned = n.hurt > 0 || n.down > 0 || !grounded || n.dying > 0 || n.dbl > 0;
+            const grounded = n.z >= 0, stunned = n.hurt > 0 || n.down > 0 || !grounded || n.dying > 0 || n.dbl > 0 || (n.hCrack && !n.hsDead);
             let tgt = 0;
 
             if (n.down > 0 || (n.dying > 0 && grounded && !n.gutDead && !n.hsDead)) tgt = n.kdir * Math.PI / 2;
@@ -1594,6 +1594,7 @@
             n.gutK = (n.gutK || 0) + ((n.gutDead ? 1 : 0) - (n.gutK || 0)) * Math.min(1, dt * 3.2);
             n.headK = (n.headK || 0) + ((n.headCut ? 1 : 0) - (n.headK || 0)) * Math.min(1, dt * 6);
             if (n.cord && dt > 0) stepCord(n, dt);
+            n.hpK = (n.hpK || 0) + (((n.hCrack && !n.hsDead && n.dying <= 0 && n.down <= 0) ? 1 : 0) - (n.hpK || 0)) * Math.min(1, dt * 9);
             if (n.hCrack && !n.hsDead && n.dying <= 0) {
                 n.hCrackT = (n.hCrackT || 0) + dt;
                 n.hcDrip = (n.hcDrip || 0) - dt;
@@ -2010,6 +2011,7 @@
             const sgpE = (P === PL && P.sgp > 0 && !P.sgpWalk) ? sgpEnv() : 0;   // stomp crouch weight
             const fkk = (P !== PL && P.fk) ? (P.fkK || 0) : 0;
             const dbk = (P !== PL) ? sm(P.dbK || 0) : 0;   // doubled over, clutching his stomach
+            const hpK = (P !== PL && P.hCrack && !P.hsDead) ? sm(P.hpK || 0) : 0;   // clutching his cracked head
             const gk = (P !== PL && P.gutDead) ? (P.gutK || 0) : ((P !== PL && P.hsDead) ? Math.min(1, Math.abs(P.rot || 0) / (Math.PI / 2)) : 0);   // headshot body: "flat" amount follows how far he has toppled
             const gkv = (P !== PL && P.hsDead) ? 0 : gk * (1 - Math.min(1, Math.abs(P.rot || 0) / (Math.PI / 2)));   // no split for the headshot body
             let hl = 0;   // head lift: 0 = on the ground, 1 = raised looking at his guts
@@ -2040,6 +2042,7 @@
             hipY += 40 * fkk;
             hipY += 40 * fkk;
             hipY += 26 * dbk;   // knees buckle
+            hipY += 16 * hpK;   // knees buckle
             hipY += 80 * gkv;
             if (P === PL) hipY += 10 * Math.min(1.2, P.sgRec) + 4 * sm(P.sgK);
             hipY += 13 * sgW;   // sink a little so the wide legs still reach the floor
@@ -2049,6 +2052,7 @@
 
             if (isGrabbed) hipX = -F * 8;
             hipX += Math.sin(now * 17) * 1.3 * kk + Math.sin(now * 23) * 1.1 * dbk;   // shaking
+            hipX += Math.sin(now * 3.1) * 3 * hpK + Math.sin(now * 19) * .8 * hpK;   // swaying + trembling
             if (P === PL) hipX -= F * 7 * P.sgRec;
             hipX -= 24 * F * (gk - gkv);   // slides the hips down to ground level when lying flat
             const grabLean = isGrabbed ? F * (.16 + Math.sin(now * 21) * .012) : 0;
@@ -2083,7 +2087,7 @@
 
 
             const l = moveLean - F * .5 * sk + (z < 0 ? .1 * F : 0) + .3 * pq * F - F * .2 * st + Math.sin(now * 30) * .012 * st + F * cbLean - F * (isGrabbed ? .1 : .4) * hk + grabLean + F * kk * KNEEL_BEND + Math.sin(now * 9) * .035 * kk * (1 - fk) + (fz ? F * fz.lean : 0) + F * fk * 0.47 * (1 - gk)
-                + ((P !== PL && P.fst === 1 && PL.fin > 0 && !P.stomachStabbed) ? F * .1 * finK(PL.fin).foot : 0) - F * .07 * (P === PL ? P.recoil : 0) - F * (P === PL ? .12 * P.sgRec - .06 * sm(P.sgK) : 0) + F * fkk * (.8 - .2 * fkPull) + F * gkv * .3 + F * .25 * (gk - gkv) + F * .2 * sgpE + F * dbk * (.8 + Math.sin(now * 14) * .035);   // lies flat: head on the floor, hips on the floor
+                + ((P !== PL && P.fst === 1 && PL.fin > 0 && !P.stomachStabbed) ? F * .1 * finK(PL.fin).foot : 0) - F * .07 * (P === PL ? P.recoil : 0) - F * (P === PL ? .12 * P.sgRec - .06 * sm(P.sgK) : 0) + F * fkk * (.8 - .2 * fkPull) + F * gkv * .3 + F * .25 * (gk - gkv) + F * .2 * sgpE + F * dbk * (.8 + Math.sin(now * 14) * .035) + F * hpK * (.26 + Math.sin(now * 8) * .04);   // lies flat: head on the floor, hips on the floor
             const rot = (x, y) => [hipX + x * Math.cos(l) - y * Math.sin(l), hipY + x * Math.sin(l) + y * Math.cos(l)];
             ctx.save(); ctx.translate(cx, gy + 4); ctx.scale(S, S); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
             if (pain > 0) ctx.translate((Math.sin(now * 47) * 1.6 + Math.sin(now * 83)) * pain, Math.sin(now * 61) * 1.2 * pain - spasm * 3);
@@ -2413,6 +2417,12 @@
                     const so = rot(F * 8, -30), [da, df] = ik2(sh, so[0] + F * (i ? 3 : -3), so[1] + (i ? 4 : 0), F);
                     ang = ang * (1 - dbk) + da * dbk; flex = flex * (1 - dbk) + df * dbk;
                 }
+                if (hpK > .01 && !isGrabbed) {   // both hands clamped on his head: one at the back, one at the forehead
+                    const hh = rot(-F * 7, -T - 24 + 5 * hpK), sq = Math.sin(now * 30 + i * 2) * 1.1 * hpK;
+                    const tx = hh[0] + F * (i ? 12 : -20) + sq, ty = hh[1] + (i ? -14 : 6) + sq * .6;
+                    const [ha, hf] = ikTo(sh, tx, ty, F);
+                    ang = ang * (1 - hpK) + ha * hpK; flex = flex * (1 - hpK) + hf * hpK;
+                }
                 if (sk > .01 && !pq && P.tt <= 0) { ang = ang * (1 - sk) + ((i ? .55 : 1.3) + Math.sin(now * 18 + i) * .08) * sk; flex = flex * (1 - sk) + .25 * sk }
                 if (st > .01) { ang = ang * (1 - st) + (i ? 3.5 : 2.75) * st + Math.sin(now * 28 + i) * .03 * st; flex = flex * (1 - st) + .15 * st }
                 if (P.hsDead && pain > 0) { ang += (Math.sin(now * 13 + i * 2.1) * .5 + .5) * pain * (i ? 1 : -1) * .9; flex += Math.abs(Math.sin(now * 17 + i)) * .5 * pain }
@@ -2544,6 +2554,7 @@
             const hdX = -F * 7 + F * (cb ? cb.hx * cb.w : 0) + F * pq * 10 + L * 10 - F * 5 * st + grabHdOffX - kux * kpull * 7 * kk + F * 9 * R * P.amp + F * sTilt[0] + (pain ? Math.sin(now * 58) * 2.5 * pain + Math.sin(now * 37) * 2 * pain - F * spasm * 8 : 0);
             const hdY = -T - 24 + (cb ? cb.hy * cb.w : 0) - 6 * st - Math.abs(L) * 1.5 + grabHdOffY - kuy * kpull * 7 * kk + 6 * kk + 5 * R * P.amp + sTilt[1] + (pain ? Math.sin(now * 49) * 2 * pain - spasm * 6 : 0);
             const hd = rot(hdX, hdY);
+            if (hpK > .01) { hd[0] += Math.sin(now * 33) * 1.4 * hpK; hd[1] += 5 * hpK }   // wincing, head bowed
             if (hl > .01) {
                 const o = hlo(-P.kdir * (7 + 5 * Math.sin(now * 1.6)) * hl, -(26 + 2 * Math.sin(now * 2.2)) * hl);   // up, and slowly looking around at his guts
                 hd[0] += o[0]; hd[1] += o[1];
@@ -2656,6 +2667,36 @@
                 ctx.quadraticCurveTo(nk[0] - F * len * .5, nk[1] + 12 + w, nk[0] - F * len, nk[1] + 8 + w * 1.5); ctx.stroke();
                 ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(nk[0] - F * 4, nk[1] + 8);
                 ctx.quadraticCurveTo(nk[0] - F * len * .4, nk[1] + 26 + w, nk[0] - F * len * .7, nk[1] + 30 + w); ctx.stroke();
+            }
+            if (hpK > .02 && !P.hsDead) {
+                // hands + forearms back on top of the head
+                if (FIST.complete) for (let i = 0; i < 2; i++) {
+                    const f = P.fistInfo && P.fistInfo[i], A = P.armFullPts && P.armFullPts[i]; if (!f || !A) continue;
+                    ctx.fillStyle = '#111';
+                    for (let j = 14; j <= 30; j++) {
+                        const t = j / 30, u = 1 - t;
+                        const x = u * u * A[0][0] + 2 * u * t * A[1][0] + t * t * A[2][0], y = u * u * A[0][1] + 2 * u * t * A[1][1] + t * t * A[2][1];
+                        ctx.beginPath(); ctx.arc(x, y, 1.8 + 2.4 * t, 0, 7); ctx.fill();
+                    }
+                    ctx.save(); ctx.translate(f.x, f.y); ctx.scale(f.F, 1); ctx.rotate(f.a - Math.PI / 2); ctx.drawImage(FIST, -FIST.naturalWidth / 2, -4); ctx.restore();
+                }
+                // pulsing pain lines around the skull
+                const pp = .5 + .5 * Math.sin(now * 14);
+                ctx.save(); ctx.strokeStyle = '#111'; ctx.lineCap = 'round'; ctx.lineWidth = 2.4; ctx.globalAlpha = hpK * (.45 + .45 * pp);
+                for (const a of [-2.95, -2.55, -.59, -.19, .35, 2.8]) {
+                    const r0 = 38 + 3 * pp, r1 = r0 + 9 + 4 * pp;
+                    ctx.beginPath(); ctx.moveTo(hd[0] + Math.cos(a) * r0, hd[1] + Math.sin(a) * r0); ctx.lineTo(hd[0] + Math.cos(a) * r1, hd[1] + Math.sin(a) * r1); ctx.stroke();
+                }
+                ctx.restore();
+                // scream, pops up right after the hit
+                const ct = P.hCrackT || 0;
+                if (ct < 1.4) {
+                    const k = ct < .15 ? ct / .15 : 1 - sm((ct - .9) / .5);
+                    ctx.save(); ctx.globalAlpha = Math.max(0, k); ctx.translate(hd[0] - F * 6, hd[1] - 74);
+                    ctx.rotate(-.08 + Math.sin(now * 40) * .03); ctx.scale(1 + .3 * (1 - Math.min(1, ct / .15)), 1 + .3 * (1 - Math.min(1, ct / .15)));
+                    ctx.textAlign = 'center'; ctx.fillStyle = '#111'; ctx.font = 'italic bold 24px Georgia,serif'; ctx.fillText('AAARGH!', 0, 0);
+                    ctx.restore();
+                }
             }
             ctx.restore(); CUR = PL;
         }
