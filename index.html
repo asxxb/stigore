@@ -7712,8 +7712,8 @@
         }
 
         // ================= FIREFLIES (night, far right) =================
-        const FF_N = 40;                    // how many fireflies
-        const FF_X0 = 4400, FF_X1 = 6000;   // world x range they live in (far right)
+        const FF_N = 90;
+        const FF_X0 = 4400, FF_X1 = 10200;
         const fireflies = [];
         (function () {
             for (let i = 0; i < FF_N; i++) {
@@ -7875,16 +7875,93 @@
         // =====================================================================
         // POND + DOCK (centre of the forest)
         // =====================================================================
-        const POND_X = 5250;                 // world x of the pond centre
-        const POND_RX = 700, POND_RY_MAX = 520;   // half-width / max depth of the water (side-view cross-section)
+        const POND_X = 7350;                 // centre moved right so the left bank stays at x = 4550 (was 5250 - 700)
+        const POND_RX = 2800, POND_RY_MAX = 520;   // 4x wider
         let POND_RY = POND_RY_MAX;                // actual depth this frame (shrinks if the screen has no room below the ground line)
-        const DOCK_X0 = POND_X - POND_RX - 80, DOCK_X1 = POND_X - 260;   // dock starts on the left bank and reaches into the water
+        const DOCK_X0 = POND_X - POND_RX - 80, DOCK_X1 = POND_X - POND_RX + 440;   // dock follows the LEFT bank
         const F_POND_WASH = 'rgba(100,140,160,.40)', F_WOOD = 'rgba(150,120,85,.6)';
+
+        const SOIL = 18;   // thickness of the mud layer under the walkable floor
+
+        // Pond floor profile. First number: position across the pond (-1 = left bank, 1 = right bank).
+        // Second number: depth as a fraction of POND_RY. Edit these points to reshape the pond.
+        const POND_PROFILE = [
+            [-1.000, 0],
+            [-0.9975, .14],   // steep left bank
+            [-0.9925, .30],
+            [-0.975, .55],
+            [-0.940, .74],
+            [-0.900, .88],
+            [-0.840, .96],    // deepest hole (under the end of the dock)
+            [-0.780, .90],
+            [-0.700, .70],
+            [-0.620, .62],
+            [-0.520, .74],
+            [-0.440, .85],
+            [-0.350, .70],
+            [-0.260, .52],    // ridge
+            [-0.180, .60],
+            [-0.100, .78],
+            [ 0.000, .68],
+            [ 0.080, .50],    // ridge
+            [ 0.160, .58],
+            [ 0.260, .82],    // hollow
+            [ 0.340, .70],
+            [ 0.420, .48],
+            [ 0.520, .58],
+            [ 0.620, .40],
+            [ 0.700, .30],
+            [ 0.780, .38],
+            [ 0.860, .22],
+            [ 0.930, .12],    // shelf
+            [ 0.975, .05],    // beach, you wade out here
+            [ 1.000, 0]
+        ];
+
+        function pondShape(t) {                         // smooth curve through the profile points, 0..1
+            const K = POND_PROFILE, n = K.length;
+            if (t <= -1 || t >= 1) return 0;
+            let i = 0; while (i < n - 2 && t >= K[i + 1][0]) i++;
+            const a = K[i], b = K[i + 1], p = K[Math.max(0, i - 1)], q = K[Math.min(n - 1, i + 2)];
+            const h = b[0] - a[0], u = (t - a[0]) / h, u2 = u * u, u3 = u2 * u;
+            const m0 = (b[1] - p[1]) / (b[0] - p[0]) * h, m1 = (q[1] - a[1]) / (q[0] - a[0]) * h;
+            const v = (2 * u3 - 3 * u2 + 1) * a[1] + (u3 - 2 * u2 + u) * m0 + (-2 * u3 + 3 * u2) * b[1] + (u3 - u2) * m1;
+            return Math.max(0, Math.min(1, v));
+        }
+        function pondDepth(rx) {                        // floor depth in px below the ground line, rx = px from the pond centre
+            const t = rx / POND_RX; if (t <= -1 || t >= 1) return 0;
+            return POND_RY * pondShape(t) * (1 + .03 * Math.sin(rx * .025) + .02 * Math.sin(rx * .06));   // small bumps
+        }
+        function pondFloorY(top, rx, soil) { const d = pondDepth(rx); return top + d + soil * Math.min(1, d / 40) }   // mud layer tapers to nothing at the banks
+        function pondPath(sx, top, soil, wave) {        // closed water shape: surface left to right, then the uneven floor back
+            const x0 = sx - POND_RX;
+            ctx.beginPath(); ctx.moveTo(x0, top + (wave ? wh[0] : 0));
+            for (let i = 1; i <= WN; i++) ctx.lineTo(x0 + i * WSP, top + (wave ? wh[i] : 0));
+            for (let i = WN; i >= 0; i--) { const rx = -POND_RX + i * WSP; ctx.lineTo(sx + rx, pondFloorY(top, rx, soil)); }
+            ctx.closePath();
+        }
+
+        // where each bank turns into a steep wall (floor slope above 3), measured from the centre
+        const _rim = { ry: -1, L: 0, R: 0 };
+        function pondRim() {
+            if (_rim.ry !== POND_RY) {
+                _rim.ry = POND_RY;
+                for (const k of ['L', 'R']) {
+                    const sd = k === 'R' ? 1 : -1; let x = POND_RX - 1;
+                    while (x > POND_RX * .2) {
+                        if (Math.abs(pondDepth(sd * (x - 3)) - pondDepth(sd * x)) / 3 < 3) break;
+                        x -= 3;
+                    }
+                    _rim[k] = x;
+                }
+            }
+            return _rim;
+        }
 
         function inPond(wx, m) { return Math.abs(wx - POND_X) < POND_RX + (m || 0) }
 
         // ---------- water physics: a row of coupled spring columns ----------
-        const WN = 160, WSP = (2 * POND_RX) / WN;           // column count / spacing
+        const WN = 640, WSP = (2 * POND_RX) / WN;      // was 160 (spacing stays about 8.75 px)
         const wh = new Float32Array(WN + 1), wv = new Float32Array(WN + 1);   // height + velocity
         const wL = new Float32Array(WN + 1), wR = new Float32Array(WN + 1);
         const W_K = 0.02, W_DAMP = 0.018, W_SPREAD = 0.24, W_MAX = 18;
@@ -7936,7 +8013,7 @@
             lastPX = P.x;
             // ambient raindrops
             rainT -= dt;
-            if (rainT <= 0) { splash(POND_X + (Math.random() - .5) * POND_RX * 1.8, 1.2 + Math.random() * 1.5, 0); rainT = .6 + Math.random() * 1.6; }
+            if (rainT <= 0) { splash(POND_X + (Math.random() - .5) * POND_RX * 1.8, 1.2 + Math.random() * 1.5, 0); rainT = (.6 + Math.random() * 1.6) / 4; }
             // wind pushes the water a little
             if (typeof wind !== 'undefined') for (let i = 1; i < WN; i += 6) wv[i] += (wind.v / 400) * .01 * Math.sin(now * 1.5 + i);
 
@@ -7977,17 +8054,8 @@
             return K[K.length - 1][1];
         }
 
-        function floorDepth(wx) {
-            const rx = wx - POND_X, rel = Math.min(1, Math.abs(rx) / POND_RX);
-            const bowl = POND_RY * Math.sqrt(Math.max(0, 1 - rel * rel));
-            const bed = POND_RY * (.8 + .04 * Math.sin(rx * .02) + .03 * Math.sin(rx * .07));
-            return Math.min(bowl, bed);
-        }
-        function waterShape(sx, top) {
-            ctx.beginPath(); ctx.moveTo(sx - POND_RX, top);
-            for (let i = 0; i <= WN; i++) ctx.lineTo(sx - POND_RX + i * WSP, top + wh[i]);
-            ctx.ellipse(sx, top, POND_RX, POND_RY, 0, 0, Math.PI); ctx.closePath();
-        }
+        function floorDepth(wx) { return pondDepth(wx - POND_X) }
+        function waterShape(sx, top) { pondPath(sx, top, SOIL, true) }
 
         // th = body angle from upright (tilt toward horizontal + extra lean), ext = half vertical extent,
         // sub = submersion 0..1, headY = actual head depth below the surface
@@ -8206,7 +8274,7 @@
             sw.gk += ((sw.gnd ? 1 : 0) - sw.gk) * Math.min(1, dt * 7);
 
             // ---------- shoreline: find the steep wall (floor slope 3) and the real bank height there ----------
-            const xs = POND_RX * 3 * POND_RX / Math.hypot(POND_RY, 3 * POND_RX), dx0 = P.x - POND_X, side = Math.sign(dx0) || 1;
+            const dx0 = P.x - POND_X, side = Math.sign(dx0) || 1, xs = pondRim()[side > 0 ? 'R' : 'L'];
             const hb = Math.max(0, sw.cy + sw.ext) + BANK_EXTRA[side > 0 ? 'R' : 'L'];
             const walkRim = floorDepth(POND_X + side * xs) < H0 * .1;          // shallow rim: just wade out
             if (!locked && sw.tilt < .5 && sw.headY < 20 * S && sw.cd <= 0) {
@@ -8382,7 +8450,7 @@
         const clampN = (v, a, b) => Math.max(a, Math.min(b, v));
 
         function initFish() {
-            for (let i = 0; i < 5; i++) fish.push({
+            for (let i = 0; i < 16; i++) fish.push({
                 x: (hash(i * 3.7) - .5) * POND_RX * 1.6, y: 40 + hash(i * 5.3) * 80, vx: 0, vy: 0,
                 dir: i % 2 ? -1 : 1, face: i % 2 ? -1 : 1, s: .9 + hash(i * 2.2) * .5, ph: i * 1.7,
                 fear: 0, fx: null, tx: 0, ty: 60, wt: 0
@@ -8440,7 +8508,8 @@
                 if (Math.abs(f.vx) > 6) f.dir = Math.sign(f.vx);
                 f.face += (f.dir - f.face) * Math.min(1, dt * 8);              // smooth turn-around
                 f.x = clampN(f.x + f.vx * dt, -POND_RX + 30, POND_RX - 30);
-                const rel = f.x / POND_RX, maxY = Math.max(20, POND_RY * .78 * Math.sqrt(Math.max(0, 1 - rel * rel)) - 12);
+                const maxY = Math.max(16, pondDepth(f.x) - 14);
+                if (pondDepth(f.x) < 36) f.x -= Math.sign(f.x) * 70 * dt;     // too shallow here: drift back into open water
                 f.y = clampN(f.y + f.vy * dt, 12, maxY);
             }
         }
@@ -8455,17 +8524,11 @@
 
             if (mode === 0) {
                 // paper bank + water body (flat top on the ground line, bowl below)
-                ctx.fillStyle = PAPER; ctx.beginPath(); ctx.ellipse(sx, gy + 4, POND_RX + 14, POND_RY + 8, 0, 0, Math.PI); ctx.closePath(); ctx.fill();
+                ctx.fillStyle = PAPER; pondPath(sx, gy + 1, 26, false); ctx.fill();
                 const top = gy + 4;
                 updateWater(top, sx, now);
                 updateFish(now);
-                function waterPath() {
-                    ctx.beginPath();
-                    ctx.moveTo(sx - POND_RX, top);
-                    for (let i = 0; i <= WN; i++) ctx.lineTo(sx - POND_RX + i * WSP, top + wh[i]);
-                    ctx.ellipse(sx, top, POND_RX, POND_RY, 0, 0, Math.PI);   // bowl from right to left
-                    ctx.closePath();
-                }
+                const waterPath = () => pondPath(sx, top, SOIL, true);
 
                 // water: pale at the surface, dark and teal at the bottom
                 const wg = ctx.createLinearGradient(0, gy + 4, 0, gy + 4 + POND_RY);
@@ -8476,31 +8539,31 @@
                 ctx.save();
                 waterPath(); ctx.clip();
                 const dep = POND_RY, ds = dep / 120;
-                const by = rx => top + dep * (.8 + .04 * Math.sin(rx * .02) + .03 * Math.sin(rx * .07));   // pond-bed height at pond-relative x
+                const by = rx => top + pondDepth(rx);
                 // light shafts from the surface
                 ctx.fillStyle = 'rgba(255,255,225,.10)';
-                for (let i = 0; i < 7; i++) {
-                    const x = sx - POND_RX * .7 + i * POND_RX * .24 + Math.sin(now * .3 + i) * 14;
+                for (let i = 0; i < 28; i++) {
+                    const x = sx - POND_RX * .7 + i * 168 + Math.sin(now * .3 + i) * 14;
                     ctx.beginPath(); ctx.moveTo(x - 6, top); ctx.lineTo(x + 10, top); ctx.lineTo(x + 50 + i * 4, top + dep); ctx.lineTo(x + 6, top + dep); ctx.closePath(); ctx.fill();
                 }
                 // sandy bed
                 ctx.fillStyle = 'rgba(190,170,130,.55)'; ctx.strokeStyle = '#111'; ctx.lineWidth = 1.3;
                 ctx.beginPath(); ctx.moveTo(sx - POND_RX, by(-POND_RX));
-                for (let x = -POND_RX; x <= POND_RX; x += 20) ctx.lineTo(sx + x, by(x));
-                ctx.lineTo(sx + POND_RX, top + dep + 20); ctx.lineTo(sx - POND_RX, top + dep + 20); ctx.closePath(); ctx.fill();
-                ctx.beginPath(); for (let x = -POND_RX; x <= POND_RX; x += 20) { x === -POND_RX ? ctx.moveTo(sx + x, by(x)) : ctx.lineTo(sx + x, by(x)) } ctx.stroke();
+                for (let i = 1; i <= WN; i++) { const x = -POND_RX + i * WSP; ctx.lineTo(sx + x, by(x)); }
+                ctx.lineTo(sx + POND_RX, top + dep + 40); ctx.lineTo(sx - POND_RX, top + dep + 40); ctx.closePath(); ctx.fill();
+                ctx.beginPath(); for (let i = 0; i <= WN; i++) { const x = -POND_RX + i * WSP; i ? ctx.lineTo(sx + x, by(x)) : ctx.moveTo(sx + x, by(x)); } ctx.stroke();
                 // rocks on the bed
-                for (let i = 0; i < 14; i++) {
-                    const rx = (hash(i * 4.7) - .5) * POND_RX * 1.8, r = (6 + hash(i * 2.9) * 10) * ds + 3;
+                for (let i = 0; i < 56; i++) {
+                    const rx = (hash(i * 4.7) - .5) * POND_RX * 1.8, r = Math.min((6 + hash(i * 2.9) * 10) * ds + 3, Math.max(4, pondDepth(rx) * .4));
                     ctx.fillStyle = 'rgba(120,120,115,.55)'; ctx.lineWidth = .9;
                     ctx.beginPath(); ctx.ellipse(sx + rx, by(rx) + 2, r * 1.4, r * .75, 0, Math.PI, 0); ctx.closePath(); ctx.fill(); ctx.stroke();
                 }
                 // swaying weeds
                 ctx.lineWidth = 1.3; ctx.globalAlpha = .75;
-                for (let i = 0; i < 14; i++) {
+                for (let i = 0; i < 56; i++) {
                     const rx = (hash(i * 6.3 + 2) - .5) * POND_RX * 1.85;
                     for (let s = 0; s < 3; s++) {
-                        const hgt = (30 + hash(i * 3 + s) * 40) * ds + 8, sw = Math.sin(now * 1.1 + i + s) * 7;
+                        const hgt = Math.min((30 + hash(i * 3 + s) * 40) * ds + 8, pondDepth(rx) * .8), sw = Math.sin(now * 1.1 + i + s) * 7;
                         ctx.beginPath(); ctx.moveTo(sx + rx + s * 5, by(rx) + 2);
                         ctx.quadraticCurveTo(sx + rx + s * 5 + sw, by(rx) - hgt * .5, sx + rx + s * 5 + sw * 1.6 + (s - 1) * 5, by(rx) - hgt); ctx.stroke();
                     }
@@ -8521,7 +8584,7 @@
                 }
                 // rising bubbles
                 ctx.strokeStyle = '#111'; ctx.lineWidth = .8;
-                for (let i = 0; i < 9; i++) {
+                for (let i = 0; i < 36; i++) {
                     const ph = (now * .15 + i * .15) % 1, bx = sx + (hash(i * 8.1) - .5) * POND_RX * 1.3 + Math.sin(now * 2 + i) * 3;
                     ctx.globalAlpha = .7 * (1 - ph); ctx.beginPath(); ctx.arc(bx, top + dep * .78 - ph * dep * .78, 2 + hash(i * 1.3) * 2.5, 0, 7); ctx.stroke();
                 }
@@ -8530,28 +8593,31 @@
                 for (const b of bubs) { ctx.beginPath(); ctx.arc(sx + b.wx - POND_X, top + b.y, b.r, 0, 7); ctx.fill(); ctx.stroke(); }
                 ctx.restore();
                 ctx.strokeStyle = '#111';
-                ctx.lineWidth = 1.7; ctx.beginPath(); ctx.ellipse(sx, top, POND_RX, POND_RY, 0, .06, Math.PI - .06); ctx.stroke();
+                ctx.lineWidth = 1.7; ctx.beginPath();
+                for (let i = 0; i <= WN; i++) { const x = -POND_RX + i * WSP, y = pondFloorY(top, x, SOIL); i ? ctx.lineTo(sx + x, y) : ctx.moveTo(sx + x, y); }
+                ctx.stroke();
                 ctx.lineWidth = 1.4; ctx.beginPath();                       // live surface line
                 for (let i = 0; i <= WN; i++) { const x = sx - POND_RX + i * WSP; i ? ctx.lineTo(x, top + wh[i]) : ctx.moveTo(x, top + wh[i]); }
                 ctx.stroke();
                 ctx.lineWidth = 1; ctx.fillStyle = 'rgba(190,220,230,.8)';
                 for (const s of wSpray) { const dx = sx + s.wx - POND_X; ctx.beginPath(); ctx.arc(dx, s.y, s.r, 0, 7); ctx.fill(); ctx.stroke(); }
-                ctx.lineWidth = .8; ctx.globalAlpha = .5; ctx.beginPath(); ctx.ellipse(sx, top, POND_RX * .8, POND_RY * .68, 0, .3, Math.PI - .5); ctx.stroke();
+                ctx.lineWidth = .8; ctx.globalAlpha = .45; ctx.beginPath();
+                for (let i = 6; i <= WN - 6; i++) { const x = -POND_RX + i * WSP, y = top + pondDepth(x) * .7; i === 6 ? ctx.moveTo(sx + x, y) : ctx.lineTo(sx + x, y); }
+                ctx.stroke();
                 ctx.globalAlpha = 1;
 
                 // shimmer dashes
                 ctx.lineWidth = 1;
-                for (let i = 0; i < 22; i++) {
+                for (let i = 0; i < 88; i++) {
                     const x = sx + (hash(i * 5.1) - .5) * POND_RX * 1.8, y = gy + 12 + hash(i * 2.3) * 22;
-                    const ex = (x - sx) / (POND_RX * .95), ey = (y - gy - 4) / POND_RY;
-                    if (ex * ex + ey * ey > .85) continue;
+                    if (Math.abs(x - sx) > POND_RX * .95 || y > gy + 4 + pondDepth(x - sx) - 10) continue;
                     ctx.globalAlpha = .25 + .25 * Math.sin(now * 1.4 + i * 2);
                     ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 14 + hash(i * 7.7) * 22, y); ctx.stroke();
                 }
 
                 // lily pads
-                for (let i = 0; i < 9; i++) {
-                    const x = sx + POND_RX * .12 + i * POND_RX * .09 + hash(i * 9.2) * POND_RX * .04, r = 9 + hash(i * 1.9) * 7;
+                for (let i = 0; i < 36; i++) {
+                    const x = sx + POND_RX * .12 + i * POND_RX * .0225 + hash(i * 9.2) * POND_RX * .01, r = 9 + hash(i * 1.9) * 7;
                     const y = surfY(top, sx, x) + 14 + hash(i * 4.4) * 4;
                     const tilt = (surfY(top, sx, x + 8) - surfY(top, sx, x - 8)) / 16;
                     ctx.save(); ctx.translate(x, y); ctx.rotate(Math.atan(tilt));
@@ -8566,13 +8632,14 @@
                 // pilings down into the water
                 for (let x = x0 + 35; x <= x1 - 10; x += 95) {
                     if (x < sx - POND_RX) continue;                      // only over water
-                    ctx.lineWidth = 3.5; ctx.beginPath(); ctx.moveTo(x, gy + 10); ctx.lineTo(x + 1, gy + POND_RY - 6); ctx.stroke();
+                    const fl = gy + 4 + pondDepth(x - sx);
+                    ctx.lineWidth = 3.5; ctx.beginPath(); ctx.moveTo(x, gy + 10); ctx.lineTo(x + 1, fl + 2); ctx.stroke();
                     const sy = surfY(top, sx, x);
                     ctx.lineWidth = .9; ctx.globalAlpha = .5;
                     ctx.beginPath(); ctx.ellipse(x, sy + 6, 8 + Math.abs(wv[Math.round((x - (sx - POND_RX)) / WSP)] || 0) * 3, 2.5, 0, 0, 7); ctx.stroke();
                     ctx.globalAlpha = 1;
                     ctx.globalAlpha = .25; ctx.lineWidth = 2.5; ctx.beginPath();            // wobbly reflection
-                    for (let k = 0; k < 6; k++) { const yy = gy + POND_RY - 4 + k * 4; ctx.lineTo(x + Math.sin(now * 2 + k) * 2, yy) }
+                    for (let k = 0; k < 6; k++) { const yy = fl + k * 4; ctx.lineTo(x + Math.sin(now * 2 + k) * 2, yy) }
                     ctx.stroke(); ctx.globalAlpha = 1;
                 }
                 // deck boards
