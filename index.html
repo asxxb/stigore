@@ -4480,7 +4480,13 @@
                 const s = shells[i];
                 if (!s.landed) {
                     s.vy += 1500 * dt; s.x += s.vx * dt; s.y += s.vy * dt; s.rot += s.vr * dt;
-                    if (s.y >= 0) { s.y = 0; s.landed = true; s.rot = Math.round(s.rot / Math.PI) * Math.PI }
+                    if (s.y >= 0) {
+                        s.y = 0;
+                        if (s.sg && !s.bn && s.vy > 160) {            // shotgun shell: one bounce, then it settles
+                            s.bn = 1; s.vy *= -.32; s.vx *= .55; s.vr *= .5;
+                            burst(s.x, -2, 3, 110, Math.sign(s.vx) || 1);
+                        } else { s.landed = true; s.vx = 0; s.rot = Math.round(s.rot / Math.PI) * Math.PI }
+                    }
                 } else { s.t += dt; if (s.t > 8) shells.splice(i, 1) }
             }
         }
@@ -4665,6 +4671,17 @@
             for (let i = 0; i < n; i++) shells.push({ x: w[0], y: w[1], vx: -F * (40 + Math.random() * 90) + (Math.random() - .5) * 60, vy: -(120 + Math.random() * 140), rot: Math.random() * 6, vr: (Math.random() - .5) * 16, landed: false, t: 0, sg: 1 });
         }
 
+        function ejectSgShells(n) {                      // pump ejection: up and back with a fast spin
+            const w = P.sgBreechW || [P.x, -150], F = P.face;
+            for (let i = 0; i < n; i++) shells.push({
+                x: w[0], y: w[1],
+                vx: -F * (60 + Math.random() * 90 + i * 35),
+                vy: -(300 + Math.random() * 130 + i * 40),
+                rot: Math.random() * 6, vr: (Math.random() < .5 ? -1 : 1) * (16 + Math.random() * 8),
+                landed: false, t: 0, sg: 1, bn: 0
+            });
+        }
+
 
 
         function bodyBlast(e, F, h, d) {
@@ -4756,7 +4773,7 @@
             if (P.sgPump > 0) {
                 P.sgPump += dt; const u = P.sgPump / SG_PUMP_T;
                 if (!P.sgPumpE && u >= .5) {                 // forend all the way back: eject the spent shell(s)
-                    P.sgPumpE = 1; dropSgShells(P.sgPumpN); P.sgOut += P.sgPumpN; shake = Math.max(shake, 2);
+                    P.sgPumpE = 1; ejectSgShells(P.sgPumpN); P.sgOut += P.sgPumpN; shake = Math.max(shake, 2);
                     if (P.sgBreechW) puff(P.sgBreechW[0], P.sgBreechW[1], 3, -P.face * 20, -30, 2, 6, 1.4, .22);
                 }
                 if (!P.sgPumpC && u >= .82) { P.sgPumpC = 1; shake = Math.max(shake, 3) }   // forend slams home
