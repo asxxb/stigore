@@ -3853,6 +3853,7 @@
         // ================= STILT HOUSE EXTRAS =================
         const CAMP_X = -300, CAMP_SC = .9;          // campfire: left of / behind the house (local units)
         const PAD_X0 = 226, PAD_X1 = 442;           // horse paddock fence span, right of the stairs
+        const HORSE_POST_X = -7720;                  // hitching post by the paddock / house entrance
         const LEAVES = [];
         const LEAF_COL = ['rgba(110,140,80,.9)', 'rgba(170,140,70,.9)', 'rgba(150,95,60,.9)'];
 
@@ -4373,9 +4374,9 @@
                 }
             }
 
-            // ================= WOODEN HITCHING POST NEXT TO BARN =================
-            {
-                const hitchSX = W / 2 + 1620 - cam;
+            // ================= WOODEN HITCHING POSTS (HOUSE & BARN) =================
+            for (const hx of [HORSE_POST_X, 1620]) {
+                const hitchSX = W / 2 + hx - cam;
                 if (hitchSX > -150 && hitchSX < W + 150) {
                     drawHitchingPost(gy, hitchSX);
                 }
@@ -6291,7 +6292,7 @@
         // ================= HORSE (mount, ride, jump, trample) =================
         const HR_MOUNT_R = 170, HR_SEAT = -240, HR_WALK = 215, HR_RUN = 790, HR_JUMP = 640, HR_REAR_T = 1.0;
         const HORSE_W = 1.55, HORSE_H = 1.60;
-        const HRS = { x: 1840, vx: 0, z: 0, vz: 0, face: -1, ph: 0, amp: 0, rg: 0, home: 1840, goal: 1840, wait: 2, gz: 0, gT: 3, gk: 0, rear: 0, muz: [123, -158], tied: true, huffT: 5, huff: 0, hp1: 0, hp2: 0 };
+        const HRS = { x: -7500, vx: 0, z: 0, vz: 0, face: -1, ph: 0, amp: 0, rg: 0, home: -7500, goal: -7500, wait: 2, gz: 0, gT: 3, gk: 0, rear: 0, muz: [123, -158], tied: true, huffT: 5, huff: 0, hp1: 0, hp2: 0 };
 
         function huffOff(u) {   // head offset (px) over the huff, u = 0..1
             if (u < .25) return -8 * sm(u / .25);                 // toss up
@@ -7832,7 +7833,7 @@
             if (h.tied) {
 
                 const postSX =
-                    W / 2 + 1620 - P.x + 12;
+                    W / 2 + HORSE_POST_X - P.x + 12;
 
                 const postSY =
                     gy - 54;
@@ -8095,7 +8096,8 @@
             add(-950, 2.2, -10, -99);                                                                                       // wagon cover
             add(-3400, 2.2, -30, -44); add(-3400, 2.2, 56, -46); add(-3400, 2.2, -70, -54); add(-3400, 2.2, 14, -60);       // graves
             add(-4600, 3.2, -90, -168); add(-4600, 3.2, 90, -168); add(-4600, 3.2, 0, -196);                               // liquor shop
-            PERCH.push({ x: 1602, y: -72, by: null }, { x: 1638, y: -72, by: null });                                       // hitching post
+            PERCH.push({ x: HORSE_POST_X - 18, y: -72, by: null }, { x: HORSE_POST_X + 18, y: -72, by: null });           // house hitching post
+            PERCH.push({ x: 1602, y: -72, by: null }, { x: 1638, y: -72, by: null });                                       // barn hitching post
         })();
         function freePerch(b) { if (b.perch) { if (b.perch.by === b) b.perch.by = null; b.perch = null } }
         function pickPerch(b) {
