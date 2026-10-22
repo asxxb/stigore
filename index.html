@@ -2435,7 +2435,8 @@
             if (P.fidK > 0) { if (P.fidType === 1) L = lookCurve(P.fidT / P.fidDur) * P.fidK * F; else st = stretchEnv(P.fidT / P.fidDur) * P.fidK }
             const cb = (P === PL && P.pk > 0) ? parkourPose(P) : comboPose(P), hk = P.hurt > 0 ? Math.min(1, P.hurt / .2) : 0;
             const ldW = (P === PL && cb && cb.ldp) ? cb.w : 0;                 // landing / air pose weight
-            P.kneeFull = (P === PL && cb && cb.kneeFull) ? 1 : 0;
+            const mpa = (P === PL) && MPA();
+            P.kneeFull = (P === PL && ((cb && cb.kneeFull) || mpa)) ? 1 : 0;
             const isGrabbed = (P !== PL && ((PL.grabbed === P && (PL.cs >= 1 && PL.cs <= 4 || (PL.cs === 0 && PL.clast >= 1 && PL.clast <= 4))) || (PL.stbk > 0 && PL.stbk <= STAB_HOLD && PL.stbTgt === P)));
             const q = P.atk > 0 ? 1 - P.atk / .45 : 0, pq = Math.sin(Math.PI * q);
             const half = (70 + 30 * R) * P.amp, stance = 20 * (1 - P.amp); const bob = Math.sin(now * 2) * 1.2 * (1 - P.amp) + 14 * pq;
@@ -2445,7 +2446,7 @@
             const grabHipY = isGrabbed ? 20 : 0;
             const kk = P.kneelK || 0, fk = P.fallK || 0;
             const mk = (P === PL) ? (P.mk || 0) : 0;                        // mounted blend 0..1
-            const mz = mk * (HRS.z / S) - 85 * Math.sin(Math.PI * mk);    // horse jump + hop arc while climbing on/off
+            const mz = mk * (HRS.z / S);
             const seatY = HR_SEAT + hrsBob() + HRS.cmp * HORSE_H + mz;
             const sgW = (P === PL && P.sgK > .01 && z >= 0) ? sm(P.sgK) * (1 - Math.min(1, sp / 120)) : 0;   // shotgun stance weight
             const sgpE = (P === PL && P.sgp > 0 && !P.sgpWalk) ? sgpEnv() : 0;   // stomp crouch weight
@@ -2492,7 +2493,9 @@
             hipY += 16 * sgpE;
             if (cb && cb.hipAbs !== undefined) hipY = hipY * (1 - cb.w) + cb.hipAbs * cb.w;
             if (mk > 0) hipY = hipY * (1 - mk) + seatY * mk;
+            if (mpa) hipY = hipY * (1 - MP.W) + MP.pose.hipY * MP.W;
             let hipX = cb ? F * cb.hipX * cb.w : 0, cbLean = cb ? cb.lean * cb.w : 0;
+            if (mpa) hipX += MP.pose.hipX * MP.W;
 
             if (isGrabbed) hipX = -F * 8;
             hipX += Math.sin(now * 17) * 1.3 * kk + Math.sin(now * 23) * 1.1 * dbk;   // shaking
@@ -2500,16 +2503,7 @@
             if (P === PL) hipX -= F * 7 * P.sgRec;
             hipX -= 24 * F * (gk - gkv);   // slides the hips down to ground level when lying flat
             const grabLean = isGrabbed ? F * (.16 + Math.sin(now * 21) * .012) : 0;
-            const mountLean =
-                (P.mount === 1)
-                    ? (
-                        P.mountT < .18
-                            ? 0
-                            : P.mountT < .62
-                                ? .32 * sm((P.mountT - .18) / .44)
-                                : .32 * (1 - sm((P.mountT - .62) / .38))
-                    )
-                    : 0;
+            const mountLean = 0;
 
             // ---- riding lean: small at walk, big at gallop ----
             const RIDE_LEAN_WALK = .05;   // radians at walking speed (tiny)
@@ -2526,7 +2520,7 @@
 
 
 
-            const l = moveLean - F * .5 * sk + (z < 0 ? .1 * F : 0) + .3 * pq * F - F * .2 * st + Math.sin(now * 30) * .012 * st + F * cbLean - F * (isGrabbed ? .1 : .4) * hk + grabLean + F * kk * KNEEL_BEND + Math.sin(now * 9) * .035 * kk * (1 - fk) + (fz ? F * fz.lean : 0) + F * fk * 0.47 * (1 - gk)
+            const l = (mpa ? F * MP.pose.lean * MP.W : 0) + moveLean - F * .5 * sk + (z < 0 ? .1 * F : 0) + .3 * pq * F - F * .2 * st + Math.sin(now * 30) * .012 * st + F * cbLean - F * (isGrabbed ? .1 : .4) * hk + grabLean + F * kk * KNEEL_BEND + Math.sin(now * 9) * .035 * kk * (1 - fk) + (fz ? F * fz.lean : 0) + F * fk * 0.47 * (1 - gk)
                 + ((P !== PL && P.fst === 1 && PL.fin > 0 && !P.stomachStabbed) ? F * .1 * finK(PL.fin).foot : 0) - F * .07 * (P === PL ? P.recoil : 0) - F * (P === PL ? .12 * P.sgRec - .06 * sm(P.sgK) : 0) + F * fkk * (.8 - .2 * fkPull) + F * gkv * .3 + F * ((P !== PL && P.crawl && !P.hsDead) ? .06 : .25) * (gk - gkv) + F * .2 * sgpE + F * dbk * (.8 + Math.sin(now * 14) * .035) + F * lmK * .2 + F * hpK * (.26 + Math.sin(now * 8) * .04);   // lies flat: head on the floor, hips on the floor
             const rot = (x, y) => [hipX + x * Math.cos(l) - y * Math.sin(l), hipY + x * Math.sin(l) + y * Math.cos(l)];
             ctx.save(); ctx.translate(cx, gy + 4); ctx.scale(S, S); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
@@ -2606,91 +2600,9 @@
 
 
 
-                if (P === PL && P.mount === 1) {
-
-                    const mt = Math.min(1, P.mountT / 1.0);
-                    const MAX_R = 153;   // safe leg reach (2*L1 = 160, keep 7px margin)
-
-                    // ========================================================
-                    // COWBOY MOUNT LEGS — physics-correct version
-                    //
-                    // The hip arc (via mz) sends hipY as deep as -186 at peak.
-                    // At mt=0.45 the hip is 164px up — foot cannot reach ground.
-                    // All foot targets are expressed as (hipX+dX, hipY+dY)
-                    // so they ALWAYS stay within MAX_R of the hip.
-                    // ========================================================
-
-                    if (i === 0) {
-
-                        // ── PUSH-OFF LEG ──
-                        // Hip rises too fast for the foot to stay on the ground
-                        // past mt~0.38 — so the foot is DRAGGED up by the body.
-
-                        if (mt < .38) {
-                            // Foot is planted on ground and bracing for the push.
-                            // As the hip starts to rise, the foot is pulled toward
-                            // the reach limit (MAX_R below the hip).
-                            const k = sm(mt / .38);
-                            const gnd = Math.min(0, hipY + MAX_R);  // as high as reach allows toward ground
-                            fx = lerp(fx, hipX + F * 18, k);
-                            fy = lerp(fy, gnd, k);
-                            lf = 0;
-
-                        } else if (mt < .62) {
-                            // Body is airborne — foot tucks toward body to prep for stirrup.
-                            const k = sm((mt - .38) / .24);
-                            const gndStart = Math.min(0, hipY + MAX_R);  // where foot was
-                            fx = lerp(hipX + F * 18, hipX + F * 12, k);
-                            fy = lerp(gndStart, hipY + 60, k);  // tuck: 60px below hip = bent knee
-                            lf = lerp(0, 22, k);
-
-                        } else {
-                            // Hip is descending back to seat — guide foot into stirrup.
-                            const k = sm((mt - .62) / .38);
-                            fx = lerp(hipX + F * 12, hipX + F * 18, k);
-                            fy = lerp(hipY + 60, seatY + 92 + ANK, k);
-                            lf = lerp(22, 0, k);
-                        }
-
-                    } else {
-
-                        // ── SWING LEG ──
-                        // This is the leg that swings up and over the horse's back.
-                        // The key motion is a tight knee-drive tuck then a lateral
-                        // sweep — all hip-relative so it stays within reach.
-
-                        if (mt < .35) {
-                            // Leg trails behind and below — weight on push-off.
-                            const k = sm(mt / .35);
-                            fx = lerp(fx, hipX - F * 18, k);
-                            fy = lerp(fy, hipY + 90, k);   // 90px below hip = slightly bent, hanging
-                            lf = lerp(lf, 0, k);
-
-                        } else if (mt < .54) {
-                            // Knee-drive: drive knee sharply forward-upward.
-                            // Foot tucks very close to hip (knee-to-chest).
-                            const k = sm((mt - .35) / .19);
-                            fx = lerp(hipX - F * 18, hipX + F * 6, k);
-                            fy = lerp(hipY + 90, hipY - 22, k);  // foot 22px above hip = tight tuck
-                            lf = lerp(0, 48, k);
-
-                        } else if (mt < .76) {
-                            // Lateral sweep: uncurl the leg sideways over the horse.
-                            // Foot goes from in front of body to well past it.
-                            const k = sm((mt - .54) / .22);
-                            fx = lerp(hipX + F * 6, hipX + F * 26, k);
-                            fy = lerp(hipY - 22, hipY + 45, k);   // knee opens, foot drops forward
-                            lf = lerp(48, 8, k);
-
-                        } else {
-                            // Settle into far-side stirrup.
-                            const k = sm((mt - .76) / .24);
-                            fx = lerp(hipX + F * 26, hipX + F * 4, k);
-                            fy = lerp(hipY + 45, seatY + 92 + ANK, k);
-                            lf = lerp(8, 0, k);
-                        }
-                    }
-
+                if (mpa) {
+                    const q = MP.pose, w = MP.W, tl = i === 0 ? q.A : q.B;
+                    fx = fx * (1 - w) + tl[0] * w; fy = fy * (1 - w) + tl[1] * w; lf = lf * (1 - w) + tl[2] * w;
                 } else if (mk > 0) {
 
                     // Normal mounted riding legs
@@ -2777,7 +2689,8 @@
                     ang = ang * (1 - rw) + (-.35 + 1.1 * s + up) * rw;           // forward: about +.75, back: about -1.45 (elbow high behind)
                     flex = flex * (1 - rw) + (1.35 + .15 * s) * rw;              // about 90° elbows
                 }
-                if (mk > .01) { const [a, f] = ikTo(sh, F * (44 + 3 * i), hipY - 44 - 4 * i, F); ang = ang * (1 - mk) + a * mk; flex = flex * (1 - mk) + f * mk }
+                if (mpa) { const tg = i === 0 ? MP.pose.H0 : MP.pose.H1, [a, f] = ikTo(sh, tg[0], tg[1], F); ang = ang * (1 - MP.W) + a * MP.W; flex = flex * (1 - MP.W) + f * MP.W }
+                else if (mk > .01) { const [a, f] = ikTo(sh, F * (44 + 3 * i), hipY - 44 - 4 * i, F); ang = ang * (1 - mk) + a * mk; flex = flex * (1 - mk) + f * mk }
                 if (i === 0 && P === PL && P.gunK > .01) {
                     const w = sm(P.gunK), rlk = P.rl > 0 ? rlArm(P.rl / RELOAD_T) : 0;
                     const rc = P.recoil, rcE = Math.sin(Math.PI * rc);   // rcE is 0 at the shot, peaks mid-recoil, returns to 0
@@ -3016,13 +2929,13 @@
                 (P.armFullPts || (P.armFullPts = []))[i] = [sh, lastArm[0], lastArm[1]];
                 (P.fistInfo || (P.fistInfo = []))[i] = { x: lastArm[1][0], y: lastArm[1][1], a: Math.atan2(lastArm[1][1] - lastArm[0][1], (lastArm[1][0] - lastArm[0][0]) * F), F };
             }
-            if (P === PL && mk > .9 && P.gunK < .05 && P.sgK < .05) drawReins(F);
+            if (P === PL && P.gunK < .05 && P.sgK < .05 && (mk > .9 || (mpa && MP.dis && MP.t < 1.15) || (mpa && !MP.dis && MP.t > 2.9))) drawReins(F);
             const grabHdOffX = isGrabbed ? F * 4 - F * hk * 10 + Math.sin(now * 23) * 1.5 : 0;
             const grabHdOffY = isGrabbed ? 6 - hk * 2 : 0;
             const fnn = (P !== PL && P.fst === 1 && PL.fin > 0) ? finK(PL.fin) : null;
             const fp = fnn ? fnn.foot : 0, fq = fnn ? fnn.pull : 0;
-            const hdX = -F * 7 + F * (cb ? cb.hx * cb.w : 0) + F * pq * 10 + L * 10 - F * 5 * st + grabHdOffX - kux * kpull * 7 * kk + F * 9 * R * P.amp + F * sTilt[0] + (pain ? Math.sin(now * 58) * 2.5 * pain + Math.sin(now * 37) * 2 * pain - F * spasm * 8 : 0);
-            const hdY = -T - 24 + (cb ? cb.hy * cb.w : 0) - 6 * st - Math.abs(L) * 1.5 + grabHdOffY - kuy * kpull * 7 * kk + 6 * kk + 5 * R * P.amp + sTilt[1] + (pain ? Math.sin(now * 49) * 2 * pain - spasm * 6 : 0);
+            const hdX = -F * 7 + F * (cb ? cb.hx * cb.w : 0) + F * pq * 10 + L * 10 - F * 5 * st + grabHdOffX - kux * kpull * 7 * kk + F * 9 * R * P.amp + F * sTilt[0] + (pain ? Math.sin(now * 58) * 2.5 * pain + Math.sin(now * 37) * 2 * pain - F * spasm * 8 : 0) + (mpa ? F * MP.pose.lean * 12 * MP.W : 0);
+            const hdY = -T - 24 + (cb ? cb.hy * cb.w : 0) - 6 * st - Math.abs(L) * 1.5 + grabHdOffY - kuy * kpull * 7 * kk + 6 * kk + 5 * R * P.amp + sTilt[1] + (pain ? Math.sin(now * 49) * 2 * pain - spasm * 6 : 0) - (mpa ? MP.pose.lean * 8 * MP.W : 0);
             const hd = rot(hdX, hdY);
             if (hpK > .01) { hd[0] += Math.sin(now * 33) * 1.4 * hpK; hd[1] += 5 * hpK }   // wincing, head bowed
             if (hl > .01) {
@@ -6332,20 +6245,22 @@
 
         function pressHorse() {
             if (P.mount === 2) {
-                if (HRS.z < -4 || !HJ_GROUND[HRS.jp]) return;       // no dismounting mid-jump
-                P.mount = 3; P.mountT = 0; P.mx0 = P.x; return;
+                if (HRS.z < -4 || !HJ_GROUND[HRS.jp]) return;
+                if (Math.abs(HRS.vx) > 300) { banner.t = .8; banner.text = 'SLOW DOWN TO DISMOUNT'; return }   // fast = no instant dismount
+                P.mount = 3; P.mountT = 0; P.mk = 0; mpStart(true); return;
             }
             if (P.mount) return;
             if (P.sm === 1 || P.sm === 3) return;   // lighting up / flicking: wait
             if (P.fin > 0 || P.cs > 0 || P.thw > 0 || P.tt > 0 || P.pk > 0 || P.fs > 0 || P.gu > 0 || P.yk > 0 || P.stbk > 0 || P.sgp > 0 || P.gs === 2 || P.z < 0 || P.ln > 0 || P.lb > 0) return;
             if (P.kn !== 0 || P.kt > .2) { banner.t = .7; banner.text = 'PUT THE KNIFE AWAY (K)'; return }
+            if (Math.abs(HRS.vx) > 60) { banner.t = .8; banner.text = 'WAIT FOR THE HORSE TO STOP'; return }
             const S = CSc();
             if (Math.abs(HRS.x - P.x) > HR_MOUNT_R * S) { banner.t = .8; banner.text = 'WALK TO THE HORSE'; return }
             if (P.sm === 2) { releaseButt(); P.sm = 0; }   // drop the cigarette, then climb on
             if (P.skid) endSkid();
             HRS.rear = 0; HRS.wait = 2; hrsJumpReset();
             HRS.tied = false;   // Untie the lead rope when mounting
-            P.face = HRS.face; P.mount = 1; P.mountT = 0; P.mx0 = P.x; P.vx = 0;
+            P.mount = 1; P.mountT = 0; P.mk = 0; P.vx = 0; mpStart(false);
             P.idle = 0; P.fid = 0; P.abuf = 0; P.clast = 0; P.cgr = 0; P.grabbed = null;
         }
 
@@ -6416,7 +6331,7 @@
                     if (dir) h.vx += (dir * 105 * hrsTurnGo() - h.vx) * Math.min(1, dt * 3);
                     else { const f = 700 * dt; h.vx = Math.abs(h.vx) <= f ? 0 : h.vx - Math.sign(h.vx) * f }
                 }
-            } else h.vx *= Math.max(0, 1 - dt * (st === 3 ? 6 : 10));         // mounting / dismounting: he stands still
+            } else h.vx *= Math.max(0, 1 - dt * (st === 3 ? 0 : 10));         // mounting / dismounting: he stands still
 
             const idle = st === 0 && h.rear <= 0 && Math.abs(h.vx) < 8;
             h.gT -= dt;
@@ -6448,58 +6363,7 @@
             if (h.z >= 0 && h.jp !== 'TAKEOFF' && h.jp !== 'LAND_FRONT' && h.jp !== 'LAND_REAR') { const g = hrsGait(sp); h.ph = (h.ph + sp * dt / ((2 * g.A / g.st) * S)) % 1; hrsDust(sp, g, S) }
 
             // ---- rider sync ----
-
-            if (st === 1) {
-
-                P.mountT += dt;
-
-                // Total mounting time
-                const t = Math.min(1, P.mountT / 0.95);
-
-                // Smooth progress
-                const k = sm(t);
-
-                P.vx = 0;
-                P.face = h.face;
-
-                // Move toward the saddle
-                P.x = lerp(
-                    P.mx0,
-                    h.x - h.face * 28,
-                    k
-                );
-
-                // Mount pose amount
-                P.mk = k;
-
-                // Finish mounting
-                if (t >= 1) {
-
-                    P.mount = 2;
-                    P.mountT = 0;
-                    P.mk = 1;
-
-                    P.x = h.x;
-                    P.vx = h.vx;
-                    P.face = h.face;
-
-                    banner.t = .8;
-                    banner.text = 'MOUNTED';
-
-                    shake = Math.max(shake, 3);
-
-                    burst(
-                        h.x,
-                        -3,
-                        8,
-                        200,
-                        -h.face
-                    );
-                }
-
-            }
-
-
+            if (st === 1 || st === 3) mpTick(dt);
             else if (st === 2) {
                 P.x = h.x;
                 P.vx = h.vx;
@@ -6518,10 +6382,143 @@
                         }
                     }
                 }
-            } else if (st === 3) {
-                P.mountT += dt; const k = Math.min(1, P.mountT / .45);
-                P.mk = 1 - sm(k); P.x = lerp(P.mx0, h.x - h.face * 105 * S, sm(k)); P.vx = 0;
-                if (k >= 1) { P.mount = 0; P.mk = 0; hrsJumpReset(); h.home = h.x; h.goal = h.x; h.wait = 3; burst(P.x, -3, 6, 160, h.face) }
+            }
+        }
+
+        // ================= MOUNT / DISMOUNT ANIMATION SYSTEM =================
+        const MP_D = 40;   // stand distance from the saddle (character units) – tune if hands miss the saddle
+        const MP = { ph: 'NONE', t: 0, d: 1, dis: false, ts: 1, pose: null, W: 0, ev: {}, side: 1, wd: 1, carry: 0 };
+        function MPA() { return !!MP.pose && (P.mount === 1 || P.mount === 3) && MP.W > 0 }
+
+        const MP_MOUNT_PH = [['MOUNT_STOP', 0, .3], ['MOUNT_REACH', .3, .7], ['MOUNT_GRAB', .7, 1.0], ['MOUNT_LIFT', 1.0, 1.9],
+        ['MOUNT_LEG_SWING', 1.9, 2.6], ['MOUNT_SEAT', 2.6, 2.9], ['MOUNT_SETTLE', 2.9, 3.4]];
+        const MP_DIS_PH = [['DISMOUNT_PREPARE', 0, .5], ['DISMOUNT_RELEASE', .5, 1.15], ['DISMOUNT_LEG_SWING', 1.15, 2.0],
+        ['DISMOUNT_LOWER', 2.0, 2.4], ['DISMOUNT_FOOT_CONTACT', 2.4, 2.8], ['DISMOUNT_STAND', 2.8, 3.2]];
+
+        // Rows: [t, hipX, hipY, lean, Ax,Ay,Alift, Bx,By,Blift, H0x,H0y, H1x,H1y]
+        // x values are "along the facing direction" (multiplied by facing); y is up = negative, ground = 0.
+        // A = stirrup leg (mount) / second leg (dismount), B = push-off + swing-over leg.
+        const MP_MOUNT_ROWS = [
+            [0, 0, -169, 0, 16, 0, 0, -12, 0, 0, 6, -155, 6, -155],   // standing by the flank
+            [.3, 0, -169, 0, 16, 0, 0, -12, 0, 0, 6, -155, 6, -155],   // STOP
+            [.7, 0, -169, .16, 16, 0, 0, -12, 0, 0, 8, -150, 36, -250],  // REACH: first hand to pommel
+            [1.0, 0, -169, .20, 16, 0, 0, -12, 0, 0, 22, -246, 36, -252],  // GRAB: second hand on saddle
+            [1.25, 8, -160, .12, 16, 0, 0, -12, 0, 0, 22, -246, 36, -252],  // weight shift, knees soften
+            [1.45, 10, -160, .10, 30, -62, 10, -12, 0, 0, 22, -246, 36, -252],  // foot lift, knee bent
+            [1.65, 12, -160, .10, 40, -136, 0, -12, 0, 0, 22, -246, 36, -252],  // foot in stirrup
+            [1.9, 14, -168, .12, 40, -136, 0, -12, -6, 12, 22, -246, 36, -252],  // push: heel of support foot rises
+            [2.1, 22, -205, .20, 40, -136, 0, 14, -150, 0, 22, -246, 36, -252],  // support foot leaves ground, body rises
+            [2.25, 26, -228, .26, 40, -136, 0, -4, -235, 0, 22, -246, 36, -252],  // swing leg kicks up behind
+            [2.4, 30, -250, .30, 40, -136, 0, 4, -300, 0, 22, -246, 36, -252],
+            [2.55, 34, -262, .30, 40, -136, 0, 40, -322, 0, 22, -246, 36, -252],  // leg clears the saddle, torso leans forward
+            [2.7, 38, -258, .20, 40, -136, 0, 80, -255, 0, 22, -246, 36, -252],
+            [2.85, 40, -244, .10, 42, -136, 0, 58, -165, 0, 22, -246, 36, -252],  // leg drops down the far side
+            [3.4, 40, -240, 0, 42, -136, 0, 44, -136, 0, 22, -246, 36, -252]
+        ];
+        const MP_DIS_ROWS = [
+            [0, 0, -240, .02, 18, -136, 0, 4, -136, 0, 44, -284, 47, -288],  // riding pose
+            [.5, 0, -240, .05, 18, -136, 0, 4, -136, 0, 30, -268, 47, -288],  // one hand lets go of the reins
+            [.95, -3, -246, .15, 18, -136, 0, 4, -140, 6, 26, -256, 47, -288],  // hand on saddle, weight shifts
+            [1.15, -6, -252, .20, 18, -136, 0, -2, -190, 10, 26, -256, 10, -262],  // leg lifts out of stirrup
+            [1.4, -14, -262, .28, 18, -136, 0, -30, -285, 0, 24, -256, 2, -254],   // swings back over the rump, torso forward
+            [1.7, -26, -250, .20, 18, -136, 0, -52, -215, 0, 24, -256, 2, -254],
+            [2.0, -32, -218, .12, 18, -136, 0, -52, -110, 6, 24, -256, 2, -254],   // lowering on the saddle
+            [2.2, -34, -190, .10, 18, -136, 0, -54, -45, 10, 24, -256, 2, -254],   // foot reaches for ground
+            [2.4, -34, -170, .10, 18, -136, 0, -54, 0, 0, 24, -256, 2, -254],   // FOOT CONTACT
+            [2.55, -34, -156, .12, 18, -136, 0, -54, 0, 0, 24, -256, 2, -254],   // knee absorbs the weight
+            [2.7, -34, -162, .08, 6, -90, 10, -54, 0, 0, 20, -240, 2, -254],   // second leg clears the stirrup
+            [2.9, -34, -169, .04, -14, 0, 0, -54, 0, 0, -10, -190, -10, -170], // hands leave the saddle
+            [3.2, -34, -169, 0, -14, 0, 0, -54, 0, 0, -28, -155, -28, -155]  // standing
+        ];
+
+        function mpRow(t, R) {   // Catmull-Rom through the rows (no stop-start at keys)
+            const n = R.length; t = Math.max(R[0][0], Math.min(R[n - 1][0], t));
+            let i = 0; while (i < n - 2 && t >= R[i + 1][0]) i++;
+            const a = R[i], b = R[i + 1], p = R[Math.max(0, i - 1)], q = R[Math.min(n - 1, i + 2)];
+            const h = b[0] - a[0], u = (t - a[0]) / h, u2 = u * u, u3 = u2 * u, o = [];
+            for (let c = 1; c < a.length; c++) {
+                const m0 = (b[c] - p[c]) / (b[0] - p[0]) * h, m1 = (q[c] - a[c]) / (q[0] - a[0]) * h;
+                o.push((2 * u3 - 3 * u2 + 1) * a[c] + (u3 - 2 * u2 + u) * m0 + (-2 * u3 + 3 * u2) * b[c] + (u3 - u2) * m1);
+            }
+            return o;
+        }
+
+        function mpStart(dis) {
+            const h = HRS, S = CSc();
+            Object.assign(MP, { dis, t: 0, ev: {}, W: 0, pose: null, ts: 1, carry: 0 });
+            if (!dis) {                                                // mount from whichever side the player is on
+                MP.ph = 'MOUNT_APPROACH'; MP.side = Math.sign(P.x - h.x) || -h.face; MP.d = -MP.side; MP.wd = P.face;
+            } else {
+                const sp = Math.abs(h.vx);
+                MP.ph = 'DISMOUNT_PREPARE'; MP.d = h.face;
+                if (sp > 90) { MP.ts = .72; MP.carry = Math.sign(h.vx) * sp * .4 }   // slow-moving horse: quicker dismount with momentum
+                mpBuild();
+            }
+        }
+
+        function mpBuild() {
+            const S = CSc(), h = HRS, d = MP.d, t = MP.t, dis = MP.dis, Ff = h.face;
+            const r = mpRow(t, dis ? MP_DIS_ROWS : MP_MOUNT_ROWS);
+            const seatY = HR_SEAT + hrsBob() + h.cmp * HORSE_H, so = seatY + 240;   // horse squash/bob, so hooks follow the saddle
+            let hx = r[0] * d, hy = r[1], lean = r[2];
+            let A = [r[3] * d, r[4], r[5]], B = [r[6] * d, r[7], r[8]], H0 = [r[9] * d, r[10]], H1 = [r[11] * d, r[12]];
+            if (!dis) {
+                const wA = sm((t - 1.5) / .15), w0 = sm((t - .9) / .2), w1 = sm((t - .6) / .2);
+                A[1] += so * wA; H0[1] += so * w0; H1[1] += so * w1;
+                const wf = sm((t - 2.6) / .8), wh = sm((t - 2.75) / .65), sx = (h.x - P.x) / S;   // blend into the exact riding pose
+                hx = lerp(hx, sx, wf); hy = lerp(hy, seatY, wf);
+                A = [lerp(A[0], sx + Ff * 18, wf), lerp(A[1], seatY + 104, wf), A[2] * (1 - wf)];
+                B = [lerp(B[0], sx + Ff * 4, wf), lerp(B[1], seatY + 104, wf), B[2] * (1 - wf)];
+                H0 = [lerp(H0[0], sx + Ff * 44, wh), lerp(H0[1], seatY - 44, wh)];
+                H1 = [lerp(H1[0], sx + Ff * 47, wh), lerp(H1[1], seatY - 48, wh)];
+                MP.W = sm(t / .3);
+            } else {
+                const wS = 1 - sm((t - .5) / .5), wA = 1 - sm((t - 2.55) / .15), wB = 1 - sm((t - .95) / .2), wH = 1 - sm((t - 2.7) / .2);
+                hy += so * wS; A[1] += so * wA; B[1] += so * wB; H0[1] += so * wH; H1[1] += so * wH;
+                MP.W = 1;
+            }
+            A[1] = Math.min(0, A[1]); B[1] = Math.min(0, B[1]);      // no foot ever sinks through the ground
+            MP.pose = { hipX: hx, hipY: hy, lean, A, B, H0, H1 };
+            const tbl = dis ? MP_DIS_PH : MP_MOUNT_PH;
+            for (const p of tbl) if (t >= p[1] && t < p[2]) MP.ph = p[0];
+        }
+
+        function mpTick(dt) {
+            const h = HRS, S = CSc(), d = MP.d;
+            const ev = (k, tt, fn) => { if (!MP.ev[k] && MP.t >= tt) { MP.ev[k] = 1; fn() } };
+            if (!MP.dis) {
+                if (MP.ph === 'MOUNT_APPROACH') {                       // WALK: normal walk cycle to the stand point
+                    const stand = h.x + MP.side * MP_D * S, dx = stand - P.x, dir = Math.sign(dx) || d;
+                    if (Math.abs(dx) <= 170 * dt + 1) { P.x = stand; P.vx = 0; MP.wd = P.face; MP.ph = 'MOUNT_STOP'; MP.t = 0 }
+                    else { P.face = dir; P.vx = dir * 170; P.x += P.vx * dt; return }
+                }
+                MP.t += dt; P.vx = 0; P.idle = 0; P.fid = 0;
+                P.face = MP.t < .12 ? MP.wd : (MP.t < 2.8 ? d : h.face);   // slows, then turns to the horse; faces forward once seated
+                // horse reacts, legs stay grounded
+                ev('look', .7, () => { h.nkLowV += 45; h.pitchV -= .25 });
+                ev('shift', 1.25, () => { h.cmpV += 60; h.pitchV += .2 });
+                ev('push', 1.9, () => { h.cmpV += 150; h.nkFwdV -= 30; shake = Math.max(shake, 2); burst(P.x - d * 12 * S, -3, 4, 120, -d) });
+                ev('sit', 2.85, () => { h.cmpV += 240; h.nkLowV -= 40; shake = Math.max(shake, 3); burst(h.x, -3, 6, 140, -d) });
+                mpBuild();
+                if (MP.t >= 3.4) {                                      // RIDING
+                    P.mount = 2; P.mountT = 0; P.mk = 1; P.x = h.x; P.vx = h.vx; P.face = h.face;
+                    MP.ph = 'RIDING'; MP.pose = null; MP.W = 0;
+                    banner.t = .8; banner.text = 'MOUNTED';
+                }
+            } else {
+                MP.t += dt / MP.ts; P.vx = 0; P.face = d; P.idle = 0; P.fid = 0;
+                if (MP.t < .5) { const br = (MP.ts < 1 ? 1800 : 900) * dt; h.vx -= Math.sign(h.vx) * Math.min(Math.abs(h.vx), br); P.x = h.x }
+                else h.vx = 0;
+                ev('shift', 1.15, () => { h.nkLowV += 25; h.pitchV -= .1 });
+                ev('swing', 1.7, () => { h.cmpV -= 80 });
+                ev('contact', 2.4, () => { shake = Math.max(shake, 2 + (MP.ts < 1 ? 2 : 0)); burst(P.x - d * 54 * S, -3, 5, 130, -d); h.nkFwdV += 20 });
+                ev('free', 2.9, () => { h.cmpV -= 120; h.nkLowV += 20 });
+                mpBuild();
+                if (MP.t >= 3.2) {                                      // IDLE
+                    P.mount = 0; P.mk = 0; P.x += -d * 34 * S; P.face = d; P.vx = MP.carry;
+                    hrsJumpReset(); h.home = h.x; h.goal = h.x; h.wait = 3;
+                    MP.ph = 'IDLE'; MP.pose = null; MP.W = 0;
+                }
             }
         }
 
@@ -7907,7 +7904,7 @@
 
 
         function drawReins(F) {
-            const A = P.armPts && P.armPts[0]; if (!A || !HRS.muz) return;
+            const A = P.armPts && P.armPts[(MPA() && MP.dis) ? 1 : 0]; if (!A || !HRS.muz) return;
             const w = A[1];
             const mx = HRS.muzS * HORSE_W, my = HRS.muz[1] * HORSE_H + HRS.z / CSc();
             ctx.save(); ctx.strokeStyle = '#111'; ctx.lineWidth = 1.8; ctx.lineCap = 'round';
@@ -11451,17 +11448,60 @@
             }
             return false;
         }
+        function frogGore(f, F, x, y, big) {                  // tiny organs, bones, veins and blood
+            const sc = frSc(f), S = Math.max(.35, sc * 1.35), R = Math.random;
+            const kinds = ['heart', 'lung', 'lung', 'liver', 'kidney', 'kidney', 'gizzard', 'bit', 'bit', 'bit', 'bit', 'bit'];
+            const size = { heart: 3.2, lung: 3.4, liver: 3.8, gizzard: 3, kidney: 2.2, bit: 1.5 };
+            for (const k of kinds) {
+                if (bg.organs.length > 140) break;
+                bg.organs.push({
+                    k, x: x + (R() - .5) * 6 * S, y: y + (R() - .5) * 5 * S,
+                    vx: F * (40 + R() * (big ? 420 : 300)) + (R() - .5) * 260, vy: -(140 + R() * 380),
+                    rot: R() * 6, vr: (R() - .5) * 22, r: size[k] * S, landed: false, bn: 0, t: 0, bl: 0, sq: 0, seed: R() * 100
+                });
+            }
+            for (let i = 0; i < 7; i++) {                       // tiny bone splinters (hind-leg bones, ribs)
+                if (boneBits.length > 150) break;
+                boneBits.push({
+                    k: 0, x: x + (R() - .5) * 6, y, vx: F * (60 + R() * 300) + (R() - .5) * 220, vy: -(100 + R() * 340),
+                    rot: R() * 6, vr: (R() - .5) * 30, s: (2.2 + R() * 3.2) * S * 1.6, bn: 0, landed: false, t: 0, bl: 0
+                });
+            }
+            for (let i = 0; i < 4; i++) {                       // mini veins / a bit of gut trailing from the wound
+                const gut = i < 1, N = gut ? 8 : 4 + (R() * 2 | 0), rest = (gut ? 2.6 : 2.2) * S;
+                const vx = F * (30 + R() * 200) + (R() - .5) * 120, vy = -(60 + R() * 200);
+                bg.veins.push({
+                    p: Array.from({ length: N }, (_, j) => { const px = x - F * j * rest * .3; return { x: px, y, ox: px - vx / 60 * (1 - j / N * .3), oy: y - vy / 60 * (1 - j / N * .3) } }),
+                    rest, w: (gut ? 1.8 : .8 + R() * .5) * S * 1.4, col: gut ? '#e9786c' : ['#a3121a', '#8c0d14', '#6b2a5a'][i % 3], gut, t: 0, bl: 0
+                });
+            }
+            for (let i = 0; i < 28; i++) {                      // blood: heavy drops + fine mist
+                const sp = 60 + R() * 380, fwd = R() < .65;
+                bgDrop(x + (R() - .5) * 6, y + (R() - .5) * 6, (fwd ? F : -F) * sp * (.3 + R() * .7), -sp * (.1 + R() * .7), (R() < .2 ? 1.8 : .9) + R() * 1.2);
+            }
+            for (let i = 0; i < 14; i++) bgDrop(x, y, (R() - .5) * 280, -(R() * 220), .6 + R() * .5);
+            for (let i = 0; i < 3; i++) bgStain(x + (R() - .5) * 30 * sc, 5 * S + R() * 5 * S, i === 0);   // blood on the ground
+        }
+
         function frogDamage(f, p, sg, x, y) {
             const F = p.F, sc = frSc(f);
             f.hp -= sg ? 2 : 1;
-            impacts.push({ x, y, t: 0, life: .22, s: 55 + sc * 8, seed: Math.random() * 50 });                      // ink burst
-            for (let k = 0; k < (sg ? 14 : 9); k++) flecks.push({ x: x + (Math.random() - .5) * 10, y: y + (Math.random() - .5) * 10, vx: F * (80 + Math.random() * 320) + (Math.random() - .5) * 160, vy: -(60 + Math.random() * 260), r: 1.2 + Math.random() * 2.6, t: 0, life: .5 + Math.random() * .6 });
-            fMarks.push({ x: f.x + F * (20 + Math.random() * 30), y: f.mode === 'W' ? 0 : frGround(f.x), t: 0, seed: Math.random() * 99, n: 4 + ((Math.random() * 4) | 0) });   // scattered ink marks
-            if (f.mode === 'W') splash(f.x, 2.2, 6);
+            impacts.push({ x, y, t: 0, life: .2, s: 45 + sc * 8, seed: Math.random() * 50 });
+            burst(x, y, sg ? 10 : 6, 200, F);
             hitstop = Math.max(hitstop, .03); shake = Math.max(shake, 3);
-            f.mode = 'A'; f.y -= 2; f.vy = -(sg ? 330 : 270); f.vx = F * (sg ? 420 : 300); f.vr = F * (10 + Math.random() * 6) * (f.hp <= 0 ? 1 : .4);   // strong knockback
-            f.bn = 1; f.t = 0; f.sq = 0; f.sqV = 0;
-            if (f.hp <= 0) { f.dying = 1; f.st = 'hit' } else { f.st = 'hop'; f.afterHit = F }
+            if (f.mode === 'W') { splash(f.x, 2.2, 6); wClouds.push({ x: f.x, y: Math.max(4, f.y), r: 4, g: 12, t: 0, life: 1.6, k: 0 }) }
+            if (f.hp <= 0) {                                    // killed: it bursts into tiny organs
+                frogGore(f, F, f.x, f.y - 8 * f.bh * sc, sg);
+                for (let k = 0; k < (sg ? 12 : 7); k++) flecks.push({ x: f.x, y: f.y - 6, vx: (Math.random() - .5) * 260, vy: -(40 + Math.random() * 180), r: 1.2 + Math.random() * 2, t: 0, life: .5 + Math.random() * .4 });
+                f.gone = 1; f.rsp = frR(18, 40); f.st = 'hit'; f.a = 0;
+                banner.t = .7; banner.text = sg ? 'FROG SPLATTER!' : 'FROG!';
+                return;
+            }
+            // wounded: sprays blood and a few bits, then hops away fast
+            for (let k = 0; k < 10; k++) bgDrop(x, y, F * (50 + Math.random() * 260) + (Math.random() - .5) * 120, -(40 + Math.random() * 220), 1 + Math.random() * 1.4);
+            bgOrgan && bg.organs.push({ k: 'bit', x, y, vx: F * (80 + Math.random() * 200), vy: -(100 + Math.random() * 200), rot: 0, vr: (Math.random() - .5) * 16, r: 1.6 * Math.max(.35, sc * 1.35), landed: false, bn: 0, t: 0, bl: 0, sq: 0, seed: Math.random() * 99 });
+            f.mode = 'A'; f.y -= 2; f.vy = -270; f.vx = F * 300; f.vr = F * 5; f.bn = 1; f.t = 0; f.sq = 0; f.sqV = 0;
+            f.st = 'hop'; f.afterHit = F;
         }
 
         // ---------- drawing ----------
