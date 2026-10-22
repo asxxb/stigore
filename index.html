@@ -5481,6 +5481,7 @@
                 if (best) { if (!legShot(b, best.e, best.h, S)) gunHit(b, best.e, best.h, S); bullets.splice(i, 1); continue }
                 if (birdsHit(px, py, b.x, b.y, b.F, 20) || fowlHit(px, py, b.x, b.y, b.F, 20) || bflyHit(px, py, b.x, b.y, b.F, 20) || clothHit(px, py, b.x, b.y, b.F)) { bullets.splice(i, 1); continue }
                 if (frogHit(b, px, py, false)) { bullets.splice(i, 1); continue }
+                if (duckHit(b, px, py, false)) { bullets.splice(i, 1); continue }
                 if (crocHit(b, px, py)) { bullets.splice(i, 1); continue }
                 if (waterStep(b, px, py, dt)) { bullets.splice(i, 1); continue }
                 if (!b.m && b.y > 0 && !inPond(b.x)) { burst(b.x, -2, 6, 180, b.F); bullets.splice(i, 1); continue }
@@ -5815,6 +5816,7 @@
                 if (best) { pelletHit(p, best.e, best.h); pellets.splice(i, 1); continue }
                 if (birdsHit(px, py, p.x, p.y, p.F, 22) || fowlHit(px, py, p.x, p.y, p.F, 22) || bflyHit(px, py, p.x, p.y, p.F, 22) || clothHit(px, py, p.x, p.y, p.F, p.id)) { pellets.splice(i, 1); continue }
                 if (frogHit(p, px, py, true)) { pellets.splice(i, 1); continue }
+                if (duckHit(p, px, py, true)) { pellets.splice(i, 1); continue }
                 if (crocHit(p, px, py)) { pellets.splice(i, 1); continue }
                 if (waterStep(p, px, py, dt)) { pellets.splice(i, 1); continue }
                 if (!p.m && p.y > 0 && !inPond(p.x)) { burst(p.x, -2, 2, 140, p.F); pellets.splice(i, 1); continue }
@@ -11812,7 +11814,7 @@
         function dkMk(mother, i, x) {
             const R = Math.random;
             return {
-                mother, i, x, y: 0, vx: 0, face: 1, fv: 1, s: mother ? 1.05 : .78 + R() * .14, young: !mother, lane: mother ? 0 : i % 2,
+                mother, i, x, y: 0, hp: mother ? 3 : 1, dead: 0, deadT: 0, hurt: 0, bt: 0, lastBlast: -1, vx: 0, face: 1, fv: 1, s: mother ? 1.05 : .78 + R() * .14, young: !mother, lane: mother ? 0 : i % 2,
                 mode: 'L', hop: null, gx: x, maxV: 0, ph: R() * 6, seed: R() * 100,
                 hd: 1, hdT: 1, hdTt: 1 + R() * 2, faceT: 1 + R() * 3, dip: 0, dipPrev: 0, dipWant: 0, dipT: 0,
                 wing: 0, wingK: 0, wingT: 2 + R() * 6, tail: 0, tw: 0, tailT: 2 + R() * 4, tilt: 0, rip: 0, lit: 0,
@@ -12029,29 +12031,108 @@
             } else a.lit += (0 - a.lit) * Math.min(1, dt * 8);
         }
 
+        // ---------- shooting the duck family ----------
+        function duckHit(p, px, py, sg) {
+            if (!DK.init) return false;
+            const S = CSc(), dx = p.x - px, dy = p.y - py, l2 = dx * dx + dy * dy || 1;
+            for (const a of [DK.m].concat(DK.k)) {
+                if (a.dead) continue;
+                const sc = S * a.s, wet = a.mode === 'W' && !a.hop, Y = a.young;
+                const cy = a.y - (wet ? (Y ? 3.8 : 4.6) : (Y ? 11.6 : 14.7)) * sc;   // body centre
+                const r = (Y ? 11 : 16) * sc + 5;
+                let t = ((a.x - px) * dx + (cy - py) * dy) / l2; t = clampN(t, 0, 1);
+                const x = px + dx * t, y = py + dy * t;
+                if ((x - a.x) ** 2 + (y - cy) ** 2 < r * r) {
+                    if (sg) { if (a.lastBlast === p.id) return true; a.lastBlast = p.id }   // one blast = one hit
+                    duckDamage(a, p, sg, x, y);
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        function duckDamage(a, p, sg, x, y) {
+            const F = p.F, S = CSc(), R = Math.random;
+            a.hp -= sg ? 3 : 1;
+            impacts.push({ x, y, t: 0, life: .2, s: a.mother ? 70 : 45, seed: R() * 50 });
+            burst(x, y, sg ? 12 : 7, 220, F);
+            puffFeathers(x, y, sg ? 10 : 5, F);
+            hitstop = Math.max(hitstop, .03); shake = Math.max(shake, 3);
+            if (a.mode === 'W' && !a.hop) { splash(a.x, 2, 6); wClouds.push({ x: a.x, y: 4, r: 4, g: 12, t: 0, life: 1.6, k: 0 }) }
+            if (a.hp <= 0) { duckKill(a, F, x, y, sg); return }
+            // wounded mother: sprays blood and keeps bleeding for a few seconds
+            a.hurt = 6;
+            for (let k = 0; k < 12; k++) bgDrop(x, y, F * (50 + R() * 280) + (R() - .5) * 120, -(40 + R() * 240), 1 + R() * 1.4);
+            bgStain(x, 8 * S, false);
+            banner.t = .7; banner.text = 'QUACK!';
+        }
+
+        function duckKill(a, F, x, y, big) {
+            const S = CSc(), R = Math.random, m = a.mother;
+            a.dead = 1; a.deadT = 0; a.hop = null; a.vx = 0; a.hurt = 0; a.cur = null; a.plan = [];
+            birdGore(x, y, F, m ? 1.5 : .8);                          // organs, mini veins, blood spray, mist
+            if (big) birdGore(x, y, -F, m ? 1 : .6);                  // second burst out the other side
+            puffFeathers(x, y, m ? 28 : 14, F);
+            for (let i = 0; i < (m ? 10 : 5); i++) boneSplinter(x, y, F, 380);
+            burst(x, y, m ? 30 : 16, 380, F); spray(x, y, m ? 40 : 20, 480, F); spray(x, y, m ? 20 : 10, 300, -F);
+            impacts.push({ x, y, t: 0, life: .3, s: m ? 130 : 80, seed: R() * 50 });
+            bgStain(x, (m ? 22 : 12) * S, true);
+            if (a.mode === 'W') {
+                splash(a.x, m ? 6 : 3, 10);
+                for (let i = 0; i < 6; i++) wClouds.push({ x: a.x + (R() - .5) * 30, y: Math.max(5, a.y + 4), r: 6, g: 30 + R() * 20, t: 0, life: 2.5 + R() * 1.5, k: 0 });
+            }
+            hitstop = Math.max(hitstop, m ? .1 : .06); shake = Math.max(shake, m ? 10 : 6);
+            birdKills++;
+            banner.t = 1; banner.text = m ? 'MOTHER DUCK DOWN!' : 'DUCKLING SPLATTER!';
+        }
+
+        function duckRespawn(a) {
+            const m = DK.m;
+            a.dead = 0; a.deadT = 0; a.hp = a.mother ? 3 : 1; a.hurt = 0; a.hop = null; a.vx = 0; a.dip = 0; a.dipWant = 0;
+            if (a.mother) { a.mode = 'L'; a.x = DOCK_X0 - 260; a.y = 0; a.gx = a.x; a.cur = null; a.plan = []; a.wait = 0 }
+            else { a.mode = m.mode; a.x = m.x - 20 - Math.random() * 30; a.gx = a.x; a.y = m.mode === 'W' ? waterSurfaceY(a.x) : 0 }
+        }
+
         function duckTick(dt) {
             if (!(dt > 0)) return;
             if (!DK.init) dkInit();
             const S = CSc(), now = performance.now() / 1000, m = DK.m, kids = DK.k, R = Math.random;
             DK.clock += dt;
-            DK.dir += (m.face - DK.dir) * Math.min(1, dt * .9);           // formation turns around slowly
+            DK.dir += (m.face - DK.dir) * Math.min(1, dt * .9);
             const lp = lanternPos(), lan = lp && DN.litK > .05 ? lp : null, lanR = lan ? 340 * S * (.4 + .6 * DN.litK) * .85 : 0;
+            const all = [m].concat(kids), live = kids.filter(d => !d.dead);
 
-            DK.strayT -= dt;                                              // one duckling wanders toward the dock edge
+            // dead ones come back once they are off-screen
+            for (const a of all) if (a.dead) {
+                a.deadT += dt;
+                if (a.deadT > (a.mother ? 25 : 18) && Math.abs(a.x - P.x) > W / 2 + 200) duckRespawn(a);
+            }
+
+            DK.strayT -= dt;
             if (DK.strayT <= 0) {
                 DK.strayT = 14 + R() * 18;
-                if (m.mode === 'L' && !m.hop && m.x > DOCK_X0 + 40) {
-                    const k = kids[(R() * kids.length) | 0];
+                if (!m.dead && m.mode === 'L' && !m.hop && m.x > DOCK_X0 + 40 && live.length) {
+                    const k = live[(R() * live.length) | 0];
                     if (k.mode === 'L' && !k.hop) { k.stray = 3.5 + R() * 2.5; k.strayX = DK_GATE_L - 6 - R() * 16 }
                 }
             }
-            dkMotherAI(m, dt, S, kids); dkMove(m, dt, S);
-            DK.tt += dt;
+            if (!m.dead) { dkMotherAI(m, dt, S, live); dkMove(m, dt, S) }
+            DK.tt += dt;                                    // trail keeps recording, so ducklings gather where a dead mother lies
             if (DK.tt >= .033) { DK.tt = 0; DK.trail.push({ t: DK.clock, x: m.x, m: m.mode === 'W' ? 1 : 0 }) }
             while (DK.trail.length > 2 && DK.trail[0].t < DK.clock - 10) DK.trail.shift();
-            for (const d of kids) { dkKidAI(d, dt, S, m); dkMove(d, dt, S) }
-            dkAnim(m, dt, S, now, lan, lanR);
-            for (const d of kids) dkAnim(d, dt, S, now, lan, lanR);
+            for (const d of live) { dkKidAI(d, dt, S, m); dkMove(d, dt, S) }
+            for (const a of all) if (!a.dead) dkAnim(a, dt, S, now, lan, lanR);
+
+            // wounded ones keep dripping
+            for (const a of all) if (!a.dead && a.hurt > 0) {
+                a.hurt -= dt; a.bt -= dt;
+                if (a.bt <= 0) {
+                    a.bt = .09 + R() * .08;
+                    const y = a.y - (a.mode === 'W' && !a.hop ? 5 : 15) * S * a.s;
+                    if (a.mode === 'W' && !a.hop) wClouds.push({ x: a.x, y: 4, r: 2.5, g: 6, t: 0, life: 1.2, k: 0 });
+                    else bgDrop(a.x + (R() - .5) * 8, y, (R() - .5) * 30, 10 + R() * 30, 1.2 + R() * 1.4);
+                }
+            }
         }
 
         // ---------- drawing ----------
@@ -12153,7 +12234,7 @@
         function drawDuckFam(gy) {
             if (!DK.init) return;
             const S = CSc(), now = performance.now() / 1000, top = gy + 4, sxp = W / 2 + POND_X - P.x;
-            const list = [DK.m].concat(DK.k).filter(a => Math.abs(a.x - P.x) < W / 2 + 200);
+            const list = [DK.m].concat(DK.k).filter(a => !a.dead && Math.abs(a.x - P.x) < W / 2 + 200);
             if (!list.length) return;
             const z = a => a.mother ? 2 : (a.lane ? 0 : 1);
             list.sort((p, q) => z(p) - z(q));                             // back lane first, mother in front
