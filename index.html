@@ -11798,6 +11798,378 @@
             ctx.restore();
         }
 
+        // ================= MOTHER DUCK + DUCKLINGS =================
+        const DK_N = 5;                         // number of ducklings (3-6)
+        const DK_LAND0 = DOCK_X0 - 520;         // west end of the shore they wander on
+        const DK_GATE_L = DOCK_X1 - 10;         // dock end: where they jump in / climb out
+        const DK_GATE_W = DOCK_X1 + 28;         // first water spot past the dock
+        const DK_WATER1 = DOCK_X1 + 800;        // east end of their swimming area
+        const DK = { init: false, m: null, k: [], trail: [], clock: 0, tt: 0, dir: 1, strayT: 10 };
+
+        function dkGround(x) { return (x >= DOCK_X0 && x <= DOCK_X1) ? -2 : 0 }
+        function dkMix(a, b, k) { return 'rgb(' + Math.round(a[0] + (b[0] - a[0]) * k) + ',' + Math.round(a[1] + (b[1] - a[1]) * k) + ',' + Math.round(a[2] + (b[2] - a[2]) * k) + ')' }
+
+        function dkMk(mother, i, x) {
+            const R = Math.random;
+            return {
+                mother, i, x, y: 0, vx: 0, face: 1, fv: 1, s: mother ? 1.05 : .78 + R() * .14, young: !mother, lane: mother ? 0 : i % 2,
+                mode: 'L', hop: null, gx: x, maxV: 0, ph: R() * 6, seed: R() * 100,
+                hd: 1, hdT: 1, hdTt: 1 + R() * 2, faceT: 1 + R() * 3, dip: 0, dipPrev: 0, dipWant: 0, dipT: 0,
+                wing: 0, wingK: 0, wingT: 2 + R() * 6, tail: 0, tw: 0, tailT: 2 + R() * 4, tilt: 0, rip: 0, lit: 0,
+                // personality of each duckling
+                delay: .3 + i * .32 + R() * .12, gap: 14 + i * 11 + R() * 8, gw: .3 + R() * .5, gph: R() * 6, spd: .85 + R() * .35,
+                lag: 0, lagCd: 5 + R() * 12, stray: 0, strayX: 0,
+                // mother only
+                plan: [], cur: null, t: 0, wait: 0, waitT: 0, waitCd: 0
+            };
+        }
+        function dkInit() {
+            DK.init = true;
+            const x0 = DOCK_X0 - 260;
+            DK.m = dkMk(true, 0, x0);
+            for (let i = 0; i < DK_N; i++) DK.k.push(dkMk(false, i, x0 - 26 - i * 20 - Math.random() * 12));
+        }
+
+        // where the mother was `t` seconds ago (the ducklings follow this path with a small delay)
+        function dkTrailAt(t) {
+            const T = DK.trail, n = T.length; if (!n) return null;
+            if (t <= T[0].t) return T[0];
+            for (let i = n - 1; i > 0; i--) if (T[i - 1].t <= t) {
+                const a = T[i - 1], b = T[i], u = clamp01((t - a.t) / Math.max(1e-4, b.t - a.t));
+                return { x: a.x + (b.x - a.x) * u, m: u > .5 ? b.m : a.m };
+            }
+            return T[n - 1];
+        }
+
+        function dkHeadIdle(a, dt) {
+            a.hdTt -= dt;
+            if (a.hdTt <= 0) { a.hdTt = 1.2 + Math.random() * 3.5; a.hdT = Math.random() < (a.mother ? .78 : .7) ? 1 : -1 }
+        }
+
+        function dkHopStart(a, to) {
+            const j = Math.random() * 10, x1 = to === 'W' ? DK_GATE_W + j : DK_GATE_L - j;
+            a.hop = { t: 0, dur: a.young ? .5 : .62, x0: a.x, y0: a.y, x1, to };
+            a.face = Math.sign(x1 - a.x) || a.face; a.vx = 0;
+        }
+
+        // ---------- mother: plans ----------
+        function dkPlanLand(m) {
+            const R = Math.random, r = R(), plan = [];
+            const go = x => ({ k: 'walk', x: clampN(x, DK_LAND0 + 40, DK_GATE_L - 4) });
+            if (r < .28) plan.push(go(m.x + (R() * 2 - 1) * 340), { k: 'look', t: 1.5 + R() * 2 });
+            else if (r < .42) plan.push({ k: 'idle', t: .8 + R() }, { k: 'look', t: 2 + R() * 2 });
+            else if (r < .70) plan.push(                                   // walk out on the dock, look at the pond, come back
+                go(DOCK_X0 + 70 + R() * 120), { k: 'look', t: 1 },
+                go(DK_GATE_L - 12 - R() * 50), { k: 'face', d: 1, t: 2.5 + R() * 3.5 },
+                go(DOCK_X0 + 30 + R() * 200), { k: 'look', t: 1.5 });
+            else {                                                         // swim trip
+                plan.push(go(DK_GATE_L), { k: 'face', d: 1, t: 1.3 }, { k: 'hopIn' });
+                let x = DK_GATE_W;
+                for (let i = 0, n = 2 + (R() * 2 | 0); i < n; i++) {
+                    x = clampN(x + 120 + R() * 260, DK_GATE_W, DK_WATER1 - 30);
+                    plan.push({ k: 'swimTo', x }, { k: 'idle', t: 1 + R() * 2 });
+                    if (R() < .7) plan.push({ k: 'dip', t: 1.6 + R() });
+                }
+                plan.push({ k: 'swimTo', x: DK_GATE_W + 8 }, { k: 'hopOut' }, { k: 'look', t: 2.5 });
+            }
+            return plan;
+        }
+        function dkPlanWater() { return [{ k: 'swimTo', x: DK_GATE_W + 8 }, { k: 'hopOut' }] }
+
+        function dkMotherAI(m, dt, S, kids) {
+            const R = Math.random;
+            if (m.hop) return;
+            if (!m.cur || m.cur.k !== 'dip') m.dipWant = 0;
+            m.waitCd -= dt;
+
+            // pause and wait for a straggler
+            let far = null, fd = 0;
+            for (const d of kids) { const dd = Math.abs(d.x - m.x) + (d.mode !== m.mode || d.hop ? 90 : 0); if (dd > fd) { fd = dd; far = d } }
+            if (!m.wait && m.waitCd <= 0 && fd > 230) { m.wait = 1; m.waitT = 0 }
+            if (m.wait) {
+                m.waitT += dt; m.gx = m.x; m.maxV = 0;
+                m.hdT = far ? ((Math.sign(far.x - m.x) * (Math.sign(m.fv) || 1)) || -1) : 1;   // looks back at it
+                if (fd < 140 || m.waitT > 10) { m.wait = 0; m.waitCd = 6 }
+                return;
+            }
+
+            if (!m.cur) {
+                if (!m.plan.length) m.plan = m.mode === 'W' ? dkPlanWater() : dkPlanLand(m);
+                m.cur = m.plan.shift(); m.t = 0;
+            }
+            const c = m.cur, sp = m.mode === 'W' ? 34 : 46; let done = false;
+            m.t += dt;
+            switch (c.k) {
+                case 'idle': m.gx = m.x; m.maxV = 0; dkHeadIdle(m, dt); if (m.t >= c.t) done = true; break;
+                case 'look': {
+                    m.gx = m.x; m.maxV = 0; const u = m.t / c.t;
+                    m.hdT = u < .18 ? 1 : (Math.sin((u - .18) * 9.5) > 0 ? 1 : -1);
+                    if (m.t >= c.t) done = true; break;
+                }
+                case 'face': m.face = c.d; m.gx = m.x; m.maxV = 0; m.hdT = 1; if (m.t >= c.t) done = true; break;
+                case 'walk':
+                    if (m.mode !== 'L' || m.t > 25) { done = true; break }
+                    m.gx = c.x; m.maxV = sp; m.hdT = 1; if (Math.abs(m.x - c.x) < 6) done = true; break;
+                case 'hopIn':
+                    if (m.mode !== 'L') { done = true; break }
+                    if (Math.abs(m.x - DK_GATE_L) > 9) { m.gx = DK_GATE_L; m.maxV = sp }
+                    else { dkHopStart(m, 'W'); done = true }
+                    break;
+                case 'swimTo':
+                    if (m.mode !== 'W' || m.t > 40) { done = true; break }
+                    m.gx = c.x; m.maxV = sp; m.hdT = 1; if (Math.abs(m.x - c.x) < 8) done = true; break;
+                case 'dip':
+                    if (m.mode !== 'W') { done = true; break }
+                    m.gx = m.x; m.maxV = 0; m.dipWant = (m.t > .35 && m.t < c.t - .35) ? 1 : 0;
+                    if (m.t >= c.t) done = true; break;
+                case 'hopOut':
+                    if (m.mode !== 'W') { done = true; break }
+                    if (Math.abs(m.x - DK_GATE_W) > 9) { m.gx = DK_GATE_W; m.maxV = sp }
+                    else { dkHopStart(m, 'L'); done = true }
+                    break;
+                default: done = true;
+            }
+            if (done) m.cur = null;
+        }
+
+        // ---------- ducklings: follow the mother's path loosely ----------
+        function dkKidAI(d, dt, S, m) {
+            if (d.hop) return;
+            const R = Math.random;
+            if (d.lag > 0) d.lag -= dt;                                   // occasionally falls behind
+            else { d.lagCd -= dt; if (d.lagCd <= 0) { d.lag = 1.4 + R() * 1.8; d.lagCd = 9 + R() * 16 } }
+            if (d.stray > 0) d.stray -= dt;
+
+            const smp = dkTrailAt(DK.clock - d.delay) || { x: m.x, m: m.mode === 'W' ? 1 : 0 };
+            let tm = smp.m ? 'W' : 'L', tx = smp.x - DK.dir * (d.gap + Math.sin(DK.clock * d.gw + d.gph) * 13);
+            if (d.stray > 0 && m.mode === 'L') { tx = d.strayX; tm = 'L' }   // wanders to the dock edge, then returns
+            if (tm !== d.mode) {                                          // she has jumped in / climbed out: go to the gate, then hop
+                const gate = d.mode === 'L' ? DK_GATE_L : DK_GATE_W; tx = gate;
+                if (Math.abs(d.x - gate) < 9) { dkHopStart(d, tm); return }
+            }
+            tx = d.mode === 'W' ? clampN(tx, DK_GATE_W, DK_WATER1) : clampN(tx, DK_LAND0, DK_GATE_L);
+            const dist = Math.abs(tx - d.x);
+            d.gx = tx;
+            d.maxV = (d.mode === 'W' ? 34 : 54) * d.spd * (dist > 120 ? 1.7 : 1) * (d.lag > 0 ? .4 : 1);
+
+            if (dist < 6 && Math.abs(d.vx) < 7) {                         // standing: face around, look about
+                d.faceT -= dt;
+                if (d.faceT <= 0) { d.faceT = 2 + R() * 4; d.face = (R() < .72 ? 1 : -1) * (Math.sign(DK.dir) || 1) }
+                dkHeadIdle(d, dt);
+            } else d.hdT = 1;
+
+            if (d.mode === 'W') {                                         // copies the mother's head dips
+                if (d.dipT > 0) d.dipT -= dt;
+                else if (m.dip > .6 && Math.abs(d.vx) < 10 && R() < dt * 1.5) d.dipT = .8 + R() * .5;
+                d.dipWant = d.dipT > 0 ? 1 : 0;
+            } else d.dipWant = 0;
+        }
+
+        // ---------- movement shared by everyone ----------
+        function dkMove(a, dt, S) {
+            const sc = S * a.s;
+            if (a.hop) {                                                  // little jump between the dock and the water
+                const h = a.hop; h.t += dt;
+                const u = Math.min(1, h.t / h.dur), y1 = h.to === 'W' ? waterSurfaceY(h.x1) : dkGround(h.x1);
+                a.x = lerp(h.x0, h.x1, u); a.y = lerp(h.y0, y1, u) - (a.young ? 11 : 15) * S * Math.sin(Math.PI * u);
+                a.ph += dt * 14; a.fv += clampN(a.face - a.fv, -dt * 6, dt * 6);
+                if (u >= 1) {
+                    a.hop = null; a.mode = h.to; a.vx = 0; a.y = y1;
+                    if (h.to === 'W') {
+                        splash(a.x, a.mother ? 1.3 : .6, a.mother ? 6 : 3); frRip(a.x, 5 * sc, 26 * sc, 1.2);
+                        for (let i = 0; i < 3; i++) addBubble(a.x, 6 + Math.random() * 14);
+                    } else { splash(a.x, .35, 2); burst(a.x, -3, 3, 90, a.face) }
+                }
+                return;
+            }
+            const lo = a.mode === 'W' ? DK_GATE_W : DK_LAND0, hi = a.mode === 'W' ? DK_WATER1 : DK_GATE_L;
+            const want = a.gx - a.x;
+            let v = clampN(want * 2.4, -a.maxV, a.maxV); if (Math.abs(want) < 3) v = 0;
+            a.vx += (v - a.vx) * Math.min(1, dt * 5);
+            a.x = clampN(a.x + a.vx * dt, lo, hi);
+            if (Math.abs(a.vx) > 7) a.face = Math.sign(a.vx);
+            a.fv += clampN(a.face - a.fv, -dt * 6, dt * 6);
+            const spd = Math.abs(a.vx);
+            if (a.mode === 'W') { a.y = waterSurfaceY(a.x); a.ph += dt * (2.6 + spd * .12) }
+            else { a.y += (dkGround(a.x) - a.y) * Math.min(1, dt * 14); a.ph += spd * dt / ((a.young ? 17 : 22) * sc) * 6.283 }
+        }
+
+        // ---------- idle animation, ripples, lantern light ----------
+        function dkAnim(a, dt, S, now, lan, lanR) {
+            const R = Math.random, sc = S * a.s, Fs = Math.sign(a.fv) || 1, wet = a.mode === 'W' && !a.hop;
+            a.hd += (a.hdT - a.hd) * Math.min(1, dt * 7);
+            a.dipPrev = a.dip; a.dip += ((wet ? a.dipWant : 0) - a.dip) * Math.min(1, dt * 5);
+            if (a.dipPrev < .5 && a.dip >= .5) { splash(a.x + Fs * 14 * sc, a.mother ? .55 : .25, 3); frRip(a.x + Fs * 14 * sc, 4 * sc, 16 * sc, 1.1); addBubble(a.x + Fs * 14 * sc, 8) }
+            else if (a.dipPrev >= .5 && a.dip < .5) splash(a.x + Fs * 12 * sc, a.mother ? .4 : .2, 2);
+
+            a.wingT -= dt;                                                // occasional wing adjustment
+            if (a.wingT <= 0 && !a.wingK) { a.wingK = .0001; a.wingT = 5 + R() * 9 }
+            if (a.wingK) { a.wingK += dt / .85; a.wing = Math.sin(Math.PI * Math.min(1, a.wingK)); if (a.wingK >= 1) { a.wingK = 0; a.wing = 0 } }
+
+            a.tailT -= dt; if (a.tailT <= 0) { a.tw = 1; a.tailT = 3 + R() * 6 }   // tail wag
+            a.tw = Math.max(0, a.tw - dt * 2.2);
+            a.tail = Math.sin(now * 2.3 + a.seed) * .05 + Math.sin(now * 19 + a.seed) * .22 * a.tw;
+
+            let tt = 0;                                                   // body tilt: waddle on land, wave slope on water
+            if (wet) { const sl = (waterSurfaceY(a.x + 10) - waterSurfaceY(a.x - 10)) / 20; tt = Math.atan(sl * Fs) * .9 }
+            else if (!a.hop && Math.abs(a.vx) > 4) tt = Math.sin(a.ph) * (a.young ? .09 : .06) - .03;
+            a.tilt += (tt - a.tilt) * Math.min(1, dt * 10);
+
+            if (wet) {                                                    // tiny ripples behind swimmers
+                a.rip -= dt;
+                if (a.rip <= 0) {
+                    const mv = Math.abs(a.vx) > 6; a.rip = mv ? .45 : 1.6 + R();
+                    if (mv) { frRip(a.x - Fs * 11 * sc, 3 * sc, 12 * sc * (a.mother ? 1.4 : 1), .9 + R() * .4); splash(a.x - Fs * 9 * sc, a.mother ? .12 : .06, 0) }
+                    else if (R() < .5) frRip(a.x, 4 * sc, 10 * sc, 1.2);
+                }
+            }
+            if (lan) {                                                    // lantern reveals them at night
+                const sx = W / 2 + a.x - P.x, dd = Math.hypot(sx - lan[0], groundY() + 4 + a.y - 10 * sc - lan[1]);
+                a.lit += (sm((1 - dd / lanR) * 1.25) * DN.litK - a.lit) * Math.min(1, dt * 8);
+            } else a.lit += (0 - a.lit) * Math.min(1, dt * 8);
+        }
+
+        function duckTick(dt) {
+            if (!(dt > 0)) return;
+            if (!DK.init) dkInit();
+            const S = CSc(), now = performance.now() / 1000, m = DK.m, kids = DK.k, R = Math.random;
+            DK.clock += dt;
+            DK.dir += (m.face - DK.dir) * Math.min(1, dt * .9);           // formation turns around slowly
+            const lp = lanternPos(), lan = lp && DN.litK > .05 ? lp : null, lanR = lan ? 340 * S * (.4 + .6 * DN.litK) * .85 : 0;
+
+            DK.strayT -= dt;                                              // one duckling wanders toward the dock edge
+            if (DK.strayT <= 0) {
+                DK.strayT = 14 + R() * 18;
+                if (m.mode === 'L' && !m.hop && m.x > DOCK_X0 + 40) {
+                    const k = kids[(R() * kids.length) | 0];
+                    if (k.mode === 'L' && !k.hop) { k.stray = 3.5 + R() * 2.5; k.strayX = DK_GATE_L - 6 - R() * 16 }
+                }
+            }
+            dkMotherAI(m, dt, S, kids); dkMove(m, dt, S);
+            DK.tt += dt;
+            if (DK.tt >= .033) { DK.tt = 0; DK.trail.push({ t: DK.clock, x: m.x, m: m.mode === 'W' ? 1 : 0 }) }
+            while (DK.trail.length > 2 && DK.trail[0].t < DK.clock - 10) DK.trail.shift();
+            for (const d of kids) { dkKidAI(d, dt, S, m); dkMove(d, dt, S) }
+            dkAnim(m, dt, S, now, lan, lanR);
+            for (const d of kids) dkAnim(d, dt, S, now, lan, lanR);
+        }
+
+        // ---------- drawing ----------
+        // local space: +x = forward, y = 0 is the feet on land / the waterline in water
+        function dkShape(a, now, wet, under) {
+            const Y = a.young, INK = '#111', k = clamp01(DN.d * (1 - a.lit) * .85);   // k = how far it sinks into silhouette at night
+            const WH = dkMix([249, 247, 240], [34, 36, 44], k), WH2 = dkMix([234, 231, 220], [28, 30, 38], k);
+            const BK = dkMix([240, 176, 52], [70, 52, 28], k), LG = dkMix([228, 138, 44], [62, 42, 24], k);
+            const bx = Y ? 10.5 : 14, br = Y ? 7.6 : 9.2, hr = Y ? 5.6 : 5.2, LEG = Y ? 4 : 5.5, lw = Y ? 1.5 : 1.7;
+            const air = !!a.hop, spd = Math.abs(a.vx), walking = !wet && !air && spd > 4;
+            const bob = walking ? Math.abs(Math.sin(a.ph)) * (Y ? 2.4 : 1.4) : (wet ? Math.sin(now * 1.9 + a.seed) * .6 : Math.sin(now * 1.6 + a.seed) * .25);
+            const cy = (wet ? -br * .5 : -(br + LEG)) - bob;               // body centre
+            ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+
+            if (!wet && !air && !under) {                                  // soft ground shadow
+                ctx.save(); ctx.globalAlpha *= .22; ctx.fillStyle = INK; ctx.beginPath(); ctx.ellipse(0, 1, bx * .85, 1.8, 0, 0, 7); ctx.fill(); ctx.restore();
+            }
+            const leg = (hx, hy, fx, fy) => {
+                ctx.strokeStyle = INK; ctx.lineWidth = Y ? 3.2 : 3.8; ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(fx, fy); ctx.stroke();
+                ctx.strokeStyle = LG; ctx.lineWidth = Y ? 1.5 : 2; ctx.stroke();
+                const L = Y ? 4.5 : 6;
+                ctx.beginPath(); ctx.moveTo(fx - 1.5, fy - 1.4); ctx.lineTo(fx + L, fy + .2); ctx.lineTo(fx - 1.5, fy + 1); ctx.closePath();
+                ctx.fillStyle = LG; ctx.fill(); ctx.strokeStyle = INK; ctx.lineWidth = .9; ctx.stroke();
+            };
+            for (let i = 0; i < 2; i++) {
+                const p = a.ph + i * Math.PI, hx = i ? -3 : 3;
+                if (wet) { if (under) leg(hx, cy + br * .7, hx - 2 + Math.sin(p) * 4, cy + br + 3 + Math.max(0, Math.cos(p)) * 1.6) }   // paddling feet, seen under the water
+                else if (air) leg(hx, cy + br * .7, hx + (i ? -5 : 4), -LEG * .35);
+                else {
+                    const st = walking ? Math.sin(p) : 0, lift = walking ? Math.max(0, Math.cos(p)) * (Y ? 2.6 : 3.2) : 0;
+                    leg(hx, cy + br * .7, hx + st * (Y ? 3.6 : 4.6), -lift);
+                }
+            }
+
+            ctx.save(); ctx.translate(0, cy); ctx.rotate(a.tilt + a.dip * .55); ctx.translate(0, -cy);   // whole upper body (tips forward when dipping)
+
+            ctx.save(); ctx.translate(-bx + 2.5, cy - br * .15); ctx.rotate(a.tail + .12);               // tail
+            ctx.beginPath(); ctx.moveTo(2, -2.8); ctx.quadraticCurveTo(-4, -6.5, -(Y ? 6.5 : 9.5), -(Y ? 5.5 : 8.5)); ctx.quadraticCurveTo(-4.5, -.5, 2, 3.2); ctx.closePath();
+            ctx.fillStyle = WH; ctx.fill(); ctx.strokeStyle = INK; ctx.lineWidth = lw; ctx.stroke(); ctx.restore();
+
+            ctx.beginPath(); ctx.ellipse(0, cy, bx, br, 0, 0, 7);                                        // body
+            ctx.fillStyle = WH; ctx.fill(); ctx.strokeStyle = INK; ctx.lineWidth = lw; ctx.stroke();
+
+            ctx.save(); ctx.translate(bx * .12, cy - br * .12); ctx.rotate(a.wing * .5 + (air ? .55 : 0)); const w = Y ? .78 : 1;   // folded wing
+            ctx.beginPath(); ctx.moveTo(7 * w, -1.5 * w); ctx.quadraticCurveTo(1 * w, -8 * w, -11 * w, -3 * w); ctx.quadraticCurveTo(-3 * w, 3.5 * w, 7 * w, -1.5 * w); ctx.closePath();
+            ctx.fillStyle = WH2; ctx.fill(); ctx.strokeStyle = INK; ctx.lineWidth = lw * .8; ctx.stroke();
+            ctx.lineWidth = .7; ctx.beginPath(); ctx.moveTo(-1 * w, -2 * w); ctx.lineTo(-7 * w, -3 * w); ctx.stroke(); ctx.restore();
+
+            // neck + head
+            const hdS = Math.abs(a.hd) < .2 ? .2 * (Math.sign(a.hd) || 1) : a.hd;
+            const sx0 = bx * .5, sy0 = cy - br * .6;
+            let hx = bx * (Y ? .74 : .82) + (walking ? Math.sin(a.ph * 2) * (Y ? 1.1 : 1.6) : Math.sin(now * 1.3 + a.seed) * .9);
+            let hy = cy - (Y ? br + hr * .55 : br + 4.4) + (walking ? Math.cos(a.ph * 2) * .6 : Math.sin(now * 1.7 + a.seed * 2) * .5);
+            hx = lerp(hx, bx * 1.08, a.dip); hy = lerp(hy, cy + br + 3.6, a.dip);
+            ctx.beginPath(); ctx.moveTo(sx0, sy0); ctx.quadraticCurveTo(lerp(sx0, hx, .35) + (Y ? 0 : 2.2), lerp(sy0, hy, .6), hx, hy);
+            ctx.strokeStyle = INK; ctx.lineWidth = Y ? 6.2 : 7.2; ctx.stroke(); ctx.strokeStyle = WH; ctx.lineWidth = Y ? 4.2 : 5.2; ctx.stroke();
+
+            ctx.save(); ctx.translate(hx, hy); ctx.scale(hdS, 1); ctx.rotate(a.dip * 1.2 + Math.sin(now * 1.1 + a.seed) * .05);
+            ctx.beginPath(); ctx.arc(0, 0, hr, 0, 7); ctx.fillStyle = WH; ctx.fill(); ctx.strokeStyle = INK; ctx.lineWidth = lw; ctx.stroke();
+            if (Y) {                                                                                     // faint yellow fluff on the duckling's head
+                ctx.save(); ctx.beginPath(); ctx.arc(0, 0, hr - .6, 0, 7); ctx.clip();
+                ctx.globalAlpha *= .4; ctx.fillStyle = dkMix([252, 232, 150], [60, 54, 36], k); ctx.beginPath(); ctx.arc(-hr * .2, -hr * .5, hr * .85, 0, 7); ctx.fill(); ctx.restore();
+            }
+            const bl = Y ? 4.2 : 7.2, bt = Y ? 2.2 : 3.2;                                                // beak
+            ctx.beginPath(); ctx.moveTo(hr * .7, -bt * .55); ctx.quadraticCurveTo(hr + bl * .6, -bt * .8, hr + bl, bt * .1); ctx.quadraticCurveTo(hr + bl * .55, bt, hr * .7, bt * .7); ctx.closePath();
+            ctx.fillStyle = BK; ctx.fill(); ctx.strokeStyle = INK; ctx.lineWidth = lw * .7; ctx.stroke();
+            ctx.lineWidth = .7; ctx.beginPath(); ctx.moveTo(hr * .8, bt * .1); ctx.lineTo(hr + bl * .85, bt * .1); ctx.stroke();
+            const blink = ((now * .8 + a.seed * 3) % 4.3) < .11;                                         // eye
+            ctx.fillStyle = INK; ctx.strokeStyle = INK;
+            if (blink) { ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(hr * .12, -hr * .2); ctx.lineTo(hr * .6, -hr * .22); ctx.stroke() }
+            else { ctx.beginPath(); ctx.arc(hr * .38, -hr * .2, Y ? 1.15 : .95, 0, 7); ctx.fill() }
+            ctx.restore();   // head
+            ctx.restore();   // body group
+        }
+
+        function dkDraw(a, gy, sx, S, now, under) {
+            const sc = S * a.s * (a.lane ? .94 : 1), wet = a.mode === 'W' && !a.hop, F0 = a.fv, F = Math.abs(F0) < .15 ? .15 * (Math.sign(F0) || 1) : F0;
+            const onDock = a.x >= DOCK_X0 && a.x <= DOCK_X1;
+            const oy = gy + 4 + a.y + (a.lane && !a.hop && !onDock ? -2.2 * sc : 0);   // back-lane ducklings sit slightly higher = depth
+            ctx.save();
+            if (wet && !under) { const wl = gy + 4 + waterSurfaceY(a.x); ctx.beginPath(); ctx.rect(sx - 200, gy - 1200, 400, wl - (gy - 1200)); ctx.clip() }   // lower body is under the water
+            ctx.translate(sx, oy); ctx.scale(sc * F, sc);
+            dkShape(a, now, wet, under);
+            ctx.restore();
+        }
+
+        function dkWaterFX(a, gy, sx, S, now) {                           // ink ripple ring + wake lines on the waterline
+            const sc = S * a.s, F = Math.sign(a.fv) || 1, wl = gy + 4 + waterSurfaceY(a.x), bx = (a.young ? 10.5 : 14) * sc;
+            ctx.save(); ctx.strokeStyle = '#111'; ctx.lineWidth = 1; ctx.lineCap = 'round'; ctx.globalAlpha = .42 * (1 - .4 * DN.d);
+            ctx.beginPath(); ctx.ellipse(sx, wl + 1, bx * (1.35 + .1 * Math.sin(now * 2 + a.seed)) + a.dip * 6 * sc, 2.4, 0, 0, 7); ctx.stroke();
+            const mv = Math.min(1, Math.abs(a.vx) / 30);
+            if (mv > .15) {
+                const L = (22 + 40 * mv) * sc; ctx.globalAlpha = .5 * mv * (1 - .4 * DN.d);
+                for (let q = 0; q < 2; q++) { ctx.beginPath(); ctx.moveTo(sx - F * bx * .9, wl + 1 + q * 2.5); ctx.lineTo(sx - F * (bx * .9 + L * (1 - q * .3)), wl + 1 + q * 2.5 + (q ? 1.6 : -1.6)); ctx.stroke() }
+            }
+            ctx.restore();
+        }
+
+        function drawDuckFam(gy) {
+            if (!DK.init) return;
+            const S = CSc(), now = performance.now() / 1000, top = gy + 4, sxp = W / 2 + POND_X - P.x;
+            const list = [DK.m].concat(DK.k).filter(a => Math.abs(a.x - P.x) < W / 2 + 200);
+            if (!list.length) return;
+            const z = a => a.mother ? 2 : (a.lane ? 0 : 1);
+            list.sort((p, q) => z(p) - z(q));                             // back lane first, mother in front
+            const wets = list.filter(a => a.mode === 'W' && !a.hop);
+            if (wets.length) {                                            // faint submerged pass (paddling feet)
+                ctx.save(); waterShape(sxp, top); ctx.clip(); ctx.globalAlpha = .38;
+                for (const a of wets) dkDraw(a, gy, a.x - P.x + W / 2, S, now, true);
+                ctx.restore();
+            }
+            for (const a of list) {
+                const sx = a.x - P.x + W / 2;
+                dkDraw(a, gy, sx, S, now, false);
+                if (a.mode === 'W' && !a.hop) dkWaterFX(a, gy, sx, S, now);
+            }
+        }
+
 
         function frame(now) {
 
@@ -11806,7 +12178,7 @@
             let dt = dt0;
             if (hitstop > 0) { hitstop -= dt0; dt = 0 }
 
-            update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); sgTick(dt); sgGroundTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); waterFXTick(dt); brainTick(dt); gibTick(dt); boneTick(dt); weatherTick(dt); horseTick(dt); birdTick(dt); fowlTick(dt); frogTick(dt); crocTick(dt); bgTick(dt); dayTick(dt0); fireflyTick(dt0); stExtrasTick(dt0);
+            update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); sgTick(dt); sgGroundTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); waterFXTick(dt); brainTick(dt); gibTick(dt); boneTick(dt); weatherTick(dt); horseTick(dt); birdTick(dt); fowlTick(dt); frogTick(dt); duckTick(dt); crocTick(dt); bgTick(dt); dayTick(dt0); fireflyTick(dt0); stExtrasTick(dt0);
             deckTick();
             shake = Math.max(0, shake - dt0 * 60);
             ctx.save();
@@ -11838,6 +12210,7 @@
             drawWaterFX(gy);
             drawBirds(gy);
             drawFowl(gy);
+            drawDuckFam(gy);
             drawFrogs(gy);
             drawCroc(gy); drawCrocGore(gy);
             drawBGoreAir(gy);
