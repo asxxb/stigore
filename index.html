@@ -186,7 +186,7 @@
 
 
         const P = {
-            gk: 0, x: -7800, vx: 0, z: 0, vz: 0, face: 1, phase: 0, dist: 0, atk: 0, kn: 0, kt: 0, amp: 0, lean: 0, tt: 0, rv: 0,
+            gk: 0, x: -6868, vx: 0, z: 0, vz: 0, face: -1, phase: 0, dist: 0, atk: 0, kn: 0, kt: 0, amp: 0, lean: 0, tt: 0, rv: 0,
             jbuf: 0, coy: 0, cs: 0, ct: 0, chit: false, abuf: 0, clast: 0, cgr: 0, gt: 0, grabbed: null,
             skid: 0, skidDir: 1, skidK: 0, skA: 0, sk: null,
             idle: 0, idleAt: 3.5, fid: 0, fidType: 0, fidT: 0, fidDur: 2.4, fidK: 0,
@@ -4555,7 +4555,7 @@
         function tryStairs() {
             if (P.stc > 0 || P.mount || P.z < 0 || P.fin > 0 || P.cs > 0 || P.thw > 0 || P.tt > 0 || P.pk > 0 ||
                 P.stbk > 0 || P.fs > 0 || P.gu > 0 || P.yk > 0 || P.sgp > 0 || P.sm > 0 || swim.on) return false;
-            const g = stairGeom(), R = 170 * CSc();
+            const g = stairGeom(), R = 220 * CSc();
             let up;
             if (!P.dh && Math.abs(P.x - g.bx) < R) up = true;
             else if (P.dh > 0 && Math.abs(P.x - g.tx) < R) up = false;
@@ -4680,7 +4680,7 @@
         }
         function drawStairHint(gy) {
             if (P.stc > 0) return;
-            const g = stairGeom(), S = CSc(), R = 170 * S, now = performance.now();
+            const g = stairGeom(), S = CSc(), R = 220 * S, now = performance.now();
             let wx = null;
             if (!P.dh && Math.abs(P.x - g.bx) < R) wx = g.bx;
             else if (P.dh > 0 && Math.abs(P.x - g.tx) < R) wx = g.tx;
