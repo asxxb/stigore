@@ -3875,6 +3875,7 @@
             };
         }
         function stExtrasTick(dt) {
+            clnTick(dt);
             if (!LEAVES.length) for (let i = 0; i < 30; i++) LEAVES.push(stPartNew(true));
             const s = 3.6 * BLD, t = performance.now() / 1000;
             for (const p of LEAVES) {
@@ -4001,26 +4002,129 @@
             return false;
         }
 
-        // ---------- clothesline: house wall -> pole, clothes swing and flutter with the wind ----------
-        function stClothes(now) {
-            const wk = Math.max(-1.2, Math.min(1.2, wind.v / 320)), A = [-112, -122], B = [-212, -118];
+        // ---------- shootable clothesline ----------
+        const CLN_A = [-112, -122], CLN_B = [-212, -118], CLN_T = [.14, .36, .58, .82];
+        const CLN_H = [17, 20, 20, 11], CLN_HW = [9, 6, 8.5, 5];     // garment height / half width (house-local units)
+        const CLN_C = [8, 9, 9, 5], CLN_R = [12, 11, 11, 9];         // hit circle: distance below the peg, radius
+        const CLN = [0, 1, 2, 3].map(() => ({ hp: 2, holes: [], kick: 0, kv: 0, f: null, lastBlast: -1 }));
+
+        function clnWk() { return Math.max(-1.2, Math.min(1.2, wind.v / 320)) }
+        function clnGeom(now) {
+            const wk = clnWk(), A = CLN_A, B = CLN_B;
             const C = [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2 + 15 + Math.sin(now * 1.7) * 1.3 * Math.abs(wk)];
             const q = t => { const u = 1 - t; return [u * u * A[0] + 2 * u * t * C[0] + t * t * B[0], u * u * A[1] + 2 * u * t * C[1] + t * t * B[1]] };
+            return { wk, C, q };
+        }
+        function clnAng(k, now, wk) { return -(wk * .4 + Math.sin(now * 2.4 + k * 1.7) * .05 * (.3 + Math.abs(wk))) + CLN[k].kick }
+
+        // segment (previous -> current projectile position) vs. each hanging garment, world space
+        function clothHit(x0, y0, x1, y1, F, id) {
+            const now = performance.now() / 1000, g = clnGeom(now), dx = x1 - x0, dy = y1 - y0, l2 = dx * dx + dy * dy || 1;
+            for (let k = 0; k < 4; k++) {
+                const o = CLN[k]; if (o.f) continue;
+                const p = g.q(CLN_T[k]), ang = clnAng(k, now, g.wk), d = CLN_C[k];
+                const cx = STH_WX + (p[0] - d * Math.sin(ang)) * STH_SC, cy = (p[1] + d * Math.cos(ang)) * STH_SC, r = CLN_R[k] * STH_SC;
+                let t = ((cx - x0) * dx + (cy - y0) * dy) / l2; t = Math.max(0, Math.min(1, t));
+                const px = x0 + dx * t, py = y0 + dy * t;
+                if ((px - cx) ** 2 + (py - cy) ** 2 > r * r) continue;
+                const sg = id !== undefined;                       // pellets carry an id, revolver bullets don't
+                if (sg) { if (o.lastBlast === id) return true; o.lastBlast = id }
+                clnDamage(k, o, p, ang, px, py, F, sg);
+                return true;
+            }
+            return false;
+        }
+
+        function clnDamage(k, o, p, ang, px, py, F, sg) {
+            const lx = (px - STH_WX) / STH_SC - p[0], ly = py / STH_SC - p[1], c = Math.cos(ang), s = Math.sin(ang);
+            const ux = lx * c + ly * s, uy = -lx * s + ly * c;     // hit point in garment space
+            const n = sg ? 3 : 1;
+            for (let i = 0; i < n && o.holes.length < 10; i++) {
+                o.holes.push({
+                    x: Math.max(-CLN_HW[k] + 1.5, Math.min(CLN_HW[k] - 1.5, ux + (i ? (Math.random() - .5) * 8 : 0))),
+                    y: Math.max(3, Math.min(CLN_H[k] - 2, uy + (i ? (Math.random() - .5) * 8 : 0))),
+                    r: (sg ? 1.8 : 1.4) + Math.random() * .9, seed: Math.random() * 99
+                });
+            }
+            o.hp -= sg ? 2 : 1;
+            o.kv -= F * (sg ? 7 : 4);                              // swings away from the shot
+            burst(px, py, sg ? 8 : 4, 150, F);
+            hitstop = Math.max(hitstop, .02); shake = Math.max(shake, sg ? 4 : 2);
+            if (o.hp <= 0) {                                       // peg tears loose
+                o.f = {
+                    x: p[0], y: p[1], vx: F * (15 + Math.random() * 25), vy: -12, rot: ang,
+                    vr: F * (-1 - Math.random() * 2), fl: Math.random() * 6, t: 0, lt: 0, landed: false, rot0: 0, y0: 0
+                };
+                banner.t = .8; banner.text = 'CLOTHES DOWN!';
+            } else { banner.t = .5; banner.text = 'HOLE!' }
+        }
+
+        function clnTick(dt) {
+            if (!(dt > 0)) return;
+            for (let k = 0; k < 4; k++) {
+                const o = CLN[k];
+                o.kv += (-60 * o.kick - 3 * o.kv) * dt; o.kick += o.kv * dt;       // swing spring
+                const f = o.f; if (!f) continue;
+                f.t += dt;
+                if (!f.landed) {
+                    f.vy += (40 - f.vy * 1.6) * dt;                                  // slow, cloth-like fall
+                    f.vx += (clnWk() * 60 - f.vx) * Math.min(1, dt * 1.2) + Math.sin(f.t * 5 + f.fl) * 30 * dt;
+                    f.x += f.vx * dt; f.y += f.vy * dt; f.fl += dt * 6;
+                    f.rot += f.vr * dt * .4 + Math.sin(f.fl) * .6 * dt;
+                    if (f.y >= -CLN_H[k]) {
+                        f.landed = true; f.lt = 0; f.rot0 = f.rot; f.y0 = f.y; f.dir = f.vx >= 0 ? -1 : 1;
+                        burst(STH_WX + f.x * STH_SC, -2, 4, 120, Math.sign(f.vx) || 1);
+                    }
+                } else {
+                    f.lt += dt;
+                    const u = sm(f.lt / .5);
+                    f.rot = f.rot0 + (f.dir * Math.PI / 2 - f.rot0) * u;             // topples flat onto the ground
+                    f.y = f.y0 + (-CLN_HW[k] - f.y0) * u;
+                    if (f.t > 30) { o.f = null; o.hp = 2; o.holes = []; o.kick = 0; o.kv = 0 }   // a fresh one is hung back up
+                }
+            }
+        }
+
+        function stGarment(k, Wv) {
+            if (k === 0) stPoly([[-4, 0], [-9, 2], [-10, 10], [-7, 10.5], [-5.5, 6], [-5.5, 17 + Wv(0)], [5.5, 17 + Wv(1)], [5.5, 6], [7, 10.5], [10, 10], [9, 2], [4, 0], [0, 1.5]], 'rgba(238,232,212,.92)');
+            else if (k === 1) stPoly([[-6, 0], [6, 0], [6.5, 8], [5.5, 20 + Wv(0)], [1.5, 20 + Wv(1)], [0, 9], [-1.5, 20 + Wv(2)], [-5.5, 20 + Wv(3)], [-6.5, 8]], 'rgba(110,125,150,.75)');
+            else if (k === 2) stPoly([[-8, 0], [8, 0], [8.5, 20 + Wv(0)], [4, 21 + Wv(1)], [0, 20 + Wv(2)], [-4, 21 + Wv(3)], [-8.5, 20 + Wv(4)]], 'rgba(180,80,70,.7)');
+            else { stPoly([[-5, 0], [-2.5, 0], [-2.5, 8], [-.5, 10 + Wv(0)], [-4, 11 + Wv(1)], [-5, 8]], 'rgba(238,232,212,.92)'); stPoly([[2.5, 0], [5, 0], [5, 8], [3.5, 11 + Wv(2)], [.5, 10 + Wv(3)], [2.5, 8]], 'rgba(238,232,212,.92)'); }
+        }
+        function stHoles(o) {
+            ctx.save(); ctx.lineCap = 'round';
+            for (const h of o.holes) {
+                ctx.fillStyle = '#111'; ctx.beginPath(); ctx.ellipse(h.x, h.y, h.r, h.r * .85, 0, 0, 7); ctx.fill();
+                ctx.strokeStyle = '#111'; ctx.lineWidth = .4;                        // little tears around the hole
+                for (let i = 0; i < 3; i++) { const a = hash(h.seed + i * 3) * 6.28; ctx.beginPath(); ctx.moveTo(h.x + Math.cos(a) * h.r, h.y + Math.sin(a) * h.r); ctx.lineTo(h.x + Math.cos(a) * (h.r + 1.8), h.y + Math.sin(a) * (h.r + 1.8)); ctx.stroke() }
+            }
+            ctx.restore();
+        }
+
+        function stClothes(now) {
+            const g = clnGeom(now), wk = g.wk, A = CLN_A, B = CLN_B, C = g.C, fw = Math.abs(wk) * 1.8;
             ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#111';
             ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(B[0], 3); ctx.lineTo(B[0] + 1, B[1] - 8); ctx.stroke();      // pole
             ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(B[0] + 1, B[1] - 6, 1.6, 0, 7); ctx.stroke();
-            ctx.beginPath(); ctx.arc(A[0], A[1], 1.6, 0, 7); ctx.stroke();                                             // wall hook
+            ctx.beginPath(); ctx.arc(A[0], A[1], 1.6, 0, 7); ctx.stroke();                                              // wall hook
             ctx.lineWidth = .8; ctx.beginPath(); ctx.moveTo(A[0], A[1]); ctx.quadraticCurveTo(C[0], C[1], B[0], B[1]); ctx.stroke();
-            for (const [t, k] of [[.14, 0], [.36, 1], [.58, 2], [.82, 3]]) {
-                const p = q(t), ang = -(wk * .4 + Math.sin(now * 2.4 + k * 1.7) * .05 * (.3 + Math.abs(wk))), fw = Math.abs(wk) * 1.8;
+            for (let k = 0; k < 4; k++) {
+                const o = CLN[k]; if (o.f) continue;
+                const p = g.q(CLN_T[k]), ang = clnAng(k, now, wk);
                 const Wv = i => Math.sin(now * 8 + k * 2 + i * 1.3) * fw;
                 ctx.save(); ctx.translate(p[0], p[1]); ctx.rotate(ang); ctx.scale(1 + .1 * Math.abs(wk), 1);
-                if (k === 0) stPoly([[-4, 0], [-9, 2], [-10, 10], [-7, 10.5], [-5.5, 6], [-5.5, 17 + Wv(0)], [5.5, 17 + Wv(1)], [5.5, 6], [7, 10.5], [10, 10], [9, 2], [4, 0], [0, 1.5]], 'rgba(238,232,212,.92)');            // shirt
-                else if (k === 1) stPoly([[-6, 0], [6, 0], [6.5, 8], [5.5, 20 + Wv(0)], [1.5, 20 + Wv(1)], [0, 9], [-1.5, 20 + Wv(2)], [-5.5, 20 + Wv(3)], [-6.5, 8]], 'rgba(110,125,150,.75)');               // trousers
-                else if (k === 2) stPoly([[-8, 0], [8, 0], [8.5, 20 + Wv(0)], [4, 21 + Wv(1)], [0, 20 + Wv(2)], [-4, 21 + Wv(3)], [-8.5, 20 + Wv(4)]], 'rgba(180,80,70,.7)');                                 // cloth
-                else { stPoly([[-5, 0], [-2.5, 0], [-2.5, 8], [-.5, 10 + Wv(0)], [-4, 11 + Wv(1)], [-5, 8]], 'rgba(238,232,212,.92)'); stPoly([[2.5, 0], [5, 0], [5, 8], [3.5, 11 + Wv(2)], [.5, 10 + Wv(3)], [2.5, 8]], 'rgba(238,232,212,.92)'); }   // socks
+                stGarment(k, Wv); stHoles(o);
                 ctx.fillStyle = 'rgb(180,140,90)'; ctx.lineWidth = .5;
-                for (const px of k === 3 ? [-3.8, 3.8] : [-3, 3]) { ctx.beginPath(); ctx.rect(px - .8, -2, 1.6, 3.4); ctx.fill(); ctx.stroke(); }     // pegs
+                for (const px of k === 3 ? [-3.8, 3.8] : [-3, 3]) { ctx.beginPath(); ctx.rect(px - .8, -2, 1.6, 3.4); ctx.fill(); ctx.stroke() }   // pegs
+                ctx.restore();
+            }
+            for (let k = 0; k < 4; k++) {                                                                               // garments on the ground / falling
+                const o = CLN[k], f = o.f; if (!f) continue;
+                const fl = f.landed ? 0 : .3, Wv = i => Math.sin(now * 8 + k * 2 + i * 1.3) * fl;
+                ctx.save(); ctx.translate(f.x, f.y); ctx.rotate(f.rot);
+                if (!f.landed) ctx.scale(.75 + .25 * Math.cos(f.fl), 1);
+                ctx.globalAlpha = f.t > 26 ? Math.max(0, (30 - f.t) / 4) : 1;
+                stGarment(k, Wv); stHoles(o);
                 ctx.restore();
             }
             ctx.restore();
@@ -5375,7 +5479,7 @@
                     if (h && h.d < bd) { bd = h.d; best = { e, h } }
                 }
                 if (best) { if (!legShot(b, best.e, best.h, S)) gunHit(b, best.e, best.h, S); bullets.splice(i, 1); continue }
-                if (birdsHit(px, py, b.x, b.y, b.F, 20) || fowlHit(px, py, b.x, b.y, b.F, 20) || bflyHit(px, py, b.x, b.y, b.F, 20)) { bullets.splice(i, 1); continue }
+                if (birdsHit(px, py, b.x, b.y, b.F, 20) || fowlHit(px, py, b.x, b.y, b.F, 20) || bflyHit(px, py, b.x, b.y, b.F, 20) || clothHit(px, py, b.x, b.y, b.F)) { bullets.splice(i, 1); continue }
                 if (frogHit(b, px, py, false)) { bullets.splice(i, 1); continue }
                 if (crocHit(b, px, py)) { bullets.splice(i, 1); continue }
                 if (waterStep(b, px, py, dt)) { bullets.splice(i, 1); continue }
@@ -5709,7 +5813,7 @@
                     if (h && h.d < bd) { bd = h.d; best = { e, h } }
                 }
                 if (best) { pelletHit(p, best.e, best.h); pellets.splice(i, 1); continue }
-                if (birdsHit(px, py, p.x, p.y, p.F, 22) || fowlHit(px, py, p.x, p.y, p.F, 22) || bflyHit(px, py, p.x, p.y, p.F, 22)) { pellets.splice(i, 1); continue }
+                if (birdsHit(px, py, p.x, p.y, p.F, 22) || fowlHit(px, py, p.x, p.y, p.F, 22) || bflyHit(px, py, p.x, p.y, p.F, 22) || clothHit(px, py, p.x, p.y, p.F, p.id)) { pellets.splice(i, 1); continue }
                 if (frogHit(p, px, py, true)) { pellets.splice(i, 1); continue }
                 if (crocHit(p, px, py)) { pellets.splice(i, 1); continue }
                 if (waterStep(p, px, py, dt)) { pellets.splice(i, 1); continue }
