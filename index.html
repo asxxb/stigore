@@ -4534,6 +4534,7 @@
 
         // ================= STILT HOUSE STAIRS v2: per-step IK climb =================
         const STH_WX = -8800, STH_SC = 4.2 * BLD;   // must match the stilt house entry in drawBuildings()
+        const STAIR_DX = 0, STAIR_DY = 0;   // in house-local units; adjust until feet land on the treads
         P.stc = 0; P.stcD = 1; P.stcM = 0; P.dh = 0;
         // stcM: 1 = walk to the first step, 2 = settle into stance, 3 = strides (9 of them: 8 steps + bring-together)
 
@@ -4543,9 +4544,9 @@
         // stop k = where a foot lands: 0 = ground, 1..7 = treads (bottom to top), 8 = deck. x = world px, y = px above the feet-ground line
         function stopGeom(k) {
             const s = STH_SC;
-            if (k <= 0) return { x: STH_WX + 199.2 * s, y: 0 };
-            if (k >= 8) return { x: STH_WX + 130 * s, y: 82 * s + 4 };
-            return { x: STH_WX + (199.2 - 7.6 * k) * s, y: (2.3 + 11.6 * k) * s + 4 };   // same numbers the stair is drawn with
+            if (k <= 0) return { x: STH_WX + (199.2 + STAIR_DX) * s, y: 0 };
+            if (k >= 8) return { x: STH_WX + (130 + STAIR_DX) * s, y: (82 + STAIR_DY) * s + 4 };
+            return { x: STH_WX + (199.2 - 7.6 * k + STAIR_DX) * s, y: (2.3 + 11.6 * k + STAIR_DY) * s + 4 };
         }
         function stairGeom() {
             const S = CSc(), top = stopGeom(8);
@@ -4553,13 +4554,19 @@
         }
 
         function tryStairs() {
+            console.log({
+                stc: P.stc, mount: P.mount, z: P.z, fin: P.fin, cs: P.cs, thw: P.thw, tt: P.tt, pk: P.pk,
+                stbk: P.stbk, fs: P.fs, gu: P.gu, yk: P.yk, sgp: P.sgp, sm: P.sm, swim: swim.on,
+                dist: Math.abs(P.x - stairGeom().bx), R: 220 * CSc()
+            });
             if (P.stc > 0 || P.mount || P.z < 0 || P.fin > 0 || P.cs > 0 || P.thw > 0 || P.tt > 0 || P.pk > 0 ||
-                P.stbk > 0 || P.fs > 0 || P.gu > 0 || P.yk > 0 || P.sgp > 0 || P.sm > 0 || swim.on) return false;
+                P.stbk > 0 || P.fs > 0 || P.gu > 0 || P.yk > 0 || P.sgp > 0 || swim.on) return false;
             const g = stairGeom(), R = 220 * CSc();
             let up;
             if (!P.dh && Math.abs(P.x - g.bx) < R) up = true;
             else if (P.dh > 0 && Math.abs(P.x - g.tx) < R) up = false;
             else return false;
+            if (P.sm === 2) { releaseButt(); P.sm = 0; }
             if (P.skid) endSkid();
             P.stc = .0001; P.stcM = 1; P.stcD = up ? 1 : -1; P.stcN = 0; P.stcT = 0; P.stcW = 0;
             P.stcPose = null; P.stcHs = null; P.stcLean = 0;
@@ -4688,6 +4695,11 @@
             ctx.save(); ctx.fillStyle = '#111'; ctx.font = 'italic bold 22px Georgia,serif'; ctx.textAlign = 'center';
             ctx.fillText('E', W / 2 + wx - P.x, gy - (P.dh || 0) - 60 * S - 4 * Math.sin(now / 200)); ctx.restore();
         }
+
+
+
+
+
         function finTick(dt) {
             const e = P.finE, S = CSc();
             if (!e || e.dead > 0 || e.dying > 0 || !e.fst) { if (e && e.fst === 1) e.fst = 0; P.fin = 0; P.finE = null; return }
