@@ -110,6 +110,8 @@
         let vigN;
         const nightC = document.createElement('canvas'), nctx = nightC.getContext('2d');
         function hash(n) { const s = Math.sin(n * 127.1) * 43758.5453; return s - Math.floor(s) }
+        function clamp01(v) { return Math.max(0, Math.min(1, v)); }
+        function clampN(v, a, b) { return Math.max(a, Math.min(b, v)); }
         function makePaper() {
             const p = document.createElement('canvas'); p.width = p.height = 512; const g = p.getContext('2d');
             g.fillStyle = '#e6e4e0'; g.fillRect(0, 0, 512, 512);
@@ -163,6 +165,7 @@
             if (e.code === 'Space') pressJump();
             if (e.code === 'KeyJ') pressAtk();
             if (e.code === 'KeyM') pressKick();
+            if (e.code === 'KeyX') pressSuperJump();
         });
         addEventListener('keyup', e => keys[e.code] = 0);
         function hold(id, k) {
@@ -363,6 +366,7 @@
         function stretchEnv(u) { return u < .25 ? sm(u / .25) : u < .75 ? 1 : 1 - sm((u - .75) / .25) }
 
         function update(dt) {
+            if (P.stc > 0 || P.pk > 0 || P.mount || swim.on) ldCancel();
             if (P.stc > 0) { stairTick(dt); return; }
             if (typeof updateSwim === 'function' && updateSwim()) {
                 P.vz = 0; P.z = 0;
@@ -376,7 +380,7 @@
                 fidgetTick(P, true, dt);
                 return;
             }
-            const dir = (P.fin > 0 || P.sm === 1 || P.ln > 0 || P.lb > 0 || P.fs > 0 || P.yk > 0 || P.gu > 0 || P.sgp > 0 || P.mount) ? 0 : (keys.ArrowRight || keys.KeyD ? 1 : 0) - (keys.ArrowLeft || keys.KeyA ? 1 : 0);
+            const dir = (P.fin > 0 || P.sm === 1 || P.ln > 0 || P.lb > 0 || P.fs > 0 || P.yk > 0 || P.gu > 0 || P.sgp > 0 || P.mount || P.ldLock) ? 0 : (keys.ArrowRight || keys.KeyD ? 1 : 0) - (keys.ArrowLeft || keys.KeyA ? 1 : 0);
             const run = keys.ShiftLeft || keys.ShiftRight;
             const max = run ? 520 : 190;
             const grounded = P.z >= 0;
@@ -397,7 +401,7 @@
 
             // ---- parkour tumbling pass: Sprint + Jump at speed ----
             const isSprinting = run && Math.abs(P.vx) > 220;
-            if (P.jbuf > 0 && isSprinting && grounded && !P.pk && !P.mount && !P.cs && !P.fin && !P.stbk && !P.sg) {
+            if (P.jbuf > 0 && isSprinting && grounded && !P.pk && !P.mount && !P.cs && !P.fin && !P.stbk && !P.sg && !P.ldLock) {
                 startParkour(vs || P.face || 1);
                 P.jbuf = 0;
             }
@@ -405,15 +409,21 @@
             // ---- jump: buffering + coyote time + variable height ----
             if (grounded) P.coy = COYOTE; else P.coy = Math.max(0, P.coy - dt);
             if (P.jbuf > 0) {
-                if ((grounded || P.coy > 0) && !P.cs && !P.fin && !P.pk && !(P.yk > 0) && !(P.gu > 0) && !(P.sgp > 0) && !P.mount) { P.vz = -JUMP_V; P.jbuf = 0; P.coy = 0; P.grabbed = null; P.clast = 0 }// jumping breaks the clinch
-                else P.jbuf = Math.max(0, P.jbuf - dt);
+                if ((grounded || P.coy > 0) && !P.cs && !P.fin && !P.pk && !(P.yk > 0) && !(P.gu > 0) && !(P.sgp > 0) && !P.mount && !P.ldLock) {
+                    P.vz = -JUMP_V * (P.jsup || 1); P.jsupAir = P.jsup ? 1 : 0; P.jsup = 0;
+                    P.jbuf = 0; P.coy = 0; P.grabbed = null; P.clast = 0; if (P.ld > 0) ldCancel();
+                }
+                else { P.jbuf = Math.max(0, P.jbuf - dt); if (!P.jbuf) P.jsup = 0 }
             }
-            const g = GRAV * (P.vz < 0 && !keys.Space ? CUT_MULT : 1);
+            const g = GRAV * (P.vz < 0 && !keys.Space && !P.jsupAir ? CUT_MULT : 1);
             if (P.vz !== 0 || P.z < 0) {
-                P.vz += g * dt; P.z += P.vz * dt;
+                P.vz += g * dt; P.z += P.vz * dt; P.airT += dt;
                 if (P.z >= 0) {
+                    const vImp = P.vz;
                     if (typeof splash === 'function' && inPond(P.x)) splash(P.x, 10, 14);
                     P.z = 0; P.vz = 0;
+                    if (vImp > 140) startLanding(vImp);      // impact speed drives the reaction
+                    P.airT = 0; P.jsupAir = 0;
                 }
             }
 
@@ -435,6 +445,7 @@
             ykTick(dt);
             comboTick(dt);
             stabTick(dt);
+            ldTick(dt);
             const target = Math.min(1, sp / 200) * (run && sp > 220 ? 1.25 : 1);
             P.amp += (target - P.amp) * Math.min(1, dt * 10);
             const tl = Math.max(-1, Math.min(1, P.vx / 420)) * 0.4;
@@ -456,6 +467,140 @@
             }
             // ---- idle fidgets ----
             fidgetTick(P, dir || keys.Space || keys.KeyJ || keys.KeyF || P.sm > 0 || P.cs > 0 || P.skid || !grounded || sp > 8 || P.tt > 0 || P.atk > 0 || P.thw > 0 || P.stbk > 0 || P.fs > 0 || P.yk > 0 || P.gu > 0 || P.sg || P.sgp > 0 || P.mount || P.ln > 0 || P.lb > 0, dt);
+        }
+
+        // ================= JUMP / FALL / LANDING =================
+        const LD_SUPER = 1.8;                 // X key: jump-velocity multiplier (testing). 2.4 reaches "very large".
+        P.airT = 0; P.jsup = 0; P.jsupAir = 0;
+        P.ld = 0; P.ldK = 0; P.ldC = null; P.ldLock = false; P.ldF = 1; P.ldVx0 = 0; P.ldLean0 = 0;
+        const PALM = 27;                      // how far the fist sprite extends past the wrist
+
+        function pressSuperJump() { P.jsup = LD_SUPER; P.jbuf = BUFFER }
+        function armsBusy() { return !!(P.gun || P.gs === 2 || P.sg || P.sm > 0 || P.ln > 0 || P.lb > 0 || P.thw > 0 || P.tt > 0) }
+        function ldCancel() { if (P.ld > 0 && P.rot) P.rot = 0; P.ld = 0; P.ldC = null; P.ldLock = false; P.airT = 0 }
+
+        // phase timings per severity tier (seconds)
+        function ldConfig(sev, roll) {
+            let c;
+            if (sev < .2) c = { tier: 0, dep: lerp(12, 30, sev / .2), tc: .07, th: 0, tro: 0, tp: .07, tr: .12, hands: 0 };
+            else if (sev < .45) c = { tier: 1, dep: lerp(34, 62, (sev - .2) / .25), tc: .09, th: .05, tro: 0, tp: .12, tr: .20, hands: 0 };
+            else if (sev < .75) c = { tier: 2, dep: lerp(96, 102, (sev - .45) / .3), tc: .12, th: .16, tro: 0, tp: .20, tr: .32, hands: 1 };
+            else c = { tier: 3, dep: 104, tc: .14, th: roll ? .04 : .28, tro: roll ? .55 : 0, tp: roll ? .14 : .24, tr: .55, hands: 1 };
+            c.roll = roll; c.pk = (c.hands && !roll) ? .55 : .7;          // how far the hips rise during push-off
+            c.A = c.tc; c.R0 = c.A + c.th; c.C = c.R0 + c.tro; c.Dn = c.C + c.tp; c.T = c.Dn + c.tr;
+            return c;
+        }
+
+        function startLanding(vz) {
+            const S = CSc(), vN = vz / S, hEq = vN * vN / (2 * GRAV);          // equivalent fall height
+            const vxN = Math.abs(P.vx) / S, steep = Math.atan2(vN, Math.max(60, vxN)) / (Math.PI / 2);
+            let sev = clamp01((hEq - 30) / 450) * (.8 + .2 * steep) * (1 - .12 * clamp01(vxN / 520));
+            const roll = sev >= .75 && vxN > 170;
+            const c = ldConfig(sev, roll);
+            if (P.skid) endSkid(); P.skidK = 0;
+            P.ld = .0001; P.ldK = sev; P.ldC = c; P.ldVx0 = P.vx;
+            P.ldF = Math.sign(P.vx) || P.face; if (roll) P.face = P.ldF;
+            P.ldLean0 = clampN(P.vx * P.face / 650, -.3, .45) + .14 + .1 * sev;   // same lean the air pose ended with
+            P.vx *= 1 - .3 * sev;                                                  // the impact bleeds speed
+            P.idle = 0; P.fid = 0;
+            const d = Math.sign(P.vx) || P.face;
+            shake = Math.max(shake, 2 + 14 * sev);
+            if (sev > .2) hitstop = Math.max(hitstop, .02 + .05 * sev);
+            burst(P.x, -3, 4 + (sev * 16 | 0), 140 + 360 * sev, d);
+            if (sev > .45) {
+                impacts.push({ x: P.x, y: -6, t: 0, life: .2 + sev * .15, s: 50 + sev * 110, seed: Math.random() * 50 });
+                banner.t = .7; banner.text = sev >= .75 ? 'HARD LANDING!' : 'BRACE!';
+            }
+        }
+
+        function ldTick(dt) {
+            const c = P.ldC;
+            if (!(P.ld > 0) || !c) { P.ldLock = false; return }
+            const S = CSc(), F = P.face, prev = P.ld; P.ld += dt; const t = P.ld;
+            P.idle = 0; P.fid = 0;
+            P.ldLock = c.tier >= 1 && t < (c.tier === 1 ? c.C : c.Dn);       // no steering while bracing / pushing
+            if (P.ldLock) { P.abuf = 0; P.jbuf = 0 }
+            if (c.hands && !armsBusy() && prev < c.A && t >= c.A) {            // palms hit the ground
+                burst(P.x + F * 95 * S, -3, 6 + (P.ldK * 10 | 0), 160 + 200 * P.ldK, F);
+                puff(P.x + F * 95 * S, -8, 3, F * 30, -20, 6, 18, 1, .35);
+                shake = Math.max(shake, 3 + 4 * P.ldK);
+            }
+            if (prev < c.C && t >= c.C) burst(P.x + F * 60 * S, -3, 4, 120, -F);   // push-off scuff
+            if (c.roll) {
+                if (t >= c.R0 && t < c.C) {
+                    const u = (t - c.R0) / c.tro;
+                    P.rot = P.ldF * Math.PI * 2 * sm(u);
+                    P.vx = P.ldF * clampN(Math.abs(P.ldVx0) * .75, 170, 330) * (1 - .45 * u);
+                    if (Math.random() < dt * 25) flecks.push({ x: P.x, y: -2, vx: -P.ldF * (30 + Math.random() * 90), vy: -(30 + Math.random() * 80), r: 1.2 + Math.random() * 1.6, t: 0, life: .35 });
+                } else if (t >= c.C && P.rot) P.rot = 0;
+            }
+            if (t >= c.T) { P.ld = 0; P.ldC = null; P.ldLock = false; P.rot = 0 }
+        }
+
+        // ---- AIR: relaxed while rising, braces as the ground approaches (distance + speed driven) ----
+        function airPose(Q) {
+            const S = CSc(), F = Q.face, zc = Q.z / S, now = performance.now() / 1000;
+            const vImp = Math.sqrt(Math.max(0, Q.vz * Q.vz - 2 * GRAV * Q.z));
+            const sevP = clamp01(((vImp / S) ** 2 / (2 * GRAV) - 30) / 450);   // predicted severity
+            const ttc = (-Q.vz + vImp) / GRAV;                                  // time to ground
+            const pre = Q.vz > 0 ? sm(1 - ttc / (.22 + .2 * sevP)) : 0;        // bigger falls start preparing earlier
+            const w = sm(Q.airT / .09);
+            const mom = clampN(Q.vx * F / 650, -.3, .45);                       // body pitches with momentum
+            const bend = lerp(34, 10, pre);                                     // legs reach down, knees slightly bent
+            const x0 = lerp(46, 30 + 4 * sevP, pre), x1 = lerp(-44, -26, pre);
+            const y0 = Math.min(0, zc - bend), y1 = Math.min(0, zc - bend - 16 * (1 - pre));
+            const aF = 1 + .4 * sevP, sway = Math.sin(now * 5) * .08 * (1 - pre);
+            const a0 = lerp(.45, aF, pre) + sway, f0 = lerp(.55, .22, pre);
+            return {
+                w, a0, f0, a1: a0 - .18, f1: f0 + .05, lean: mom + (.14 + .1 * sevP) * pre - .1,   // -.1: drawChar adds +.1 while airborne
+                hipX: 0, hipY: 0, hipAbs: -169 + zc, arch: .03, hx: 2 + 4 * pre, hy: 0,
+                l0: [x0, y0 + 20, 20], l1: [x1, y1 + 20, 20], st: STEPS[0], sw: 0, ik: 0, ldp: true, kneeFull: true, noArms: armsBusy()
+            };
+        }
+
+        // ---- LANDING: contact -> compress -> (hands down) -> push -> step -> recover ----
+        function ldPose(Q) {
+            const c = Q.ldC, t = Q.ld, sev = Q.ldK, busy = armsBusy();
+            const dep = busy ? Math.min(c.dep, 64) : c.dep, hands = c.hands && !busy;
+            let comp;                                                        // 0 standing .. 1 full crouch
+            if (t < c.A) { const u = t / c.A; comp = 1 - (1 - u) * (1 - u) }   // hips drop fast on impact
+            else if (t < c.C) comp = 1;
+            else if (t < c.Dn) comp = 1 - c.pk * sm((t - c.C) / c.tp);         // push-off: hips rise
+            else comp = (1 - c.pk) * (1 - sm((t - c.Dn) / c.tr));
+            let hw = 0;                                                      // hands-on-ground weight
+            if (hands) {
+                hw = sm((t - .3 * c.A) / (.75 * c.A));
+                if (c.roll) hw *= 1 - sm((t - c.A - .02) / .1);
+                else if (t > c.C) hw *= 1 - sm(((t - c.C) / c.tp - .55) / .45);
+            }
+            const rk = c.roll ? sm((t - c.R0) / .1) * (1 - sm((t - c.C + .1) / .1)) : 0;   // tucked-roll weight
+            const hipCr = -169 + dep * comp, hipAbs = lerp(hipCr, -80, rk), hx_ = (4 + 10 * sev) * comp;
+            let lean = [.2, .42, .62, .7][c.tier] * comp;
+            if (hw > 0) lean = lerp(lean, Math.acos(clampN((118 + hipCr) / 87, .2, 1)), hw);   // shoulders end up exactly one arm-length above the ground
+            lean = lerp(Q.ldLean0, lean, sm(t / .07));                                          // continuous with the air pose
+
+            const ft = (x, y, lf) => [x - hx_, y + lf, lf];                  // feet stay planted while the hips shift
+            const fx0 = 30 + 4 * sev, fx1 = -26, lf = 20 * (1 - sm(t / .05)), y0 = -10 * (1 - sm(t / .05));   // feet arrive from 10px up
+            let x0 = fx0, x1 = fx1, y1 = y0, lf1 = lf;
+            if (t > c.Dn) {                                                  // rear foot steps forward, then stance settles
+                const su = clamp01((t - c.Dn) / (c.tr * .55)), s = sm((t - c.Dn - c.tr * .5) / (c.tr * .5));
+                x1 = lerp(fx1, 8, sm(su)); y1 = -28 * Math.sin(Math.PI * su); lf1 = 20 * Math.sin(Math.PI * su);
+                x0 = lerp(fx0, 22, s); x1 = lerp(x1, -18, s);
+            }
+            const aF = 1 + .4 * sev, env = t < c.C ? 1 : 1 - sm((t - c.C) / (c.T - c.C)), a = lerp(.3, aF, env);
+            const K1 = {
+                a0: a, f0: lerp(.55, .22, env), a1: a - .18, f1: lerp(.55, .22, env) + .05, lean, hipX: hx_, hipY: 0,
+                arch: .03 + .04 * comp, hx: 6 + 4 * comp, hy: 3 * comp, l0: ft(x0, y0, lf), l1: ft(x1, y1, lf1)
+            };
+            const K2 = { a0: .9, f0: 1.9, a1: 1.1, f1: 1.8, lean: 1.05, hipX: 0, hipY: 0, arch: .1, hx: 10, hy: 12, l0: [20, -44, 0], l1: [6, -52, 0] };
+            const base = lerpKF(K1, K2, rk);
+            let w = 1 - sm((t - (c.T - .1)) / .1);
+            if (c.tier === 0) w *= 1 - .7 * clamp01(Math.abs(Q.vx) / 300);   // running jumps barely show the dip
+            const sway = (c.tier === 3 && !c.roll && t > c.Dn) ? Math.sin((t - c.Dn) * 16) * .07 * (1 - sm((t - c.Dn) / c.tr)) : 0;   // stagger
+            return Object.assign(base, {
+                w, lean: base.lean + sway, hipAbs, hands: hw > .001 ? { w: hw, x: [100, 84], lift: 0 } : null,
+                py: c.roll ? -82 : undefined, st: STEPS[0], sw: 0, ik: 0, ldp: true, kneeFull: true, noArms: busy
+            });
         }
 
         // ================= COMBAT =================
@@ -851,7 +996,7 @@
                 g.wait = 1;
             }
             if (P.cs === 0) {
-                if (P.abuf > 0 && P.z >= 0 && P.tt <= 0 && !(P.thw > 0) && !(P.fin > 0)) startStep(P.clast > 0 && P.clast < 4 ? P.clast + 1 : 1);
+                if (P.abuf > 0 && P.z >= 0 && P.tt <= 0 && !(P.thw > 0) && !(P.fin > 0) && !P.ldLock) startStep(P.clast > 0 && P.clast < 4 ? P.clast + 1 : 1);
                 return;
             }
             if (P.cs >= 5 && P.grabbed) { P.grabbed = null; }
@@ -1435,6 +1580,10 @@
             if (Q === PL && Q.gu > 0) return guPose(Q);
             if (Q === PL && Q.yk > 0) return ykPose(Q);
             if (Q === PL && Q.fs > 0) return footStabPose(Q);
+            if (Q === PL && !Q.cs && !Q.mount) {
+                if (Q.ld > 0 && Q.ldC) return ldPose(Q);
+                if (Q.z < 0) return airPose(Q);
+            }
             if (!Q.cs || Q.cs < 1 || Q.cs > STEPS.length) {
                 if (Q === PL && PL.z >= 0 && PL.clast >= 1 && PL.clast <= 4 && PL.cgr > 0) {   // fists stay up while the combo window is open
                     const g = GUARD, k = sm(Math.min(1, PL.cgr / .25)) * (1 - Math.min(1, Math.abs(PL.vx) / 140));
@@ -1795,7 +1944,7 @@
             if (footFlat > .5 && ny > 0) { nx = -nx; ny = -ny }   // stomping leg: knee points up, shin comes down onto the head
             const kickLeg2 = CUR === PL && CUR.cs === 5 && F * (fx - hx) > 30;   // the leg that is kicking
             if (kickLeg2 && ny > 0) { nx = -nx; ny = -ny }                       // knee always ABOVE the hip→foot line
-            const clmb = CUR === PL && ((swim.on && swim.cl > 0 && swim.cl < 3.7) || PL.stc > 0);
+            const clmb = CUR === PL && ((swim.on && swim.cl > 0 && swim.cl < 3.7) || PL.stc > 0 || PL.kneeFull);
             const hf = (kickLeg2 || clmb) ? 1 : 1 - .7 * (1 - Rf()) * (1 - (CUR.kneelK || 0)), hs = h * (hf + (.55 - hf) * (CUR.mk || 0)), kx = mx + nx * hs, ky = my + ny * hs;
             ctx.strokeStyle = '#111'; ctx.lineWidth = 7; ctx.lineCap = 'round';
             ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(kx, ky); ctx.stroke();
@@ -2285,6 +2434,8 @@
             const sk = P.skidK; let L = 0, st = 0;
             if (P.fidK > 0) { if (P.fidType === 1) L = lookCurve(P.fidT / P.fidDur) * P.fidK * F; else st = stretchEnv(P.fidT / P.fidDur) * P.fidK }
             const cb = (P === PL && P.pk > 0) ? parkourPose(P) : comboPose(P), hk = P.hurt > 0 ? Math.min(1, P.hurt / .2) : 0;
+            const ldW = (P === PL && cb && cb.ldp) ? cb.w : 0;                 // landing / air pose weight
+            P.kneeFull = (P === PL && cb && cb.kneeFull) ? 1 : 0;
             const isGrabbed = (P !== PL && ((PL.grabbed === P && (PL.cs >= 1 && PL.cs <= 4 || (PL.cs === 0 && PL.clast >= 1 && PL.clast <= 4))) || (PL.stbk > 0 && PL.stbk <= STAB_HOLD && PL.stbTgt === P)));
             const q = P.atk > 0 ? 1 - P.atk / .45 : 0, pq = Math.sin(Math.PI * q);
             const half = (70 + 30 * R) * P.amp, stance = 20 * (1 - P.amp); const bob = Math.sin(now * 2) * 1.2 * (1 - P.amp) + 14 * pq;
@@ -2339,6 +2490,7 @@
             if (P === PL) hipY += 10 * Math.min(1.2, P.sgRec) + 4 * sm(P.sgK);
             hipY += 13 * sgW;   // sink a little so the wide legs still reach the floor
             hipY += 16 * sgpE;
+            if (cb && cb.hipAbs !== undefined) hipY = hipY * (1 - cb.w) + cb.hipAbs * cb.w;
             if (mk > 0) hipY = hipY * (1 - mk) + seatY * mk;
             let hipX = cb ? F * cb.hipX * cb.w : 0, cbLean = cb ? cb.lean * cb.w : 0;
 
@@ -2367,11 +2519,7 @@
                     + (RIDE_LEAN_RUN - RIDE_LEAN_WALK) * HRS.rg + HRS.rd)
                 : 0;
 
-            const walkLean =
-                (P.pk > 0)
-                    ? 0
-                    : (P.lean * (.2 + .8 * R) * BODY_LEAN * (1 - sk))
-                    + F * mountLean;
+            const walkLean = ((P.pk > 0) ? 0 : (P.lean * (.2 + .8 * R) * BODY_LEAN * (1 - sk)) + F * mountLean) * (1 - ldW);
 
             // blend by the mount amount so climbing on/off stays smooth
             const moveLean = walkLean * (1 - mk) + rideLean * mk;
@@ -2680,7 +2828,17 @@
                     const b = u < .8 ? 1 : 1 - sm((u - .8) / .2);
                     ang = ang * (1 - b) + ta * b; flex = flex * (1 - b) + tf * b;
                 }
-                if (cb && cb.w > .01 && P.tt <= 0) { const a = i ? cb.a1 : cb.a0, f = i ? cb.f1 : cb.f0; ang = ang * (1 - cb.w) + a * cb.w; flex = flex * (1 - cb.w) + f * cb.w }
+                if (cb && cb.w > .01 && P.tt <= 0 && !cb.noArms) { const a = i ? cb.a1 : cb.a0, f = i ? cb.f1 : cb.f0; ang = ang * (1 - cb.w) + a * cb.w; flex = flex * (1 - cb.w) + f * cb.w }
+                if (P === PL && cb && cb.hands && !cb.noArms) {        // palms planted on the ground, solved from the real shoulder position
+                    const hn = cb.hands, tipX = F * hn.x[i], tipY = -3 - hn.lift;
+                    let ux = tipX - sh[0], uy = tipY - sh[1]; { const l_ = Math.hypot(ux, uy) || 1; ux /= l_; uy /= l_ }
+                    let ha = 0, hf = 0;
+                    for (let it = 0; it < 3; it++) {
+                        [ha, hf] = ik2(sh, tipX - ux * PALM, tipY - uy * PALM, F);   // wrist sits one fist-length short of the contact point
+                        ux = Math.sin(ha + hf) * F; uy = Math.cos(ha + hf);          // forearm direction = where the fist points
+                    }
+                    ang = ang * (1 - hn.w) + ha * hn.w; flex = flex * (1 - hn.w) + hf * hn.w;
+                }
                 // knife stab pose override (player only)
                 if (P === PL && P.fs > 0 && P.fsTgt) { const o = footStabArm(i, sh, F, S); if (o) { ang = ang * (1 - o[2]) + o[0] * o[2]; flex = flex * (1 - o[2]) + o[1] * o[2] } }
                 if (P === PL && P.stbk > 0) {
@@ -6161,7 +6319,6 @@
             return 12 * (1 - sm((u - .5) / .5));                  // settle back
         }
         P.mount = 0; P.mountT = 0; P.mx0 = 0; P.mk = 0;   // mount: 0 off, 1 climbing on, 2 riding, 3 climbing off
-        const clamp01 = v => Math.max(0, Math.min(1, v));
 
         function hrsGait(sp) {
             return {
@@ -9117,7 +9274,6 @@
         // ---------- reactive fish ----------
         const fish = [];
         let fLast = 0, fPX = null, stillT = 0;
-        const clampN = (v, a, b) => Math.max(a, Math.min(b, v));
 
         function initFish() {
             for (let i = 0; i < 16; i++) fish.push({
