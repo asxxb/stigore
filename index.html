@@ -106,6 +106,7 @@
         const cv = document.getElementById('c'), ctx = cv.getContext('2d');
         let W, H, DPR, paper, vig;
         const BLD = 1.3;   // building size multiplier: 1 = current size, 1.3 = 30% bigger, 1.6 = much bigger
+        const HOUSE_SHIFT = -5000;    // px to move the whole house area: + = right (away from the left edge), - = further left
 
         let vigN;
         const nightC = document.createElement('canvas'), nctx = nightC.getContext('2d');
@@ -189,7 +190,7 @@
 
 
         const P = {
-            gk: 0, x: -7712, vx: 0, z: 0, vz: 0, face: -1, phase: 0, dist: 0, atk: 0, kn: 0, kt: 0, amp: 0, lean: 0, tt: 0, rv: 0,
+            gk: 0, x: -7712 + HOUSE_SHIFT, vx: 0, z: 0, vz: 0, face: -1, phase: 0, dist: 0, atk: 0, kn: 0, kt: 0, amp: 0, lean: 0, tt: 0, rv: 0,
             jbuf: 0, coy: 0, cs: 0, ct: 0, chit: false, abuf: 0, clast: 0, cgr: 0, gt: 0, grabbed: null,
             skid: 0, skidDir: 1, skidK: 0, skA: 0, sk: null,
             idle: 0, idleAt: 3.5, fid: 0, fidType: 0, fidT: 0, fidDur: 2.4, fidK: 0,
@@ -3853,7 +3854,7 @@
         // ================= STILT HOUSE EXTRAS =================
         const CAMP_X = -300, CAMP_SC = .9;          // campfire: left of / behind the house (local units)
         const PAD_X0 = 226, PAD_X1 = 442;           // horse paddock fence span, right of the stairs
-        const HORSE_POST_X = -7720;                  // hitching post by the paddock / house entrance
+        const HORSE_POST_X = -7720 + HOUSE_SHIFT;                  // hitching post by the paddock / house entrance
         const LEAVES = [];
         const LEAF_COL = ['rgba(110,140,80,.9)', 'rgba(170,140,70,.9)', 'rgba(150,95,60,.9)'];
 
@@ -4411,7 +4412,7 @@
 
         function drawBuildings(gy) {
             const list = [
-                [drawStiltHouse, -8800, 4.2],
+                [drawStiltHouse, -8800 + HOUSE_SHIFT, 4.2],
                 [drawLiquorShop, -4600, 3.2],
                 [drawGraves, -3400, 2.2], [drawShack, -2500, 2.5], [drawSaloon, -1500, 3.3], [drawBarrels, -1220, 2.2],
                 [drawWagon, -950, 2.2], [drawSignpost, 700, 2.4], [drawWell, 1000, 2.3], [drawBarrels, 2780, 2.2],
@@ -4781,7 +4782,7 @@
         }
 
         // ================= STILT HOUSE STAIRS v2: per-step IK climb =================
-        const STH_WX = -8800, STH_SC = 4.2 * BLD;   // must match the stilt house entry in drawBuildings()
+        const STH_WX = -8800 + HOUSE_SHIFT, STH_SC = 4.2 * BLD;   // must match the stilt house entry in drawBuildings()
         const STAIR_DX = 0, STAIR_DY = 0;   // in house-local units; adjust until feet land on the treads
         P.stc = 0; P.stcD = 1; P.stcM = 0; P.dh = 0;
         // stcM: 1 = walk to the first step, 2 = settle into stance, 3 = strides (9 of them: 8 steps + bring-together)
@@ -6398,7 +6399,7 @@
         // ================= HORSE (mount, ride, jump, trample) =================
         const HR_MOUNT_R = 170, HR_SEAT = -240, HR_WALK = 215, HR_RUN = 790, HR_JUMP = 640, HR_REAR_T = 1.0;
         const HORSE_W = 1.55, HORSE_H = 1.60;
-        const HRS = { x: -6976, vx: 0, z: 0, vz: 0, face: -1, ph: 0, amp: 0, rg: 0, home: -6976, goal: -6976, wait: 2, gz: 0, gT: 3, gk: 0, rear: 0, muz: [123, -158], tied: false, huffT: 5, huff: 0, hp1: 0, hp2: 0 };
+        const HRS = { x: -6976 + HOUSE_SHIFT, vx: 0, z: 0, vz: 0, face: -1, ph: 0, amp: 0, rg: 0, home: -6976 + HOUSE_SHIFT, goal: -6976 + HOUSE_SHIFT, wait: 2, gz: 0, gT: 3, gk: 0, rear: 0, muz: [123, -158], tied: false, huffT: 5, huff: 0, hp1: 0, hp2: 0 };
 
         function huffOff(u) {   // head offset (px) over the huff, u = 0..1
             if (u < .25) return -8 * sm(u / .25);                 // toss up
