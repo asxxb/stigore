@@ -5613,6 +5613,7 @@
                 if (frogHit(b, px, py, false)) { bullets.splice(i, 1); continue }
                 if (duckHit(b, px, py, false)) { bullets.splice(i, 1); continue }
                 if (crocHit(b, px, py)) { bullets.splice(i, 1); continue }
+                if (horseHit(b, px, py, false)) { bullets.splice(i, 1); continue }
                 if (waterStep(b, px, py, dt)) { bullets.splice(i, 1); continue }
                 if (!b.m && b.y > 0 && !inPond(b.x)) { burst(b.x, -2, 6, 180, b.F); bullets.splice(i, 1); continue }
                 if (b.m ? b.age > 8 : (Math.abs(b.x - b.x0) > GUN_RANGE || b.age > 1.2)) bullets.splice(i, 1);
@@ -5948,6 +5949,7 @@
                 if (frogHit(p, px, py, true)) { pellets.splice(i, 1); continue }
                 if (duckHit(p, px, py, true)) { pellets.splice(i, 1); continue }
                 if (crocHit(p, px, py)) { pellets.splice(i, 1); continue }
+                if (horseHit(p, px, py, true)) { pellets.splice(i, 1); continue }
                 if (waterStep(p, px, py, dt)) { pellets.splice(i, 1); continue }
                 if (!p.m && p.y > 0 && !inPond(p.x)) { burst(p.x, -2, 2, 140, p.F); pellets.splice(i, 1); continue }
                 if (p.m ? p.age > 6 : (Math.abs(p.x - p.x0) > SG_RANGE || p.age > .6)) pellets.splice(i, 1);
@@ -6554,6 +6556,7 @@
                 P.mount = 3; P.mountT = 0; P.mk = 0; mpStart(true); return;
             }
             if (P.mount) return;
+            if (HRS.hDead) { banner.t = .8; banner.text = 'THE HORSE IS DEAD'; return }
             if (P.sm === 1 || P.sm === 3) return;   // lighting up / flicking: wait
             if (P.fin > 0 || P.cs > 0 || P.thw > 0 || P.tt > 0 || P.pk > 0 || P.fs > 0 || P.gu > 0 || P.yk > 0 || P.stbk > 0 || P.sgp > 0 || P.gs === 2 || P.z < 0 || P.ln > 0 || P.lb > 0) return;
             if (P.kn !== 0 || P.kt > .2) { banner.t = .7; banner.text = 'PUT THE KNIFE AWAY (K)'; return }
@@ -6592,6 +6595,8 @@
 
         function horseTick(dt) {
             const h = HRS, S = CSc(), st = P.mount;
+            if (h.hDead) { horseDeadTick(dt); return; }
+            horseBleedTick(dt);
             let braking = false;
 
             const jp = h.jp, flight = jp === 'ASCENT' || jp === 'APEX' || jp === 'DESCENT' || (jp === 'TAKEOFF' && h.jth) || (jp === 'LAND_FRONT' && h.z < 0);
@@ -6631,7 +6636,8 @@
                     let dir = 0;
                     if (h.wait > 0) h.wait -= dt;
                     else { const gd = h.goal - h.x; if (Math.abs(gd) > 14) { dir = Math.sign(gd); hrsFace(dir) } else { h.wait = 3 + Math.random() * 5; h.goal = h.home + (Math.random() * 2 - 1) * 380 } }
-                    if (dir) h.vx += (dir * 105 * hrsTurnGo() - h.vx) * Math.min(1, dt * 3);
+                    if (h.panic > 0) { h.panic -= dt; dir = h.pdir; hrsFace(dir); h.vx += (dir * HR_RUN * .75 * hrsTurnGo() - h.vx) * Math.min(1, dt * 2.5); }
+                    else if (dir) h.vx += (dir * 105 * hrsTurnGo() - h.vx) * Math.min(1, dt * 3);
                     else { const f = 700 * dt; h.vx = Math.abs(h.vx) <= f ? 0 : h.vx - Math.sign(h.vx) * f }
                 }
             } else h.vx *= Math.max(0, 1 - dt * (st === 3 ? 0 : 10));         // mounting / dismounting: he stands still
@@ -8023,6 +8029,21 @@
 
             yawOut();
 
+            // bullet wounds on the body
+            if (h.wnd.length) {
+                ctx.save(); ctx.lineCap = 'round';
+                for (const w of h.wnd) {
+                    if (w.k !== 'body') continue;
+                    const wx = -6 + w.ox, wy = -120 + by + w.oy;
+                    ctx.fillStyle = '#7a0b11'; ctx.strokeStyle = '#111'; ctx.lineWidth = 1.6;
+                    ctx.beginPath(); ctx.ellipse(wx, wy, 5.5, 4, 0, 0, 7); ctx.fill(); ctx.stroke();
+                    ctx.fillStyle = '#d4443a'; ctx.beginPath(); ctx.ellipse(wx, wy, 2.6, 1.8, 0, 0, 7); ctx.fill();
+                    ctx.strokeStyle = '#8c0d14'; ctx.lineWidth = 2.4;
+                    ctx.beginPath(); ctx.moveTo(wx, wy + 3); ctx.lineTo(wx + 1, wy + 3 + Math.min(26, 4 + w.age * 8)); ctx.stroke();
+                }
+                ctx.restore();
+            }
+
             ctx.restore();
 
             // ============================================================
@@ -8160,13 +8181,19 @@
                 ctx.restore();
             }
 
+            if (h.hBar > 0 && !h.hDead) {
+                ctx.save(); ctx.globalAlpha = Math.min(1, h.hBar); ctx.strokeStyle = '#111'; ctx.fillStyle = '#111'; ctx.lineWidth = 2;
+                ctx.strokeRect(sx - 40, gy - 265 * S, 80, 9);
+                ctx.fillRect(sx - 38, gy - 263 * S, 76 * Math.max(0, h.hLife / HORSE_HP), 5);
+                ctx.restore();
+            }
 
             // ============================================================
             // MOUNT HINT
             // ============================================================
 
             if (
-                !P.mount &&
+                !P.mount && !h.hDead &&
                 Math.abs(h.x - P.x) <
                 HR_MOUNT_R * S
             ) {
@@ -11179,6 +11206,147 @@
             jw: 0, coll: 0, cmp: 0, cmpV: 0, pitch: 0, pitchV: 0, nkLow: 0, nkLowV: 0, nkFwd: 0, nkFwdV: 0, rd: 0, rdV: 0,
             pc: [null, null, null, null], jf: [null, null, null, null], lw: [0, 0, 0, 0], pd: [0, 0, 0, 0]
         });
+
+        // ================= HORSE: SHOOTABLE / KILLABLE (only while NOT mounted) =================
+        Object.assign(HRS, { hDead: 0, hLife: 120, hDT: 0, wnd: [], bleed: 0, bleedT: 0, panic: 0, pdir: 1, hBar: 0, pool: null, thud: 0, lastBlast: -1 });
+        const HORSE_HP = 120;
+        const HORSE_DMG = {
+            rev: { head: 45, neck: 22, body: 14, leg: 10 },   // revolver bullet
+            sg: { head: 14, neck: 9, body: 6, leg: 4 }     // per shotgun pellet
+        };
+        const HZ_KIND = { head: 'head', n0: 'neck', n1: 'neck', body: 'body', lf: 'leg', lh: 'leg' };
+
+        // hit ellipses in horse-local space: [x, y, rx, ry] (follow the current pose)
+        function horseZones() {
+            const h = HRS, by = hrsBob() + h.cmp, gk = h.gk;
+            const n0 = [46, -124 + by];
+            const n1 = [lerp(88 + 4 * h.rg, 100, gk) + h.nkFwd, lerp(-188 + by - 4 * h.rg, -52, gk) + h.nkLow];
+            return {
+                head: [n1[0] + 18, n1[1] + 16, 36, 22],
+                n1: [lerp(n0[0], n1[0], .75), lerp(n0[1], n1[1], .75), 20, 22],
+                n0: [lerp(n0[0], n1[0], .35), lerp(n0[1], n1[1], .35), 22, 24],
+                body: [-6, -120 + by, 68, 34],
+                lf: [48, -52, 20, 54],
+                lh: [-52, -52, 20, 54]
+            };
+        }
+
+        // segment (previous -> current projectile position) vs. horse. Call from the bullet / pellet loops.
+        function horseHit(p, px, py, sg) {
+            const h = HRS;
+            if (P.mount || h.hDead) return false;          // never while riding, mounting or dismounting
+            const S = CSc(), cx = S * HORSE_W, ky = S * HORSE_H, F = h.face;
+            const dx = p.x - px, dy = p.y - py, Z = horseZones(), hits = [];
+            for (const key in Z) {
+                const [zx, zy, rx, ry] = Z[key];
+                const wx = h.x + F * zx * cx, wy = h.z + zy * ky, rw = rx * cx, rh = ry * ky;
+                const ax = (px - wx) / rw, ay = (py - wy) / rh, bx = dx / rw, by = dy / rh, bl = bx * bx + by * by || 1e-6;
+                const t = Math.max(0, Math.min(1, -(ax * bx + ay * by) / bl));
+                const qx = ax + bx * t, qy = ay + by * t;
+                if (qx * qx + qy * qy < 1) hits.push({ key, kind: HZ_KIND[key], t });
+            }
+            if (!hits.length) return false;
+            hits.sort((a, b) => a.t - b.t);
+            let best = hits[0];
+            const hd = hits.find(q => q.kind === 'head');
+            if (hd && hd.t - best.t < .06) best = hd;      // headshots win ties
+            const hx = px + dx * best.t, hy = py + dy * best.t, z = Z[best.key];
+            best.ox = Math.max(-z[2] * .7, Math.min(z[2] * .7, (hx - h.x) / (F * cx) - z[0]));
+            best.oy = Math.max(-z[3] * .7, Math.min(z[3] * .7, (hy - h.z) / ky - z[1]));
+            horseDamage(p, best, hx, hy, p.id !== undefined);   // pellets carry an id, revolver bullets don't
+            return true;
+        }
+
+        function horseDamage(p, hit, hx, hy, sg) {
+            const h = HRS, F = p.F, R = Math.random;
+            const d = (sg ? HORSE_DMG.sg : HORSE_DMG.rev)[hit.kind];
+            const first = !sg || h.lastBlast !== p.id; if (sg) h.lastBlast = p.id;   // one "event" per shotgun blast
+            h.hLife -= d; h.hBar = 2.5; h.bleed = Math.max(h.bleed, 8);
+            combo.dmg += d;
+            if (h.wnd.length < 8 && (!sg || first || R() < .3)) h.wnd.push({ k: hit.key, ox: hit.ox, oy: hit.oy, age: 0 });
+            spray(hx, hy, sg ? 5 : 18, 380, F); spray(hx, hy, sg ? 2 : 8, 220, -F); burst(hx, hy, sg ? 3 : 9, 220, F);
+            if (first) {
+                combo.n++; combo.t = 1.8; combo.pop = 1.3;
+                impacts.push({ x: hx, y: hy, t: 0, life: .2, s: hit.kind === 'head' ? 85 : 60, seed: R() * 50 });
+                hitstop = Math.max(hitstop, .04); shake = Math.max(shake, sg ? 8 : 4);
+            }
+            if (h.hLife <= 0) { horseKill(F, hx, hy, hit.kind, sg); return }
+            if (first) {
+                banner.t = .8; banner.text = hit.kind === 'head' ? 'HORSE HEADSHOT!' : 'HORSE HIT!';
+                if (!h.tied) {                                  // spooked: rears, then bolts away from you
+                    if (h.rear <= 0) h.rear = HR_REAR_T * .8;
+                    h.panic = 2.6; h.pdir = Math.sign(h.x - P.x) || 1; h.wait = 0;
+                }
+                h.cmpV += 120; h.pitchV += 1.2;
+            }
+        }
+
+        function horseKill(F, hx, hy, kind, sg) {
+            const h = HRS, S = CSc(), R = Math.random;
+            h.hDead = 1; h.hDT = 0; h.hLife = 0; h.rear = 0; h.panic = 0; h.huff = 0; h.thud = 0; h.hBar = 0; h.bleed = 0;
+            if (h.q > 0 || h.base !== h.tf) { h.base = h.tf; h.face = h.tf; h.Y = null; h.q = 0; h.qv = 0; h.qt = 0 }   // finish any turn instantly
+            h.vx = F * (sg ? 260 : 140);
+            spray(hx, hy, 60, 640, F); spray(hx, hy, 30, 420, -F); burst(hx, hy, 36, 420, F);
+            birdGore(hx, hy, F, 2.6); birdGore(hx, hy, -F, 1.6);       // organs, veins, blood
+            for (let i = 0; i < 10; i++) boneSplinter(hx, hy, F, 420);
+            if (kind === 'head') for (let i = 0; i < 10 && brainBits.length < 140; i++) brainBits.push({
+                x: hx + (R() - .5) * 20 * S, y: Math.min(-8, hy), vx: F * (80 + R() * 400) + (R() - .5) * 240, vy: -(100 + R() * 360),
+                r: (3 + R() * 5) * S, rot: R() * 6, vr: (R() - .5) * 16, k: R() < .5 ? 0 : R() < .6 ? 1 : 2, landed: false, bounced: 0, t: 0
+            });
+            impacts.push({ x: hx, y: hy, t: 0, life: .35, s: 170, seed: R() * 50 });
+            hitstop = Math.max(hitstop, .12); shake = Math.max(shake, 14);
+            combo.n++; combo.t = 2; combo.pop = 1.4;
+            banner.t = 1.2; banner.text = 'HORSE DOWN!';
+        }
+
+        function horseDrip() {
+            const h = HRS, S = CSc(), cx = S * HORSE_W, ky = S * HORSE_H, F = h.face, R = Math.random, Z = horseZones();
+            if (!h.wnd.length) return;
+            const w = h.wnd[(R() * h.wnd.length) | 0], z = Z[w.k];
+            bgDrop(h.x + F * (z[0] + w.ox) * cx + (R() - .5) * 6, Math.min(-2, h.z + (z[1] + w.oy) * ky), (R() - .5) * 30, 10 + R() * 30, 1.4 + R() * 1.6);
+        }
+
+        function horseBleedTick(dt) {                          // wounded but alive
+            const h = HRS;
+            h.hBar = Math.max(0, h.hBar - dt);
+            for (const w of h.wnd) w.age += dt;
+            if (h.bleed <= 0 || !h.wnd.length) return;
+            h.bleed -= dt; h.bleedT -= dt;
+            if (h.bleedT <= 0) { h.bleedT = .1 + Math.random() * .1; horseDrip() }
+        }
+
+        function horseDeadTick(dt) {
+            const h = HRS, S = CSc();
+            h.hDT += dt; h.hBar = 0;
+            for (const w of h.wnd) w.age += dt;
+            const k = sm(h.hDT / 1.0);                         // collapse progress 0..1
+            h.z = 0; h.vz = 0; h.vx *= Math.exp(-3 * dt); h.x += h.vx * dt;
+            h.rear = 0; h.huff = 0; h.amp = 0; h.rg = 0; h.brk = 0; h.pitch = 0; h.pitchV = 0; h.rd = 0; h.coll = 0;
+            h.cmp = 72 * k;            // body drops to the ground
+            h.gk = k;                  // head goes down
+            h.nkLow = 42 * k; h.nkFwd = 16 * k;
+            h.jw = k;                  // knees fold
+            h.jf = [[46 + 36, 0, k], [-52 - 34, 0, k], [46 + 16, 0, k], [-52 - 18, 0, k]];   // folded legs: FF, HF, FN, HN
+            if (!h.thud && h.hDT > .55) {
+                h.thud = 1; shake = Math.max(shake, 8);
+                burst(h.x, -4, 14, 260, h.face); burst(h.x, -4, 10, 220, -h.face);
+                h.pool = bgStain(h.x, 30 * S, true);
+            }
+            if (h.pool && h.hDT < 16) h.pool.gw = Math.min(140, h.pool.gw + dt * 12);     // pool keeps spreading
+            h.bleedT -= dt;
+            if (h.hDT < 9 && h.bleedT <= 0 && h.wnd.length) { h.bleedT = .07; horseDrip() }
+            if (h.hDT > 45 && Math.abs(h.x - P.x) > W / 2 + 400 && Math.abs(h.home - P.x) > W / 2 + 400) horseRevive();
+        }
+
+        function horseRevive() {
+            const h = HRS;
+            Object.assign(h, {
+                hDead: 0, hLife: HORSE_HP, hDT: 0, wnd: [], bleed: 0, panic: 0, hBar: 0, pool: null, thud: 0,
+                cmp: 0, cmpV: 0, gk: 0, jw: 0, nkLow: 0, nkLowV: 0, nkFwd: 0, nkFwdV: 0, pitch: 0, pitchV: 0, amp: 0, rg: 0, vx: 0,
+                tail: null, x: h.home, goal: h.home, wait: 2, gz: 0, gT: 3, pc: [null, null, null, null], jf: [null, null, null, null]
+            });
+            hrsJumpReset();
+        }
 
         // ---- obstacles the horse has to jump (world x0..x1, height h). Nearby ones merge into one cluster. ----
         const HR_OBS = [];
