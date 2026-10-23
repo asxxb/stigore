@@ -267,7 +267,7 @@
         function addGhost(P, pose) {
             if (ghosts.length > 14) ghosts.shift();
             ghosts.push({
-                x: P.x, z: P.z, face: P.face, rot: P.rot || 0, py: (pose && pose.py !== undefined) ? pose.py : undefined,
+                x: P.x, z: P.z, dy: P.pkDeck ? (P.dh || 0) : 0, face: P.face, rot: P.rot || 0, py: (pose && pose.py !== undefined) ? pose.py : undefined,
                 pose: {
                     a0: pose.a0, f0: pose.f0, a1: pose.a1, f1: pose.f1,
                     lean: pose.lean, hipX: pose.hipX, hipY: pose.hipY,
@@ -285,7 +285,7 @@
                 const a = Math.max(0, (1 - g.t / g.life) * g.alpha);
                 if (a <= 0.01) continue;
                 const F = g.face, pose = g.pose;
-                ctx.save(); ctx.translate(sx, gy + 4); ctx.scale(S, S); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+                ctx.save(); ctx.translate(sx, gy + 4 - (g.dy || 0)); ctx.scale(S, S); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
                 const z = g.z / S, hipY = -(ANK + 120) + z + (pose.hipY || 0);
                 if (g.rot) {
                     const pk = Math.min(1, -z / 60);
@@ -403,6 +403,12 @@
             else if (grounded) { const f = 1400 * dt; P.vx = Math.abs(P.vx) <= f ? 0 : P.vx - Math.sign(P.vx) * f }
             const lim = max; if (Math.abs(P.vx) > lim) P.vx += (Math.sign(P.vx) * lim - P.vx) * Math.min(1, dt * 8);
             if (!P.mount) P.x += P.vx * dt;
+
+            // ---- treehouse: jump on the deck = the existing leap, launched from the platform ----
+            if (P.jbuf > 0 && P.thDeck && P.dh > 0 && grounded && !P.pk && !P.mount && !P.cs && !P.fin && !P.stbk &&
+                !P.sg && !P.ldLock && !(P.fs > 0) && !(P.gu > 0) && !(P.yk > 0) && !(P.sgp > 0) && !(P.stc > 0) && !swim.on) {
+                startDeckLeap(dir || P.face || 1); P.jbuf = 0;
+            }
 
             // ---- parkour tumbling pass: Sprint + Jump at speed ----
             const isSprinting = run && Math.abs(P.vx) > 220;
@@ -1492,6 +1498,7 @@
 
             let z = 0;   // parabolic arc (negative = up)
             if (u > PK_TO && u < PK_TD) { const k = (u - (PK_TO + PK_TD) / 2) / ((PK_TD - PK_TO) / 2); z = -PK_H * (1 - k * k) }
+            if (P.pkDeck) z = 0;   // deck leap: real physics supplies the height
 
             const hipAbs = -136 + z + hipY;
             const foot = (x, rel, g, lift) => { g = Math.max(0, Math.min(1, g)); return [x, (1 - g) * (hipAbs + rel), (1 - g) * lift] };
@@ -1502,7 +1509,7 @@
             const aw = sm((u - PK_TO) / .06) * (1 - sm((u - (PK_TD - .08)) / .08));
             if (aw > 0) {
                 const k = Math.max(0, Math.min(1, (u - PK_TO) / (PK_TD - PK_TO)));
-                const ph = 1.5 * Math.PI + k * CY_TURNS * 2 * Math.PI;
+                const ph = 1.5 * Math.PI + k * CY_TURNS * (P.pkCy || 1) * 2 * Math.PI;   // longer flight = more pedal cycles, same pedal speed
                 const cyc = f => [CY_A * Math.cos(f), hipAbs + CY_R + CY_B * Math.sin(f), 20];
                 const mix = (a, b, w) => [lerp(a[0], b[0], w), lerp(a[1], b[1], w), lerp(a[2], b[2], w)];
                 l0 = mix(l0, cyc(ph), aw);
@@ -1534,6 +1541,7 @@
 
 
         function parkourTick(dt) {
+            if (P.pkDeck) { deckLeapTick(dt); return; }
             if (typeof swim !== 'undefined' && swim.on) { P.pk = 0; P.pkT = 0; P.pkRun = 0; P.rot = 0; return; }
             if (P.hurt > 0 || P.down > 0 || P.dying > 0) { P.pk = 0; P.pkT = 0; P.rot = 0; P.z = 0; return }
             const prevT = P.pkT, S = CSc();
@@ -1574,6 +1582,79 @@
             if (u >= PK_EXIT) {
                 P.phase = ((P.pkRun || 0) % 1) * 2 * Math.PI;
                 P.pk = 0; P.pkT = 0; P.pkRun = 0; P.rot = 0; P.z = 0; P.face = D;
+            }
+        }
+
+        // ================= TREEHOUSE DECK LEAP =================
+        const DL_V = 500;    // launch speed upward (px/s): rises only slightly, then falls
+        const DL_VX = 820;   // forward speed in the air (px/s)
+
+        function startDeckLeap(D) {
+            startParkour(D);   // existing leap start (banner, face, resets)
+            Object.assign(P, { pkDeck: 1, pkAir: 0, pkFt: 0, pkVzH: 0, pkLandH: 0, pkTf: 1, pkCy: 1, pkPlat: P.dh });
+        }
+        function endDeckLeap() {
+            P.pkDeck = 0; P.pkAir = 0; P.pkCy = 1;
+            P.pk = 0; P.pkT = 0; P.pkRun = 0; P.rot = 0; P.z = 0;
+        }
+
+        function deckLeapTick(dt) {
+            const S = CSc(), D = P.pkDir;
+            const tTO = PK_TO * PK_DUR, tTD = PK_TD * PK_DUR, tEX = PK_EXIT * PK_DUR;
+            const minX = TH_WX - 280 * TH_SC, maxX = TH_WX + 280 * TH_SC;
+            P.z = 0; P.vz = 0; P.rot = 0;
+
+            // ---- 0: gather on the deck (existing crouch/launch frames), invisible walls still apply ----
+            if (P.pkAir === 0) {
+                P.pkT += dt; P.vx = D * 720;
+                P.x = clampN(P.x + P.vx * dt, minX, maxX);
+                if (P.pkT >= tTO) {                                   // toe-off: leave the platform
+                    const platH = P.pkPlat, tp = 2 * DL_V / GRAV, xAt = P.x + D * DL_VX * tp;
+                    const over = xAt > minX - 40 * S && xAt < maxX + 40 * S;   // would the arc come back down onto the deck?
+                    P.pkLandH = over ? platH : 0;
+                    const H0 = platH - P.pkLandH;
+                    P.pkTf = (DL_V + Math.sqrt(DL_V * DL_V + 2 * GRAV * H0)) / GRAV;   // real flight time to the landing surface
+                    P.pkCy = Math.max(1, P.pkTf / (tTD - tTO));
+                    P.pkVzH = DL_V; P.pkFt = 0; P.pkAir = 1; P.thDeck = false;
+                    shake = Math.max(shake, 2); addGhost(P, parkourPose(P));
+                }
+                return;
+            }
+
+            // ---- 1: airborne: continuous physics, leap pose time follows flight progress ----
+            if (P.pkAir === 1) {
+                const prevV = P.pkVzH;
+                P.pkFt += dt; P.pkVzH -= GRAV * dt; P.dh += P.pkVzH * dt;
+                P.vx = D * DL_VX; P.x += P.vx * dt;
+                if (P.pkLandH > 0) P.x = clampN(P.x, minX, maxX);
+                P.pkT = tTO + (tTD - tTO) * clamp01(P.pkFt / P.pkTf);
+                if (prevV > 0 && P.pkVzH <= 0) { shake = Math.max(shake, 1.2); addGhost(P, parkourPose(P)); }   // apex
+                if ((P.pkVzH < 0 && P.dh <= P.pkLandH) || P.pkFt > P.pkTf * 2) {                                 // touchdown
+                    const vi = Math.abs(P.pkVzH);
+                    P.dh = P.pkLandH; P.pkAir = 2; P.pkT = Math.max(P.pkT, tTD);
+                    if (P.pkLandH > 0) P.thDeck = true;
+                    shake = Math.max(shake, Math.min(14, 2.5 + vi / 220)); hitstop = Math.max(hitstop, .03);
+                    if (P.pkLandH === 0) {
+                        for (let i = 0; i < 6; i++) flecks.push({ x: P.x + D * 45 * S, y: -2, vx: D * (60 + Math.random() * 120), vy: -(40 + Math.random() * 110), r: 1.5 + Math.random() * 2, t: 0, life: .4 });
+                        burst(P.x, -3, 8, 220, D);
+                    }
+                    addGhost(P, parkourPose(P));
+                }
+                return;
+            }
+
+            // ---- 2: landing recovery, then melt into the normal run cycle (same as the regular leap) ----
+            P.pkT += dt;
+            const sp = lerp(DL_VX, 520, sm((P.pkT - tTD) / .12));
+            P.vx = D * sp; P.x += P.vx * dt;
+            if (P.pkLandH > 0) P.x = clampN(P.x, minX, maxX);
+            P.pkRun = (P.pkRun || 0) + sp * dt / (RUN_LC * S);
+            if (P.pkT >= tEX) {
+                P.phase = ((P.pkRun || 0) % 1) * 2 * Math.PI;
+                P.face = D;
+                const onDeck = P.pkLandH > 0;
+                endDeckLeap();
+                if (onDeck) { P.thDeck = true; P.dh = -TH_DY * TH_SC; }
             }
         }
 
@@ -4936,6 +5017,7 @@
         }
 
         function deckTick() {                         // keeps you on the deck, with invisible walls at both ends
+            if (P.pkDeck) return;
             if (!(P.dh > 0) || P.stc > 0) return;
             if (P.thDeck) {
                 const minX = TH_WX - 280 * TH_SC, maxX = TH_WX + 280 * TH_SC;
