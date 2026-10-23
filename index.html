@@ -10356,6 +10356,117 @@
             }
             ctx.restore();
         }
+
+        let LILIES = null;
+        function drawLilies(gy) {
+            if (!LILIES) {                                                // built once, deterministic
+                LILIES = [];
+                for (let i = 0; i < 16; i++) LILIES.push({
+                    x: -170 + i * 22 + (hash(i * 2.1) - .5) * 14,         // treehouse-local x
+                    h: 16 + hash(i * 4.7) * 16, s: .75 + hash(i * 6.3) * .5,
+                    c: i % 3, ph: hash(i * 9.1) * 6.28, lean: (hash(i * 3.3) - .5) * .5
+                });
+            }
+            const now = performance.now() / 1000, S = TH_SC;
+            const cols = [['#f6f1e6', '#e9c46a'], ['#f2a5b8', '#c2185b'], ['#f4a259', '#8c3b0a']];   // [petal, spots]
+            const petal = (a, len, wid) => {
+                ctx.save(); ctx.rotate(a); ctx.beginPath(); ctx.moveTo(0, 0);
+                ctx.quadraticCurveTo(len * .5, -wid, len, 0); ctx.quadraticCurveTo(len * .5, wid, 0, 0);
+                ctx.fill(); ctx.stroke(); ctx.restore();
+            };
+            ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+            for (const L of LILIES) {
+                const sx = W / 2 + TH_WX + L.x * S - P.x;
+                if (sx < -80 || sx > W + 80) continue;
+                const sway = Math.sin(now * 1.4 + L.ph) * .05 + L.lean;
+                const k = L.s * S * 0.8, hh = L.h;
+                ctx.save(); ctx.translate(sx, gy + 2); ctx.scale(k, k);
+                ctx.lineWidth = 1.4 / k; ctx.strokeStyle = '#111';
+                // leaves at the base
+                ctx.fillStyle = '#4f8a3c';
+                for (const d of [-1, 1]) {
+                    ctx.beginPath(); ctx.moveTo(0, 0);
+                    ctx.quadraticCurveTo(d * 7, -hh * .5, d * 11, -hh * .35);
+                    ctx.quadraticCurveTo(d * 5, -hh * .3, 0, 0); ctx.fill(); ctx.stroke();
+                }
+                // stem
+                ctx.rotate(sway);
+                ctx.strokeStyle = '#111'; ctx.lineWidth = 2.4 / k;
+                ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -hh); ctx.stroke();
+                ctx.strokeStyle = '#4f8a3c'; ctx.lineWidth = 1.2 / k;
+                ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -hh); ctx.stroke();
+                // flower head
+                ctx.translate(0, -hh);
+                ctx.lineWidth = 1.2 / k; ctx.strokeStyle = '#111'; ctx.fillStyle = cols[L.c][0];
+                for (const a of [-2.7, -.45, -2.2, -.95, -1.85, -1.28]) petal(a, 8, 2.6);   // back petals, then front
+                petal(-Math.PI / 2, 9, 2.8);
+                // spots + stamens
+                ctx.fillStyle = cols[L.c][1];
+                for (const [px, py] of [[-1, -4], [1, -5], [0, -7]]) { ctx.beginPath(); ctx.arc(px, py, .45, 0, 7); ctx.fill(); }
+                ctx.strokeStyle = '#6b4a1a'; ctx.lineWidth = .5;
+                for (const a of [-1.9, -1.57, -1.25]) { ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(a) * 7, Math.sin(a) * 7); ctx.stroke(); ctx.fillStyle = cols[L.c][1]; ctx.beginPath(); ctx.arc(Math.cos(a) * 7, Math.sin(a) * 7, .6, 0, 7); ctx.fill(); }
+                ctx.restore();
+            }
+            ctx.restore();
+        }
+
+
+
+
+        let GRASS = null;
+
+
+
+        function drawGrass(gy) {
+            if (!GRASS) {                                                 // built once, deterministic
+                GRASS = [];
+                for (let layer = 0; layer < 2; layer++)
+                    for (let i = 0; i < 46; i++) {
+                        const blades = [], n = 8 + Math.floor(hash(i * 7.7 + layer * 50) * 5);
+                        for (let j = 0; j < n; j++) blades.push({
+                            bx: (hash(i * 3.1 + j * 1.7 + layer * 20) - .5) * 9,           // base spread inside the tuft
+                            h: (layer ? 12 : 17) + hash(i * 5.3 + j * 2.9 + layer * 9) * (layer ? 14 : 18),
+                            w: 1.1 + hash(j * 4.1 + i) * 1.2,
+                            lean: (hash(i * 2.3 + j * 6.1 + layer) - .5) * 14 + (j - n / 2) * 1.1,
+                            c: Math.floor(hash(i + j * 3.3 + layer * 5) * 3)
+                        });
+                        GRASS.push({
+                            x: -215 + i * 9.4 + (hash(i * 1.9 + layer * 33) - .5) * 6 + layer * 4.5,
+                            layer, blades, ph: hash(i * 8.8 + layer) * 6.28
+                        });
+                    }
+            }
+            const now = performance.now() / 1000, S = TH_SC * .8;
+            const cols = [['#2f5a2a', '#3d7233', '#4b8a3c'], ['#3d7233', '#4f8a3c', '#6aa84f']];   // [back layer, front layer]
+            ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#111';
+            for (const T of GRASS) {
+                const sx = W / 2 + TH_WX + T.x * S / .8 - P.x;
+                if (sx < -60 || sx > W + 60) continue;
+                ctx.save(); ctx.translate(sx, gy + 3 + (T.layer ? 1 : -2)); ctx.scale(S, S);
+                ctx.lineWidth = 1.2 / S;
+                // dark under-clump so the tuft reads as bushy
+                ctx.fillStyle = '#1d2a1a'; ctx.beginPath(); ctx.ellipse(0, -1, 7, 3, 0, Math.PI, 0); ctx.fill();
+                T.blades.forEach((b, j) => {
+                    const sw = Math.sin(now * 1.7 + T.ph + j * .5) * .12 * b.h;      // taller blades sway more
+                    const tx = b.bx + b.lean + sw, ty = -b.h;
+                    ctx.fillStyle = cols[T.layer][b.c];
+                    ctx.beginPath();
+                    ctx.moveTo(b.bx - b.w, 0);
+                    ctx.quadraticCurveTo(b.bx - b.w * .4 + b.lean * .35, -b.h * .6, tx, ty);
+                    ctx.quadraticCurveTo(b.bx + b.w * .6 + b.lean * .35, -b.h * .55, b.bx + b.w, 0);
+                    ctx.closePath(); ctx.fill(); ctx.stroke();
+                    if (b.h > 22) {                                                   // ink hatch line on tall blades
+                        ctx.lineWidth = .6 / S; ctx.beginPath();
+                        ctx.moveTo(b.bx, -2); ctx.quadraticCurveTo(b.bx + b.lean * .3, -b.h * .5, tx * .9 + b.bx * .1, ty * .75); ctx.stroke();
+                        ctx.lineWidth = 1.2 / S;
+                    }
+                });
+                ctx.restore();
+            }
+            ctx.restore();
+        }
+
+
         function drawWindowGlow(gy) {                    // lit windows, drawn BEFORE characters so they stay behind them
             const wa = sm((DN.d - .2) / .4); if (wa < .01) return;
             const now = performance.now() / 1000;
@@ -14639,6 +14750,8 @@
             drawBackdrop(gy);
             drawSkyObjects(gy);
             drawWorld(gy);
+            drawGrass(gy);
+            drawLilies(gy);
             drawWindowGlow(gy);
             drawSkid(gy);
             drawSplats(gy);
