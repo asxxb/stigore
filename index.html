@@ -10309,6 +10309,13 @@
             }
             ctx.restore();
         }
+        function drawSkyObjects(gy) {
+            const d = DN.d; if (d < .01) return;
+            const now = performance.now() / 1000, sb = skyBody();
+            drawStars(gy, d, now);
+            drawMeteors(d);
+            if (sb.moon) drawMoon(sb.moon, d);
+        }
         function drawNight(gy) {
             if (DN.dusk > .01) { ctx.save(); ctx.globalAlpha = .15 * DN.dusk; ctx.fillStyle = '#c8783c'; ctx.fillRect(0, 0, W, H); ctx.restore(); }   // warm dawn/dusk wash
             const d = DN.d; if (d < .01) return;
@@ -10349,10 +10356,6 @@
             ctx.drawImage(nightC, 0, 0, W, H);
 
             for (const L of lights) nGlow(L[0], L[1], L[2] * .8, L[4] * d);     // warm tint
-
-            drawStars(gy, d, now);
-            drawMeteors(d);
-            if (sb.moon) drawMoon(sb.moon, d);
 
             ctx.save(); ctx.globalAlpha = d; ctx.fillStyle = vigN; ctx.fillRect(0, 0, W, H); ctx.restore();   // deeper vignette
         }
@@ -14533,6 +14536,7 @@
             ctx.fillStyle = paper; ctx.fillRect(-60, -60, W + 120, H + 120);
             const gy = groundY();
             drawBackdrop(gy);
+            drawSkyObjects(gy);
             drawWorld(gy);
             drawWindowGlow(gy);
             drawSkid(gy);
