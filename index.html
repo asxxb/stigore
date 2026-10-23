@@ -4867,7 +4867,6 @@
             if (P.mount) { banner.t = .6; banner.text = 'DISMOUNT FIRST (H)'; return }
             if (tryStairs()) return;
             if (P.yk > 0 || P.fin > 0 || P.cs > 0 || P.tt > 0 || P.thw > 0 || P.z < 0) return;
-            if (tryPickupKnife()) return;
             if (P.gun || P.gs === 2 || P.sg) { banner.t = .6; banner.text = 'HOLSTER GUN FIRST (G)'; return }
             if (P.fs === 0 && P.stbk === 0 && P.pk === 0) {
                 const S0 = CSc(); let fe = null, fd = 1e9;
@@ -5373,7 +5372,7 @@
                         ctx.textAlign = 'center';
 
                         ctx.fillText(
-                            'E',
+                            'T',
                             sx,
                             gy - 50 * S -
                             4 * Math.sin(now / 200)
@@ -14087,7 +14086,8 @@
         const ITEM_DEFS = {                     // h = height of the item's centre above the ground (grab height)
             stick: { label: 'STICK', h: 3 },
             stone: { label: 'STONE', h: 5 },
-            plant: { label: 'HERB', h: 13 }
+            plant: { label: 'HERB', h: 13 },
+            knife: { label: 'KNIFE', h: 3 }
         };
         const groundItems = [], INV = {};
         let itemSeq = 0;
@@ -14114,10 +14114,24 @@
         }
         function pressPickup() {
             if (puBlocked()) return;
-            const it = puNearest(); if (!it) return;           // nothing in range: do nothing
+            const S = CSc();
+            let it = puNearest(), itd = it ? Math.abs(it.x - P.x) : 1e9;
+            // nearest landed knife on the ground (only if you don't already own one)
+            let kg = null, kd = 1e9;
+            if (!hasKnife) for (const g of groundKnives) {
+                if (!g.landed) continue;
+                const d = Math.abs(g.x - P.x);
+                if (d < PU_R * S && d < kd) { kd = d; kg = g; }
+            }
+            if (kg && kd < itd) {                       // convert the knife into a normal pickup item
+                groundKnives.splice(groundKnives.indexOf(kg), 1);
+                it = { id: ++itemSeq, type: 'knife', x: kg.x, seed: Math.random() * 99, F: kg.F };
+                groundItems.push(it);
+            }
+            if (!it) return;
             if (P.skid) endSkid(); P.skidK = 0;
             P.pu = .0001; P.puM = 1; P.puT = 0; P.puT2 = 0; P.puIt = it; P.puHeld = null; P.puSent = 0; P.puC = null;
-            if (Math.abs(it.x - P.x) > 2) P.face = it.x >= P.x ? 1 : -1;   // turn toward it
+            if (Math.abs(it.x - P.x) > 2) P.face = it.x >= P.x ? 1 : -1;
             P.idle = 0; P.fid = 0; P.abuf = 0; P.jbuf = 0; P.grabbed = null; P.clast = 0;
         }
         function puCancel() {
@@ -14178,11 +14192,17 @@
             } else if (P.puM === 3) {                           // brief pause at the lowest point, item in hand
                 if (P.puT2 >= .28) { P.puM = 4; P.puT2 = 0 }
             } else {
-                if (!P.puSent && P.puT2 >= .42) {               // hand -> inventory
+                if (!P.puSent && P.puT2 >= .42) {
                     P.puSent = 1; const h = P.puHeld;
-                    if (h) { INV[h.type] = (INV[h.type] || 0) + 1; banner.t = .8; banner.text = 'PICKED UP: ' + ITEM_DEFS[h.type].label }
+                    if (h && h.type === 'knife') {
+                        hasKnife = true;
+                        banner.t = .8; banner.text = 'KNIFE RECOVERED';
+                    } else if (h) {
+                        INV[h.type] = (INV[h.type] || 0) + 1;
+                        banner.t = .8; banner.text = 'PICKED UP: ' + ITEM_DEFS[h.type].label;
+                    }
                     P.puHeld = null;
-                    if (typeof playSfx === 'function') playSfx('pickup');   // hook for an audio system, if you add one
+                    if (typeof playSfx === 'function') playSfx('pickup');
                 }
                 if (P.puT2 >= .75) { P.pu = 0; P.puM = 0; P.puIt = null; P.puHeld = null; P.puC = null }   // PICKUP -> IDLE / run (by input)
             }
@@ -14214,7 +14234,13 @@
         // ---------- item art (centred on the origin, ink style) ----------
         function drawItemShape(it, now, inHand) {
             ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#111';
-            if (it.type === 'stick') {
+            if (it.type === 'knife') {
+                if (KN.complete && KN.naturalWidth) {
+                    const sc = KNIFE_LEN / KN.naturalWidth * (inHand ? .85 : 1);
+                    ctx.scale(sc, sc);
+                    ctx.drawImage(KN, -KN.naturalWidth * KCOMX, -KN.naturalHeight * KCOMY);
+                }
+            } else if (it.type === 'stick') {
                 if (!inHand) ctx.rotate((hash(it.seed) - .5) * .3);
                 const path = () => { ctx.beginPath(); ctx.moveTo(-18, 2); ctx.lineTo(0, -1); ctx.lineTo(18, -2); ctx.moveTo(2, -1); ctx.lineTo(9, -8) };
                 path(); ctx.lineWidth = 6; ctx.stroke(); path(); ctx.strokeStyle = 'rgb(150,110,70)'; ctx.lineWidth = 3.2; ctx.stroke();
