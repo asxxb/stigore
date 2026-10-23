@@ -4939,8 +4939,17 @@
             if (!(P.dh > 0) || P.stc > 0) return;
             if (P.thDeck) {
                 const minX = TH_WX - 280 * TH_SC, maxX = TH_WX + 280 * TH_SC;
+
+                // airborne and past the edge: leave the deck and fall to the ground
+                if (P.z < 0 && (P.x > maxX || P.x < minX)) {
+                    P.z -= P.dh;          // keep the same world height, but measured from the ground
+                    P.dh = 0;
+                    P.thDeck = false;
+                    return;
+                }
+
                 P.dh = -TH_DY * TH_SC;
-                P.x = Math.max(minX, Math.min(maxX, P.x));
+                if (P.z >= 0) P.x = Math.max(minX, Math.min(maxX, P.x));   // walls only apply on the floor
                 return;
             }
             const g = stairGeom();
