@@ -14920,10 +14920,10 @@
 
             update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); sgTick(dt); sgGroundTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); waterFXTick(dt); brainTick(dt); hzTick(dt); gibTick(dt); boneTick(dt); weatherTick(dt); horseTick(dt); birdTick(dt); fowlTick(dt); frogTick(dt); duckTick(dt); crocTick(dt); bgTick(dt); dayTick(dt0); fireflyTick(dt0); stExtrasTick(dt0);
             const stopX = MT_STOP_X();
-            const gap = HORSE.x - stopX;                                  // distance left before the dead end
-            if (gap < 350 && HORSE.vx < 0) HORSE.vx *= Math.max(0, 1 - dt * 6 * (1 - gap / 350));   // eases to stop
+            const gap = HRS.x - stopX;                                  // distance left before the dead end
+            if (gap < 350 && HRS.vx < 0) HRS.vx *= Math.max(0, 1 - dt * 6 * (1 - gap / 350));   // eases to stop
             if (P.x < stopX) { P.x = stopX; if (P.vx < 0) P.vx = 0; }
-            if (HORSE.x < stopX) { HORSE.x = stopX; if (HORSE.vx < 0) HORSE.vx = 0; }
+            if (HRS.x < stopX) { HRS.x = stopX; if (HRS.vx < 0) HRS.vx = 0; }
             deckTick();
             updateCamera(dt);
             shake = Math.max(0, shake - dt0 * 60);
