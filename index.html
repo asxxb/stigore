@@ -9546,8 +9546,8 @@
                 };
                 thSqHalves.push(h); pair.push(h);
             }
-            for (let i = 0; i < 7; i++) {                             // veins + gut stretching between the halves
-                const gut = i < 2;
+            for (let i = 0; i < 4; i++) {                             // veins + gut stretching between the halves
+                const gut = i < 1;
                 thSqLinks.push({
                     a: pair[0], b: pair[1], off: (-4.5 + R() * 8) * S, alive: true, gut,
                     w: gut ? 1.3 : .5 + R() * .5, col: gut ? '#e9786c' : ['#b3141c', '#8c0d14', '#6b2a5a'][i % 3],
@@ -9555,9 +9555,9 @@
                 });
             }
             const wx = TH_WX + cx * TH_SC, wy = cy * TH_SC - 4;
-            birdGore(wx, wy, F, 1.8); birdGore(wx, wy, -F, 1.3);      // organs, mini veins, blood, mist
-            spray(wx, wy, 40, 520, F); spray(wx, wy, 26, 420, -F); spray(wx, wy, 14, 260, 0);
-            burst(wx, wy, 22, 340, F);
+            birdGore(wx, wy, F, .6); birdGore(wx, wy, -F, .4);
+            spray(wx, wy, 10, 340, F); spray(wx, wy, 6, 280, -F); spray(wx, wy, 3, 180, 0);
+            burst(wx, wy, 6, 240, F);
             impacts.push({ x: wx, y: wy, t: 0, life: .28, s: 110, seed: R() * 50 });
             q.dead = 16; q.queue = []; q.sh = 0;
             combo.n++; combo.dmg += 40; combo.t = 1.8; combo.pop = 1.3; birdKills++;
@@ -9575,19 +9575,25 @@
                     const fl = ((h.deck && Math.abs(x) < 288) ? TH_DY : 0) - 4;
                     if (h.cy + h.dy >= fl) {
                         h.dy = fl - h.cy;
-                        if (Math.abs(h.vy) * TH_SC > 260 && !h.bn) { h.vy *= -.25; h.vx *= .5; h.vr *= .5; h.bn = 1; burst(wx, fl * TH_SC - 4, 6, 200, Math.sign(h.vx) || 1); }
+                        if (Math.abs(h.vy) * TH_SC > 260 && !h.bn) { h.vy *= -.25; h.vx *= .5; h.vr *= .5; h.bn = 1; burst(wx, fl * TH_SC - 4, 2, 140, Math.sign(h.vx) || 1); }
                         else {
                             h.landed = true; h.vx = h.vy = h.vr = 0;
+                            h.wig = h.wigMax = 1.5; h.wigT = 0; h.wAmp = h.side > 0 ? .14 : .32;   // head half twitches less, tail half flops more
                             shake = Math.max(shake, 2);
-                            burst(wx, fl * TH_SC - 4, 6, 160, Math.sign(h.vx) || 1);
-                            if (fl > -10) bgStain(wx, 14, true);       // pool of blood on the ground
+                            burst(wx, fl * TH_SC - 4, 2, 110, Math.sign(h.vx) || 1);
+                            if (fl > -10) bgStain(wx, 7, true);       // pool of blood on the ground
                         }
                     }
                     h.bl -= dt;
-                    if (h.t < 3 && h.bl <= 0) { h.bl = .05; bgDrop(wx, wy, (R() - .5) * 60, 10 + R() * 40, 1.2 + R() * 1.6); }
+                    if (h.t < 1.2 && h.bl <= 0) { h.bl = .14; bgDrop(wx, wy, (R() - .5) * 40, 8 + R() * 25, .8 + R()); }
                 } else {
                     h.rot += (Math.round(h.rot / Math.PI) * Math.PI - h.rot) * Math.min(1, dt * 10);
-                    if (h.t < 5 && Math.random() < dt * 6) bgDrop(wx, wy, (R() - .5) * 20, 5 + R() * 20, 1.2 + R());
+                    if (h.wig > 0) {
+                        h.wig -= dt; h.wigT += dt;
+                        const k = Math.max(0, h.wig / h.wigMax);                    // 1 -> 0 fade-out
+                        h.wr = Math.sin(h.wigT * (10 + 16 * k)) * h.wAmp * k;       // starts fast, slows down like a dying twitch
+                    } else h.wr = 0;
+                    if (h.t < 2.5 && Math.random() < dt * 2) bgDrop(wx, wy, (R() - .5) * 12, 4 + R() * 12, .8 + R() * .6);
                 }
                 if (h.t > 15) thSqHalves.splice(i, 1);
             }
@@ -9598,7 +9604,7 @@
                 const A = thSqEnd(L.a, L.off), B = thSqEnd(L.b, L.off);
                 if (Math.hypot(B[0] - A[0], B[1] - A[1]) > L.max) {   // the strand snaps
                     L.alive = false;
-                    for (const P_ of [A, B]) for (let k = 0; k < 4; k++)
+                    for (const P_ of [A, B]) for (let k = 0; k < 2; k++)
                         bgDrop(TH_WX + P_[0] * TH_SC, P_[1] * TH_SC - 4, (R() - .5) * 200, -(20 + R() * 120), 1 + R() * 1.4);
                 }
             }
@@ -9615,7 +9621,10 @@
             for (const h of thSqHalves) {
                 const ex = h.ex, ey = h.ey, cx = h.cx, cy = h.cy;
                 ctx.save(); ctx.globalAlpha = Math.min(1, (15 - h.t) / 3);
-                ctx.translate(cx + h.dx, cy + h.dy); ctx.rotate(h.rot); ctx.translate(-cx, -cy);
+                ctx.translate(cx + h.dx, cy + h.dy);
+                if (h.wr) ctx.translate(0, -Math.abs(h.wr) * 6);
+                ctx.rotate(h.rot + (h.wr || 0));
+                ctx.translate(-cx, -cy);
                 ctx.save();                                           // clip to one side of the cut
                 ctx.save(); ctx.transform(ex[0], ex[1], ey[0], ey[1], cx, cy);
                 ctx.beginPath(); ctx.rect(h.side > 0 ? 0 : -100, -100, 100, 200); ctx.restore();
