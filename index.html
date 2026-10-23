@@ -232,7 +232,23 @@
         }
 
         let last = performance.now();
-        function groundY() { return H * 0.76 }
+        let treehouseCamera = false;
+        let camY = 0;
+
+        function updateCamera(dt) {
+            let targetY = 0;
+
+            if (treehouseCamera) {
+                // Follow player vertically.
+                const h = P.dh || ((typeof TH_CL !== 'undefined' && TH_CL.on && TH_CL.pose && TH_CL.pose.hipAbs !== undefined) ? Math.max(0, -((TH_CL.pose.hipAbs || -169.15) + 169.15) * CSc()) : 0);
+                targetY = Math.max(0, (h || P.dh) - H * 0.28);
+            }
+
+            const k = 1 - Math.exp(-7.5 * dt);
+            camY += (targetY - camY) * k;
+        }
+
+        function groundY() { return H * 0.76 + camY; }
 
         // ---- movement feel tuning ----
         const GRAV = 1700;
@@ -1638,7 +1654,7 @@
                 if ((P.pkVzH < 0 && P.dh <= P.pkLandH) || P.pkFt > P.pkTf * 2) {                                 // touchdown
                     const vi = Math.abs(P.pkVzH);
                     P.dh = P.pkLandH; P.pkAir = 2; P.pkT = Math.max(P.pkT, tTD);
-                    if (P.pkLandH > 0) P.thDeck = true;
+                    if (P.pkLandH > 0) { P.thDeck = true; treehouseCamera = true; } else { treehouseCamera = false; }
                     shake = Math.max(shake, Math.min(14, 2.5 + vi / 220)); hitstop = Math.max(hitstop, .03);
                     if (P.pkLandH === 0) {
                         for (let i = 0; i < 6; i++) flecks.push({ x: P.x + D * 45 * S, y: -2, vx: D * (60 + Math.random() * 120), vy: -(40 + Math.random() * 110), r: 1.5 + Math.random() * 2, t: 0, life: .4 });
@@ -1660,7 +1676,8 @@
                 P.face = D;
                 const onDeck = P.pkLandH > 0;
                 endDeckLeap();
-                if (onDeck) { P.thDeck = true; P.dh = -TH_DY * TH_SC; }
+                if (onDeck) { P.thDeck = true; P.dh = -TH_DY * TH_SC; treehouseCamera = true; }
+                else { treehouseCamera = false; }
             }
         }
 
@@ -5035,6 +5052,7 @@
                     P.z -= P.dh;          // keep the same world height, but measured from the ground
                     P.dh = 0;
                     P.thDeck = false;
+                    treehouseCamera = false;
                     return;
                 }
 
@@ -9087,6 +9105,7 @@
                 C.F = top ? (P.face || 1) : (P.x <= TH_WX + thLadderCx(0) * TH_SC ? 1 : -1);
                 P.idle = 0; P.fid = 0; P.fidK = 0; P.abuf = 0; P.jbuf = 0; P.clast = 0; P.grabbed = null;
                 if (P.skid) endSkid(); P.skidK = 0;
+                treehouseCamera = true;
             }
             const F = C.F;
 
@@ -9117,6 +9136,7 @@
                     C.on = false; C.pose = null; C.mode = '';
                     P.thDeck = false; P.dh = 0; P.z = Math.min(0, C.low * S);
                     P.vz = -JUMP_V * .75; P.vx = ((right ? 1 : 0) - (left ? 1 : 0)) * 200; P.jbuf = 0;
+                    treehouseCamera = false;
                     return false;
                 }
                 const settled = Math.abs(C.phi - Math.round(C.phi)) < 1e-3, inp = up || down;
@@ -9138,7 +9158,7 @@
                 if (C.t >= 1) {
                     P.x = st.hx * S; C.on = false; C.pose = null; C.mode = '';
                     P.vx = 0; P.vz = 0; P.z = 0; P.face = F;
-                    if (C.top) { P.thDeck = true; P.dh = -TH_DY * TH_SC; } else { P.thDeck = false; P.dh = 0; }
+                    if (C.top) { P.thDeck = true; P.dh = -TH_DY * TH_SC; treehouseCamera = true; } else { P.thDeck = false; P.dh = 0; treehouseCamera = false; }
                     return false;
                 }
             }
@@ -13699,6 +13719,7 @@
 
             update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); sgTick(dt); sgGroundTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); waterFXTick(dt); brainTick(dt); gibTick(dt); boneTick(dt); weatherTick(dt); horseTick(dt); birdTick(dt); fowlTick(dt); frogTick(dt); duckTick(dt); crocTick(dt); bgTick(dt); dayTick(dt0); fireflyTick(dt0); stExtrasTick(dt0);
             deckTick();
+            updateCamera(dt);
             shake = Math.max(0, shake - dt0 * 60);
             ctx.save();
             if (shake > .3) ctx.translate((Math.random() - .5) * shake * 1.6, (Math.random() - .5) * shake * 1.6);
