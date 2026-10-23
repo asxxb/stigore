@@ -6924,7 +6924,7 @@
                 fy -= hrsTurnLift(i);
                 const jf = h.jf[i];                                      // planted / pose-driven hooves from the jump system
                 if (jf && jf[2] > .001) { fx = lerp(fx, jf[0], jf[2]); fy = lerp(fy, jf[1], jf[2]); }
-                fy = Math.min(fy, gz);                                   // a hoof can never pass through the ground
+                if (!h.hDead) fy = Math.min(fy, gz);                                   // a hoof can never pass through the ground
                 const A2 = rotP(L.ax, AT);                               // shoulder / hip follow the body pitch
                 const fold = clamp01((118 - Math.hypot(fx - A2[0], fy - 9 - A2[1])) / 60) * h.jw;   // knees / hocks fold when the leg is short
                 const bend = L.bend + Math.sign(L.bend) * fold * .82;
@@ -7049,7 +7049,28 @@
             // ============================================================
             // TAIL — ragdoll rope physics + tapered ribbon with split tips
             // ============================================================
-            {
+            if (h.hDead) {
+                ctx.save();
+                ctx.strokeStyle = '#111';
+                ctx.lineWidth = 4;
+                ctx.lineCap = 'round';
+                ctx.beginPath();
+                ctx.moveTo(-60, -55);
+
+                ctx.quadraticCurveTo(
+                    -80, -25,
+                    -105, -8
+                );
+
+                ctx.quadraticCurveTo(
+                    -130, 4,
+                    -155, 0
+                );
+
+                ctx.stroke();
+
+                ctx.restore();
+            } else {
                 yawIn('tl', -62);
                 const N = 11, SEG = 10;                    // joints, segment length
                 const dock = [-62, -140 + by];             // where the tail attaches
@@ -11322,11 +11343,18 @@
             const k = sm(h.hDT / 1.0);                         // collapse progress 0..1
             h.z = 0; h.vz = 0; h.vx *= Math.exp(-3 * dt); h.x += h.vx * dt;
             h.rear = 0; h.huff = 0; h.amp = 0; h.rg = 0; h.brk = 0; h.pitch = 0; h.pitchV = 0; h.rd = 0; h.coll = 0;
-            h.cmp = 72 * k;            // body drops to the ground
-            h.gk = k;                  // head goes down
-            h.nkLow = 42 * k; h.nkFwd = 16 * k;
-            h.jw = k;                  // knees fold
-            h.jf = [[46 + 36, 0, k], [-52 - 34, 0, k], [46 + 16, 0, k], [-52 - 18, 0, k]];   // folded legs: FF, HF, FN, HN
+            h.cmp = 92 * k;          // body drops farther
+            h.gk = k;                // head collapses
+            h.nkLow = 65 * k;        // neck/head lower
+            h.nkFwd = 28 * k;        // head moves forward
+            h.jw = k;                // knees fold
+
+            h.jf = [
+                [92, 18, k],         // front far
+                [-78, 12, k],        // rear far
+                [72, 24, k],         // front near
+                [-62, 20, k]         // rear near
+            ];
             if (!h.thud && h.hDT > .55) {
                 h.thud = 1; shake = Math.max(shake, 8);
                 burst(h.x, -4, 14, 260, h.face); burst(h.x, -4, 10, 220, -h.face);
