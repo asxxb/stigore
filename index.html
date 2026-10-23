@@ -6592,7 +6592,6 @@
 
         function horseTick(dt) {
             const h = HRS, S = CSc(), st = P.mount;
-            for (const e of ENEMIES) if (e.trampT > 0) e.trampT -= dt;
             let braking = false;
 
             const jp = h.jp, flight = jp === 'ASCENT' || jp === 'APEX' || jp === 'DESCENT' || (jp === 'TAKEOFF' && h.jth) || (jp === 'LAND_FRONT' && h.z < 0);
@@ -6673,19 +6672,6 @@
                 P.vx = h.vx;
                 P.face = h.face;
                 P.mk = 1;
-                if (sp > 380) {                                                // trample
-                    const sg = Math.sign(h.vx);
-                    for (const e of ENEMIES) {
-                        if (e.dead > 0 || e.dying > 0 || e.trampT > 0) continue;
-                        const dx = (e.x - h.x) * sg;
-                        if (dx > -30 * S && dx < 105 * S && h.z > -70 * S) {
-                            e.trampT = .8;
-                            hitEnemyParkour(e, 34, sg * 560, 9);
-                            if (e.z >= 0) e.z = -1; e.vz = -420; e.tumble = 1;
-                            if (e.hp > 0) { banner.t = .8; banner.text = 'TRAMPLED!' }
-                        }
-                    }
-                }
             }
         }
 
