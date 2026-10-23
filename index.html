@@ -5583,7 +5583,7 @@
                     if (h && h.d < bd) { bd = h.d; best = { e, h } }
                 }
                 if (best) { if (!legShot(b, best.e, best.h, S)) gunHit(b, best.e, best.h, S); bullets.splice(i, 1); continue }
-                if (birdsHit(px, py, b.x, b.y, b.F, 20) || fowlHit(px, py, b.x, b.y, b.F, 20) || bflyHit(px, py, b.x, b.y, b.F, 20) || clothHit(px, py, b.x, b.y, b.F)) { bullets.splice(i, 1); continue }
+                if (birdsHit(px, py, b.x, b.y, b.F, 20) || fowlHit(px, py, b.x, b.y, b.F, 20) || bflyHit(px, py, b.x, b.y, b.F, 20) || clothHit(px, py, b.x, b.y, b.F) || thSqHit(px, py, b.x, b.y, b.F, 20)) { bullets.splice(i, 1); continue }
                 if (frogHit(b, px, py, false)) { bullets.splice(i, 1); continue }
                 if (duckHit(b, px, py, false)) { bullets.splice(i, 1); continue }
                 if (crocHit(b, px, py)) { bullets.splice(i, 1); continue }
@@ -5918,7 +5918,7 @@
                     if (h && h.d < bd) { bd = h.d; best = { e, h } }
                 }
                 if (best) { pelletHit(p, best.e, best.h); pellets.splice(i, 1); continue }
-                if (birdsHit(px, py, p.x, p.y, p.F, 22) || fowlHit(px, py, p.x, p.y, p.F, 22) || bflyHit(px, py, p.x, p.y, p.F, 22) || clothHit(px, py, p.x, p.y, p.F, p.id)) { pellets.splice(i, 1); continue }
+                if (birdsHit(px, py, p.x, p.y, p.F, 22) || fowlHit(px, py, p.x, p.y, p.F, 22) || bflyHit(px, py, p.x, p.y, p.F, 22) || clothHit(px, py, p.x, p.y, p.F, p.id) || thSqHit(px, py, p.x, p.y, p.F, 22)) { pellets.splice(i, 1); continue }
                 if (frogHit(p, px, py, true)) { pellets.splice(i, 1); continue }
                 if (duckHit(p, px, py, true)) { pellets.splice(i, 1); continue }
                 if (crocHit(p, px, py)) { pellets.splice(i, 1); continue }
@@ -9147,11 +9147,28 @@
         // =====================================================================
         //  SQUIRREL: quiet ink-drawn wildlife (ground, trunk base, trunk, deck)
         // =====================================================================
-        const TH_SQ_S = .5;   // overall size (stickman is ~70 local units tall, squirrel ~13 long). Raise/lower to taste.
+        const TH_SQ_S = .5;   // overall size (unchanged). Raise/lower to taste.
+
+        // climbing gait: four limbs, staggered, diagonal sequence (near-front, far-hind, far-front, near-hind)
+        const TH_SQ_CL_RATE = 2.8, TH_CL_EX = 12, TH_CL_ST = .8, TH_CL_SW = 1 - TH_CL_ST;
+        const TH_CL_V = TH_CL_EX * TH_SQ_S * TH_SQ_CL_RATE / TH_CL_ST;     // trunk speed that keeps gripping paws planted
+        const TH_CL_OFF = { nf: 0, fh: .25, ff: .5, nh: .75 };
+
+        // tail control shapes (tail-local: +x toward head, -y up): sitting S-curve, streaming run, hanging climb, arched descent
+        const TH_TAIL = {
+            s: [[0, 0], [-3, -2], [-5.6, -6.2], [-6.4, -11.2], [-5, -15.6], [-2.2, -18.2], [1, -18.4]],
+            r: [[0, 0], [-4, -.6], [-8.5, -2.4], [-13, -4], [-17.5, -4.4], [-21, -3.2], [-24, -1.6]],
+            h: [[0, 0], [-3.6, -1], [-7.6, -2.6], [-11.8, -5], [-15.6, -6.8], [-19.4, -7.2], [-22.6, -6]],
+            a: [[0, 0], [-3.4, -2], [-6.8, -5.4], [-9.6, -9.6], [-11.6, -14.4], [-12.4, -18.6], [-12, -22]]
+        };
+
         const TH_SQ = {
             x: -190, y: 0, F: 1, p: 0, lvl: 0, mode: 'idle', t: 0, dur: 1.2, tx: 0, ty: 0, queue: [],
-            up: 0, sn: 0, gl: 0, glT: 3, glOn: 0, head: 0, headT: 0, hT: 1, ear: 0, earT: 2, tf: 0, tfT: 2,
-            cyc: 0, air: 0, hop: 0, last: 0, hdir: 1, hx0: 0, hy0: 0, hx1: 0, hy1: 0, sd: 3.7
+            dead: 0,
+            up: 0, sn: 0, gl: 0, glT: 3, glOn: 0, head: 0, headT: 0, hT: 1, ear: 0, earT: 2, ear2: 0, ear2T: 3.2, tf: 0, tfT: 2,
+            cyc: 0, air: 0, hop: 0, last: 0, hdir: 1, hx0: 0, hy0: 0, hx1: 0, hy1: 0, sd: 3.7,
+            cc: 0, pz: 0, pzT: 2, pzPend: false, spd: 1, spdT: 0, frz: 1.5, cr: 0, br: 0, pant: 0,
+            alert: 0, sh: 0, shDir: 1, shT: 5, tdesc: 0
         };
 
         function thTrunkX(y) {                       // left edge of the trunk at height y (squirrel clings here)
@@ -9169,10 +9186,11 @@
             if (m === 'idle') q.dur = arg || 1 + r * 2;
             else if (m === 'sniff') q.dur = arg || 1.3 + r * 1.6;
             else if (m === 'rear') q.dur = arg || 1.8 + r * 1.8;
-            else if (m === 'perch') q.dur = 2 + r * 2.5;
+            else if (m === 'perch') { q.dur = 2.4 + r * 2.8; q.alert = .8; }
+            else if (m === 'freeze') { q.dur = .35 + r * .8; q.alert = 1; }
             else if (m === 'run') { q.tx = arg; q.F = Math.sign(arg - q.x) || q.F; }
-            else if (m === 'ascend') { q.ty = arg; q.F = 1; q.lvl = 0; }
-            else if (m === 'descend') q.F = -1;
+            else if (m === 'ascend') { q.ty = arg; q.F = 1; q.lvl = 0; q.pz = 0; q.pzPend = false; q.pzT = .5 + r * 1.2; }
+            else if (m === 'descend') { q.F = -1; q.pz = 0; q.pzPend = false; q.pzT = .6 + r * 1.2; }
             else if (m === 'hop') {                  // arc between the trunk (below the deck) and the deck
                 q.hdir = arg; q.hx0 = q.x; q.hy0 = q.y;
                 if (arg > 0) { q.F = 1; q.hx1 = thTrunkX(D) + 10; q.hy1 = D; }
@@ -9185,42 +9203,106 @@
             const r = Math.random(), D = TH_DY, side = Math.random() < .5 ? -1 : 1;
             if (q.lvl === 0) {
                 const base = thTrunkX(-2);
+                if (r < .18) thSqStart(q, 'sniff');
+                else if (r < .28) thSqStart(q, 'rear');
+                else if (r < .36) thSqStart(q, 'idle');
+                else if (r < .42) thSqStart(q, 'freeze');
+                else if (r < .76) thSqStart(q, 'run', Math.max(-340, Math.min(235, q.x + side * (50 + Math.random() * 170))));
+                else if (r < .90) { q.queue = [['run', base], ['sniff'], ['rear'], ['idle', .8]]; thSqStart(q, 'run', base - 45); }
+                else if (r < .96) { q.queue = [['run', base], ['ascend', -(70 + Math.random() * 90)], ['perch'], ['descend']]; thSqStart(q, 'run', base - 45); }
+                else { q.queue = [['run', base], ['ascend', TH_DY + 26], ['hop', 1]]; thSqStart(q, 'run', base - 45); }
+            } else {
                 if (r < .20) thSqStart(q, 'sniff');
                 else if (r < .32) thSqStart(q, 'rear');
-                else if (r < .42) thSqStart(q, 'idle');
-                else if (r < .76) thSqStart(q, 'run', Math.max(-340, Math.min(235, q.x + side * (50 + Math.random() * 170))));
-                else if (r < .90) { q.queue = [['run', base], ['sniff'], ['rear'], ['idle', .8]]; thSqStart(q, 'run', base - 45); }   // visits the tree base
-                else if (r < .96) { q.queue = [['run', base], ['ascend', -(70 + Math.random() * 90)], ['perch'], ['descend']]; thSqStart(q, 'run', base - 45); }   // short climb, back down
-                else { q.queue = [['run', base], ['ascend', TH_DY + 26], ['hop', 1]]; thSqStart(q, 'run', base - 45); }              // all the way up to the deck
-            } else {
-                if (r < .22) thSqStart(q, 'sniff');
-                else if (r < .36) thSqStart(q, 'rear');
-                else if (r < .50) thSqStart(q, 'idle');
+                else if (r < .44) thSqStart(q, 'idle');
+                else if (r < .50) thSqStart(q, 'freeze');
                 else if (r < .84) thSqStart(q, 'run', Math.max(-125, Math.min(125, q.x + side * (30 + Math.random() * 90))));
-                else { q.queue = [['run', thTrunkX(D) + 10], ['hop', -1], ['descend']]; thSqStart(q, 'run', 40); }               // leaves the deck
+                else { q.queue = [['run', thTrunkX(D) + 10], ['hop', -1], ['descend']]; thSqStart(q, 'run', 40); }
             }
+        }
+
+        // shared climbing motion: paws stay planted while the body advances; stops are aligned so all four limbs grip
+        function thSqClimb(q, dt, dir) {             // dir: -1 up the trunk, +1 down
+            if (q.pz > 0) { q.pz -= dt; q.alert = 1; return; }
+            q.spdT -= dt; if (q.spdT < 0) { q.spdT = .4 + Math.random() * .9; q.spd = .75 + Math.random() * .5; }
+            const sv = q.spd * (dir > 0 ? .8 : 1), c0 = q.cc;
+            q.cc += dt * TH_SQ_CL_RATE * sv;
+            q.y += dir * TH_CL_V * sv * dt;
+            q.pzT -= dt;
+            if (q.pzPend && Math.floor((q.cc - .225) / .25) > Math.floor((c0 - .225) / .25)) {
+                q.pzPend = false; q.pz = .8 + Math.random() * 1.5; q.pzT = 1.6 + Math.random() * 2.6;   // stop and look around
+            } else if (q.pzT < 0 && !q.pzPend) q.pzPend = true;
+        }
+
+        // ---------- shootable squirrel ----------
+        // squirrel torso centre -> world coords (same space as bullets: x = world, y = px above the gy+4 line)
+        function thSqCenter(q) {
+            const S = TH_SQ_S, a = -Math.PI / 2 * q.p, c = Math.cos(a), s = Math.sin(a);
+            const lx = 3 * q.F * S, ly = -8 * S, yy = q.y - q.hop * (1 - q.p);
+            return [TH_WX + (q.x + lx * c - ly * s) * TH_SC, (yy + lx * s + ly * c) * TH_SC - 4];
+        }
+
+        // segment (previous -> current projectile position) vs. squirrel, so fast bullets can't tunnel through
+        function thSqHit(x0, y0, x1, y1, F, rad) {
+            const q = TH_SQ; if (q.dead > 0) return false;
+            const [cx, cy] = thSqCenter(q), r = 12 * TH_SQ_S * TH_SC + (rad || 20) * .5;
+            const dx = x1 - x0, dy = y1 - y0, l2 = dx * dx + dy * dy || 1;
+            let t = ((cx - x0) * dx + (cy - y0) * dy) / l2; t = Math.max(0, Math.min(1, t));
+            const px = x0 + dx * t, py = y0 + dy * t;
+            if ((px - cx) ** 2 + (py - cy) ** 2 > r * r) return false;
+            thSqKill(F, cx, cy);
+            return true;
+        }
+
+        function thSqKill(F, wx, wy) {
+            const q = TH_SQ;
+            q.dead = 14 + Math.random() * 8;                 // seconds until a new squirrel wanders in
+            q.queue = []; q.sh = 0;
+            birdGore(wx, wy, F, 1.8);                        // organs, mini veins, blood spray (same as the birds)
+            birdGore(wx, wy, -F, 1.1);                       // second burst out the other side = extra splatter
+            spray(wx, wy, 26, 420, F); spray(wx, wy, 12, 260, -F); burst(wx, wy, 14, 300, F);
+            impacts.push({ x: wx, y: wy, t: 0, life: .25, s: 90, seed: Math.random() * 50 });
+            hitstop = Math.max(hitstop, .05); shake = Math.max(shake, 5);
+            banner.t = .8; banner.text = 'SQUIRREL SPLATTER!';
+        }
+
+        function thSqRespawn(q) {
+            Object.assign(q, { x: -190, y: 0, p: 0, lvl: 0, F: 1, air: 0, hop: 0, up: 0, sn: 0, cr: 0, cc: 0,
+                               pz: 0, pzPend: false, sh: 0, alert: 0, queue: [], dead: 0 });
+            thSqStart(q, 'idle', .3);
         }
 
         function thSqUpdate(now) {
             const q = TH_SQ; let dt = now - q.last; q.last = now;
             if (!(dt > 0)) return; dt = Math.min(dt, .05);
+            if (q.dead > 0) { q.dead -= dt; if (q.dead <= 0) thSqRespawn(q); return; }
             q.t += dt;
-            const m = q.mode, k = Math.min(1, dt * 7);
+            const rnd = Math.random, m = q.mode, k = Math.min(1, dt * 7);
 
-            if (m === 'idle' || m === 'sniff' || m === 'rear' || m === 'perch') {
+            if (m === 'idle' || m === 'sniff' || m === 'rear' || m === 'perch' || m === 'freeze') {
                 if (q.t >= q.dur) thSqPick(q);
             } else if (m === 'run') {
                 const d = q.tx - q.x, dir = Math.sign(d) || q.F;
-                q.cyc += dt * 3.4; q.air = Math.sin(Math.PI * (q.cyc % 1));                      // tiny hops
-                q.x += dir * Math.min(Math.abs(d), 46 * (.25 + .75 * q.air) * dt);
-                if (Math.abs(q.tx - q.x) < .6) thSqPick(q);
+                q.spdT -= dt; if (q.spdT < 0) { q.spdT = .25 + rnd() * .7; q.spd = .65 + rnd() * .7; }   // irregular bursts
+                q.cyc += dt * 3.3 * q.spd; q.air = Math.sin(Math.PI * (q.cyc % 1));
+                q.x += dir * Math.min(Math.abs(d), 52 * (.15 + .85 * q.air) * q.spd * dt);
+                q.frz -= dt;
+                if (q.frz < 0 && Math.abs(d) > 30) {                       // sudden cautious stop mid-run
+                    q.frz = 1.4 + rnd() * 3;
+                    if (rnd() < .55) {
+                        const back = q.queue.length === 0 && rnd() < .3;    // sometimes it changes its mind
+                        q.queue.unshift(['run', back ? q.x - dir * (25 + rnd() * 70) : q.tx]);
+                        thSqStart(q, 'freeze');
+                    }
+                }
+                if (q.mode === 'run' && Math.abs(q.tx - q.x) < .6) thSqPick(q);
             } else if (m === 'ascend') {
-                q.p = Math.min(1, q.p + dt * 3);                                                  // swing from horizontal to vertical
-                if (q.p > .6) { q.cyc += dt * 4; q.air = Math.sin(Math.PI * (q.cyc % 1)); q.y -= 36 * (.3 + .7 * q.air) * dt; }
+                q.p = Math.min(1, q.p + dt * 3);
+                if (q.p > .6) thSqClimb(q, dt, -1);
                 q.x = thTrunkX(q.y);
                 if (q.y <= q.ty) { q.y = q.ty; thSqPick(q); }
             } else if (m === 'descend') {
-                q.cyc += dt * 4; q.air = Math.sin(Math.PI * (q.cyc % 1)); q.y += 34 * (.3 + .7 * q.air) * dt; q.x = thTrunkX(q.y);
+                thSqClimb(q, dt, 1); q.x = thTrunkX(q.y);
                 if (q.y >= 0) { q.y = 0; q.lvl = 0; q.mode = 'uncling'; q.t = 0; }
             } else if (m === 'uncling') {
                 q.p = Math.max(0, q.p - dt * 3); q.x -= 14 * dt; q.air = 0;
@@ -9232,22 +9314,54 @@
                 if (t >= 1) { q.x = q.hx1; q.y = q.hy1; q.p = q.hdir > 0 ? 0 : 1; if (q.hdir > 0) q.lvl = 1; q.air = 0; thSqPick(q); }
             }
 
-            // ---- subtle idle behaviours ----
-            const mm = q.mode, still = mm === 'idle' || mm === 'rear' || mm === 'perch';
-            q.up += ((mm === 'rear' ? 1 : 0) - q.up) * Math.min(1, dt * 5);                     // stands on hind legs
-            q.sn += ((mm === 'sniff' ? 1 : 0) - q.sn) * k;                                       // nose to the ground
-            q.hT -= dt; if (q.hT < 0) { q.hT = .8 + Math.random() * 2; q.headT = (Math.random() - .65) * .8; }
-            const ht = mm === 'sniff' ? .32 : mm === 'run' ? .05 : q.headT - .25 * q.up;
-            q.head += (ht - q.head) * k;                                                         // head turning
-            q.glT -= dt; if (q.glT < 0) { q.glT = 3 + Math.random() * 4; q.glOn = .9; }
+            // ---- subtle behaviours ----
+            const mm = q.mode, still = mm === 'idle' || mm === 'rear' || mm === 'perch' || mm === 'freeze',
+                climbing = mm === 'ascend' || mm === 'descend', pausing = climbing && q.pz > 0, calm = still || pausing;
+            q.alert = Math.max(0, q.alert - dt * .5);
+            q.up += ((mm === 'rear' ? 1 : 0) - q.up) * Math.min(1, dt * 5);                      // stands on hind legs
+            q.sn += ((mm === 'sniff' ? 1 : 0) - q.sn) * k;                                        // nose to the ground
+            q.cr += ((mm === 'run' ? 1 : 0) - q.cr) * Math.min(1, dt * 9);                        // low running crouch
+            q.pant += ((mm === 'run' ? 1 : 0) - q.pant) * dt * (mm === 'run' ? .5 : .25);        // breathes harder after a dash
+            q.br += dt * (5.4 + 6 * q.pant);
+
+            // quick, cautious head turns (faster and more frequent when alert)
+            q.hT -= dt;
+            if (q.hT < 0) { q.hT = (.3 + rnd() * 1.4) * (1 - .6 * q.alert); q.headT = (rnd() - .6) * (.7 + .5 * q.alert); }
+            let ht = q.headT - .25 * q.up;
+            if (mm === 'sniff') ht = .3 + Math.sin(now * 2.3) * .08;
+            else if (mm === 'run') ht = -.12 - q.cr * .06 + .05 * Math.sin(q.cyc * 6.283);
+            else if (climbing && !pausing) ht = -.14 + Math.sin(now * 3.1) * .06;
+            else if (q.p > .6) ht = q.headT * 1.2 - .1;                                           // clinging and looking around
+            q.head += (ht - q.head) * Math.min(1, dt * (8 + 9 * q.alert));
+
+            q.glT -= dt * (1 + 2 * q.alert); if (q.glT < 0) { q.glT = 2.5 + rnd() * 4; q.glOn = .5 + rnd() * .6; }
             q.glOn = Math.max(0, q.glOn - dt);
-            q.gl += ((still && q.glOn > 0 ? 1 : 0) - q.gl) * Math.min(1, dt * 6);               // glance back over the shoulder
-            q.earT -= dt; if (q.earT < 0) { q.earT = 1.2 + Math.random() * 3; q.ear = 1; }
-            q.ear = Math.max(0, q.ear - dt * 3.5);                                               // ear twitch
-            q.tfT -= dt; if (q.tfT < 0) { q.tfT = 1.5 + Math.random() * 3.5; q.tf = 1; }
-            q.tf = Math.max(0, q.tf - dt * 1.4);                                                 // tail flick
+            q.gl += ((calm && q.glOn > 0 ? 1 : 0) - q.gl) * Math.min(1, dt * 7);                 // glance back over the shoulder
+
+            q.earT -= dt; if (q.earT < 0) { q.earT = 1 + rnd() * 3.2; q.ear = 1; }
+            q.ear = Math.max(0, q.ear - dt * 4);                                                  // independent ear twitches
+            q.ear2T -= dt; if (q.ear2T < 0) { q.ear2T = 1.6 + rnd() * 3.8; q.ear2 = 1; }
+            q.ear2 = Math.max(0, q.ear2 - dt * 4);
+            q.tfT -= dt; if (q.tfT < 0) { q.tfT = 1.3 + rnd() * 3.4; q.tf = 1; }
+            q.tf = Math.max(0, q.tf - dt * 1.4);                                                  // tail flick
+
+            q.shT -= dt;                                                                          // sudden startled hop
+            if (q.shT < 0) {
+                q.shT = 3.5 + rnd() * 7;
+                if ((mm === 'idle' || mm === 'sniff' || mm === 'rear' || mm === 'freeze') && q.p < .05 && q.sh <= 0 && rnd() < .75) {
+                    q.sh = 1; q.shDir = rnd() < .5 ? -1 : 1; q.F = q.shDir; q.alert = 1; q.tf = 1; q.ear = 1; q.ear2 = 1;
+                    q.headT = (rnd() - .5) * .8; q.hT = .5;
+                }
+            }
+            if (q.sh > 0) { q.sh = Math.max(0, q.sh - dt * 4); q.x += q.shDir * 22 * dt; }
+
+            if (q.p > .3 && !(climbing && !pausing && q.p > .6)) {                                // settle all four paws on the bark when stopped
+                const g = Math.round((q.cc - .225) / .25) * .25 + .225;
+                q.cc += (g - q.cc) * Math.min(1, dt * 6);
+            }
             if (!(mm === 'run' || mm === 'ascend' || mm === 'descend' || mm === 'hop')) q.air += (0 - q.air) * Math.min(1, dt * 12);
-            q.hop = mm === 'run' ? q.air * 2.6 : q.hop * (1 - Math.min(1, dt * 14));
+            q.hop = mm === 'run' ? q.air * 3 : q.hop * (1 - Math.min(1, dt * 14));
+            q.tdesc += ((q.F < 0 && q.p > .01 ? 1 : 0) - q.tdesc) * Math.min(1, dt * 3);
         }
 
         // ---------- drawing helpers ----------
@@ -9265,77 +9379,190 @@
             ctx.strokeStyle = '#111'; ctx.lineWidth = .8; ctx.stroke();
         }
 
+        function thClPaw(cc, off, xf, xb, lift) {                    // [x, y, gripping] for one climbing limb
+            const t = (((cc + off) % 1) + 1) % 1;
+            if (t < TH_CL_SW) { const s = sm(t / TH_CL_SW); return [lerp(xb, xf, s), -lift * Math.sin(Math.PI * s), 0]; }
+            return [lerp(xf, xb, (t - TH_CL_SW) / TH_CL_ST), 0, 1];
+        }
+
+        function thCR(P, steps) {                                    // Catmull-Rom sampling of control points
+            const out = [], n = P.length;
+            for (let i = 0; i < n - 1; i++) {
+                const p0 = P[Math.max(0, i - 1)], p1 = P[i], p2 = P[i + 1], p3 = P[Math.min(n - 1, i + 2)];
+                for (let s = 0; s < steps; s++) {
+                    const t = s / steps, t2 = t * t, t3 = t2 * t, f = d => .5 * (2 * p1[d] + (-p0[d] + p2[d]) * t + (2 * p0[d] - 5 * p1[d] + 4 * p2[d] - p3[d]) * t2 + (-p0[d] + 3 * p1[d] - 3 * p2[d] + p3[d]) * t3);
+                    out.push([f(0), f(1)]);
+                }
+            }
+            out.push(P[n - 1].slice());
+            return out;
+        }
+
+        // full, layered tail: dark under-layer, lighter top layer, soft highlight, flowing strokes, edge tufts, tip hairs
+        function thSqTail(q, now, by, a, hug, FUR, FURD, lw) {
+            const cr = q.cr, wr = cr * (1 - hug), wh = hug * (1 - q.tdesc), wa = hug * q.tdesc;
+            const ws = Math.max(.0001, 1 - wr - wh - wa), tot = ws + wr + wh + wa, S = TH_TAIL;
+            const bx = -8.6 + q.up * 3, byy = -8.2 + q.up * 5 + by;
+            const sway = Math.sin(now * 1.3 + q.sd) + wind.v * .002, ctrl = [];
+            for (let j = 0; j < 7; j++) {
+                const kk = j / 6, k2 = kk * kk;
+                let x = (S.s[j][0] * ws + S.r[j][0] * wr + S.h[j][0] * wh + S.a[j][0] * wa) / tot;
+                let y = (S.s[j][1] * ws + S.r[j][1] * wr + S.h[j][1] * wh + S.a[j][1] * wa) / tot;
+                x += sway * k2 * (ws + wr * .4) / tot;
+                x += q.tf * Math.sin(now * 17) * 2 * k2;
+                y += q.tf * Math.sin(now * 17 + 1.3) * 1.5 * k2;
+                y += (Math.sin(now * 1.7 + q.sd * 1.3) * 2.2 + Math.sin(q.cc * 6.283) * .8) * k2 * (wh + wa) / tot;   // hanging tail swings for balance
+                y += Math.sin(q.cyc * 6.283 - kk * 2.4) * (1 + 1.6 * a) * k2 * wr / tot;                               // wave along the tail when running
+                y -= a * cr * 3 * k2;                                                                                  // counterbalance in the air
+                ctrl.push([x + bx, y + byy]);
+            }
+            const sp = thCR(ctrl, 4), n = sp.length, N = [], HW = [];
+            for (let i = 0; i < n; i++) {
+                const A = sp[Math.max(0, i - 1)], B = sp[Math.min(n - 1, i + 1)];
+                let tx = B[0] - A[0], ty = B[1] - A[1]; const tl = Math.hypot(tx, ty) || 1; tx /= tl; ty /= tl;
+                N.push([ty, -tx, tx, ty]);
+                const t = i / (n - 1), body = .3 + .7 * sm(Math.min(1, t / .5)), tip = t > .78 ? Math.sqrt(Math.max(0, 1 - Math.pow((t - .78) / .22, 2))) : 1;
+                HW.push(4.3 * body * (.1 + .9 * tip));
+            }
+            const edge = (scale, shift, jag, seed) => {
+                const L = [], R = [];
+                for (let i = 0; i < n; i++) {
+                    const P = sp[i], nn = N[i], w = HW[i] * scale;
+                    const jl = 1 + (hash(seed + i * 2.31) - .5) * jag + Math.sin(i * 2.4 + seed) * jag * .25;
+                    const jr = 1 + (hash(seed + 50 + i * 1.77) - .5) * jag + Math.sin(i * 2.9 + seed) * jag * .25;
+                    L.push([P[0] + nn[0] * (w * jl + shift), P[1] + nn[1] * (w * jl + shift)]);
+                    R.push([P[0] - nn[0] * (w * jr - shift), P[1] - nn[1] * (w * jr - shift)]);
+                }
+                const T = sp[n - 1], g = N[n - 1];
+                return L.concat([[T[0] + g[2] * 1.8, T[1] + g[3] * 1.8]], R.reverse());
+            };
+            thSolid(edge(1, 0, .2, 11), FURD, lw * .9, 70);          // darker under-layer, rim shows on the outer edge
+            thSolid(edge(.74, .5, .16, 29), FUR, lw * .6, 72);       // lighter top layer, offset for depth
+
+            ctx.save();                                              // soft light streak inside the tail
+            ctx.strokeStyle = 'rgba(240,229,200,.28)'; ctx.lineCap = 'round'; ctx.lineWidth = 2.4; ctx.beginPath();
+            for (let i = 3; i < n - 4; i++) { const x = sp[i][0] + N[i][0] * HW[i] * .1, y = sp[i][1] + N[i][1] * HW[i] * .1; i === 3 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); }
+            ctx.stroke(); ctx.restore();
+
+            [[-.5, 2, n - 4, 95], [-.15, 4, n - 3, 96], [.3, 3, n - 6, 97], [.6, 6, n - 5, 98]].forEach(([off, i0, i1, sd]) => {   // flowing fur lines
+                const pts = [];
+                for (let i = i0; i < i1; i++) pts.push([sp[i][0] + N[i][0] * HW[i] * off * .74, sp[i][1] + N[i][1] * HW[i] * off * .74]);
+                bdLine(pts, .55, sd, .45);
+            });
+            for (let i = 3; i < n - 2; i += 2) for (const sd of [1, -1]) {                                                         // irregular fur tufts
+                const h = hash(i * 3.7 + sd * 9.1); if (h < .3) continue;
+                const nn = N[i], E = [sp[i][0] + nn[0] * sd * HW[i] * .95, sp[i][1] + nn[1] * sd * HW[i] * .95];
+                bdLine([E, [E[0] + nn[0] * sd * (1.2 + h * 1.8) + nn[2] * (1.6 + h * 1.4), E[1] + nn[1] * sd * (1.2 + h * 1.8) + nn[3] * (1.6 + h * 1.4)]], .5, 120 + i * sd, .7);
+            }
+            const T = sp[n - 1], g = N[n - 1];
+            for (const s of [-.5, 0, .5]) bdLine([[T[0] + g[2], T[1] + g[3]], [T[0] + g[2] * 3 + g[0] * s * 2.4, T[1] + g[3] * 3 + g[1] * s * 2.4]], .45, 140 + s * 10, .6);   // tip hairs
+        }
+
         function thSquirrel(q, now) {
-            const F = q.F, u = q.up, p = q.p, a = q.air, lw = 1.3;
+            if (q.dead > 0) return;
+            const F = q.F, u = q.up, p = q.p, cr = q.cr, hug = sm(p), lw = 1.05;
+            const jmp = q.sh > 0 ? Math.sin(Math.PI * (1 - q.sh)) : 0, a = Math.max(q.air, jmp);
             const FUR = 'rgba(178,140,98,.55)', FURD = 'rgba(146,108,72,.62)', BEL = 'rgba(240,229,200,.85)';
+            const brs = Math.sin(q.br), pant = q.pant;
+            const by = hug * 2.2 + cr * .8 * (1 - hug);                                          // body sinks close to the trunk / crouches low
+            const pitch = -u * 1.15 + (cr * (.2 - .1 * a) + q.sn * .22) * (1 - hug);             // leans forward when running / sniffing
+            const pc = Math.cos(pitch), ps = Math.sin(pitch);
+            const toBody = (x, y) => { const dx = x + 3, dy = y + 5; return [dx * pc + dy * ps - 3, -dx * ps + dy * pc - 5]; };
+
             ctx.save();
-            if (p < .2) { ctx.beginPath(); ctx.ellipse(q.x + 1, q.y + .8, 5, .9, 0, 0, 7); ctx.fillStyle = 'rgba(70,55,35,.14)'; ctx.fill(); }   // faint ground shadow
-            ctx.translate(q.x, q.y - q.hop * (1 - p));
+            if (p < .2) { ctx.beginPath(); ctx.ellipse(q.x + 1, q.y + .8, 5 - jmp * 1.2, .9, 0, 0, 7); ctx.fillStyle = 'rgba(70,55,35,.14)'; ctx.fill(); }   // faint ground shadow
+            ctx.translate(q.x, q.y - (q.hop + jmp * 3.6) * (1 - p));
             ctx.rotate(-Math.PI / 2 * p);                           // p = 1: clinging head-up (or head-down) to the trunk
             ctx.scale(F * TH_SQ_S, TH_SQ_S);
             ctx.strokeStyle = '#111';
 
-            // ---- large fluffy curved tail (hangs down while climbing) ----
-            {
-                const sway = Math.sin(now * 1.3 + q.sd) * .8 + wind.v * .002 + q.tf * Math.sin(now * 17) * 2.2;
-                const T = [[0, 0], [-6, -1], [-10, -7], [-9, -14], [-4, -18], [1, -15]], W = [2, 4.4, 6, 6.3, 4.8, 1.8];
-                const ctrl = T.map((t, i) => { const kk = i / 5; return [t[0] + sway * kk * kk - a * 3 * kk, t[1] - a * 1.2 * kk]; });
-                ctx.save(); ctx.translate(-8 + u * 3, -8 + u * 5); ctx.rotate(-F * 1.2 * p);
-                const sp = thLimb(ctrl, W, 70, FUR, lw, 0), N = [];
-                for (let i = 1; i < sp.length - 1; i++) {
-                    const A = sp[i - 1], B = sp[i + 1];
-                    let tx = B[0] - A[0], ty = B[1] - A[1]; const tl = Math.hypot(tx, ty) || 1; tx /= tl; ty /= tl;
-                    const uu = Math.min(4.99, i / 4), i0 = Math.floor(uu);
-                    N[i] = [ty, -tx, lerp(W[i0], W[i0 + 1], uu - i0), tx, ty];
-                }
-                for (let i = 3; i < sp.length - 2; i += 3) {         // fur tufts on the outer edge
-                    const n = N[i], P = sp[i];
-                    bdLine([[P[0] + n[0] * n[2] * .8, P[1] + n[1] * n[2] * .8], [P[0] + n[0] * (n[2] + 2.8) + n[3] * 2.4, P[1] + n[1] * (n[2] + 2.8) + n[4] * 2.4]], .7, 80 + i, .8);
-                }
-                for (const off of [-.35, .3]) {                       // flowing fur lines inside
-                    const pts = [];
-                    for (let i = 2; i < sp.length - 3; i++) pts.push([sp[i][0] + N[i][0] * N[i][2] * off, sp[i][1] + N[i][1] * N[i][2] * off]);
-                    bdLine(pts, .6, 95 + off * 10, .45);
-                }
-                ctx.restore();
-            }
+            thSqTail(q, now, by, a, hug, FUR, FURD, lw);
 
-            // ---- long hind foot (stays on the ground when sitting up) ----
-            const fl = a * 3;
-            thSolid([[-8 - fl, -1.4], [2.5 - fl, -1.6], [5 - fl, -.4], [3 - fl, .5], [-8 - fl, .4]], FUR, lw, 71);
-
-            // ---- body (tilts about the hips when rearing up) ----
-            ctx.save(); ctx.translate(-3, -5); ctx.rotate(-u * 1.15); ctx.translate(3, 5);
-            const leg = (sx, sy, off, col, seed) => {
-                const e = clamp01(u * 1.7);                           // paws come up to the chest when standing
-                const gx = sx + 2.5 + off + a * 3.5, gy = -.7 - a * 3, ex = lerp(gx, 9.5 + off * .6, e), ey = lerp(gy, -6, e);
-                thLimb([[sx, sy], [(sx + ex) / 2 - .8 + e * 2.2, (sy + ey) / 2 + .4 + e * 1.6], [ex, ey]], [2, 1.5, 1], seed, col, lw, 0);
-                thPaw(ex + .5, ey, col);
+            // ---- hind legs: strong, bent (thigh forward, shin back, long foot) ----
+            const hipX = -4.6, hipY = -6.2 + by;
+            const hindPose = far => {
+                let tx = 4.5 + cr * (1 - a) * 2.5 - a * (3 + 5 * cr) + (far ? 2.2 * (1 - a * cr * .6) : 0);
+                let ty = -.4 - a * (1.2 + 2.2 * cr) - (far ? .3 * a : 0), ang = a * cr * .4;
+                if (hug > 0) {
+                    const c = thClPaw(q.cc, far ? TH_CL_OFF.fh : TH_CL_OFF.nh, 4, -8, 2.2);
+                    tx = lerp(tx, c[0] + (far ? 1 : 0), hug); ty = lerp(ty, c[1] - .4, hug); ang = lerp(ang, 0, hug);
+                }
+                return [tx, ty, ang];
             };
-            leg(5, -6.5, -2.3, FURD, 100);                            // far front leg
-            thEll(0, -8.5, 8.6, 4.6, -.08, 73, FUR, lw);              // torso
-            ctx.beginPath(); ctx.ellipse(-.5, -10, 7.6, 2.8, -.08, Math.PI, 2 * Math.PI); ctx.fillStyle = 'rgba(120,88,56,.22)'; ctx.fill();   // back shading
-            ctx.beginPath(); ctx.ellipse(2, -6.4, 5, 2, 0, 0, Math.PI); ctx.fillStyle = BEL; ctx.fill();                                       // pale belly
-            thEll(-4.6, -6.4, 5.2, 4.6, .15, 74, FUR, lw);            // haunch
-            bdLine([[-7, -9], [-2.5, -7.5], [-1.5, -4.5]], .7, 75, .5);
-            leg(5.5, -6.5, 0, FUR, 101);                              // near front leg
+            const hindLeg = (far, col, seed) => {
+                const [tx, ty, ang] = hindPose(far), c = Math.cos(ang), s = Math.sin(ang), fs = 1 - .4 * hug;
+                const rot = (x, y) => [tx + x * fs * c - y * s, ty + x * fs * s + y * c];
+                const ank = rot(-10.5, -1.2), ext = a * cr * (1 - hug);
+                const kx = hipX + lerp(4.5, -1, ext) + (far ? 1.6 : 0), ky = hipY + lerp(3.4, 2.2, ext);
+                thLimb([[hipX + (far ? 1.5 : 0), hipY], [kx, ky], ank], [3.6, 2.2, 1.3], seed, col, lw, 0);
+                thSolid([[-12, -2.1], [-5, -1.9], [-1.6, -1.4], [1.3, -.5], [.5, .4], [-12, .4]].map(([x, y]) => rot(x, y)), col, lw * .85, seed + 2);
+                bdLine([rot(-.6, -1), rot(.1, .2)], .35, seed + 3, .5);                       // toe line
+            };
+            hindLeg(true, FURD, 60);
+            hindLeg(false, FUR, 66);
 
-            // ---- head: turns, sniffs, glances back ----
-            ctx.save(); ctx.translate(7.5, -10.5);
+            // ---- body frame (tilts about the hips) ----
+            ctx.save(); ctx.translate(0, by); ctx.translate(-3, -5); ctx.rotate(pitch); ctx.translate(3, 5);
+
+            const front = (far, col, seed) => {                                              // small front paws, tucked in flight, gripping bark on the trunk
+                const sx = far ? 5 : 5.8, sy = -6.6, off = far ? -2.2 : 0;
+                const e = clamp01(Math.max(u * 1.7, cr * a * .8));
+                const g = toBody(sx + 2.8 + off + a * (2 + 3 * cr), -.7 - by - a * (2.4 + 1.6 * cr)), ch = [9.4 + off * .6, -6.1];
+                let px = lerp(g[0], ch[0], e), py = lerp(g[1], ch[1], e), ox = -.8 + e * 2.2, oy = .4 + e * 1.6, grip = 0;
+                if (hug > 0) {
+                    const c = thClPaw(q.cc, far ? TH_CL_OFF.ff : TH_CL_OFF.nf, 15, 3, 2.4);
+                    px = lerp(px, c[0] + (far ? 1 : 0), hug); py = lerp(py, -by + c[1] - .3, hug);
+                    ox = lerp(ox, 0, hug); oy = lerp(oy, -2.1, hug); grip = c[2] * hug;
+                }
+                thLimb([[sx, sy], [(sx + px) / 2 + ox, (sy + py) / 2 + oy], [px, py]], [2.1, 1.5, 1], seed, col, lw, 0);
+                thPaw(px + .5, py, col);
+                if (grip > .5) { bdLine([[px + .9, py + .5], [px + 1.6, py + 2]], .35, seed + 5, .5); bdLine([[px + .3, py + .6], [px + .6, py + 2.1]], .35, seed + 6, .5); }   // claws in the bark
+            };
+            front(true, FURD, 100);
+
+            // compact rounded torso: stretches in flight, breathes
+            const TOR = [[-9.5, -8], [-8.2, -12], [-4, -13.6], [1, -13], [5, -11.8], [8.2, -9.6], [9.2, -6.6], [7.4, -4.2], [3, -3.5], [-2, -3.6], [-7, -3.8], [-9.6, -5.2]];
+            const st = 1 + cr * a * .12, bs = 1 + brs * (.035 + .08 * pant);
+            const torso = TOR.map(([x, y]) => [x > -4 ? -4 + (x + 4) * st : x, -3.6 + (y + 3.6) * bs]);
+            thSolid(torso, FUR, lw, 73);
+            ctx.save();
+            ctx.beginPath(); torso.forEach(([x, y], i) => { const X = x * .92, Y = -8.3 + (y + 8.3) * .9; i ? ctx.lineTo(X, Y) : ctx.moveTo(X, Y); }); ctx.closePath(); ctx.clip();
+            ctx.fillStyle = 'rgba(120,88,56,.22)'; ctx.beginPath(); ctx.ellipse(-.5, -12.6, 11, 3.6, -.05, 0, 7); ctx.fill();   // back shading
+            ctx.fillStyle = BEL; ctx.beginPath(); ctx.ellipse(3, -3.6, 7, 2.6, 0, 0, 7); ctx.fill();                              // pale belly
+            ctx.beginPath(); ctx.ellipse(8.8, -6.2, 2, 3, 0, 0, 7); ctx.fill();                                                  // pale chest
+            ctx.restore();
+            bdLine([[-6.8, -11.6], [-2.5, -12.4], [2, -12]], .5, 86, .4);                    // fur flow along the back
+            bdLine([[4.6, -10.6], [7.2, -9], [8.4, -7.2]], .5, 87, .4);
+            thEll(-5, -6.8, 5.6, 5, .25, 74, FUR, lw);                                       // clearly defined haunch
+            bdLine([[-8.2, -9.6], [-3.6, -8.8], [-1.4, -5.4]], .6, 75, .5);                  // thigh contour
+            bdLine([[-9, -7.6], [-8.2, -4.8]], .5, 76, .4);
+            front(false, FUR, 101);
+
+            // ---- head: small, pointed muzzle, pointed ears, tiny eye ----
+            ctx.save(); ctx.translate(7.8 + (st - 1) * 12, -10.6 + brs * .22 * (1 + pant * 1.5));
             ctx.scale(1 - 1.7 * q.gl, 1);
-            ctx.rotate(q.head + q.sn * Math.sin(now * 15) * .1);
-            const et = Math.sin(q.ear * Math.PI * 3) * q.ear * 1.6;
-            thSolid([[-.2, -3.4], [-1.6, -8.6 + et * .6], [2.2, -4.2]], FURD, lw, 77);       // far ear
-            thEll(3, -1.5, 3.7, 3.3, 0, 78, FUR, lw);                                         // skull
-            thSolid([[5.8, -3.4], [10.2, -1.3], [9.7, -.1], [6, .6]], FUR, lw, 79);           // pointed muzzle
-            thSolid([[1.6, -4.3], [1.3, -10 + et], [4.8, -4.8]], FUR, lw, 80);                // near ear (pointed)
-            bdLine([[2.1, -5.2], [1.8, -9]], .6, 81, .5);
-            bdLine([[1.3, -10 + et], [.6, -11.9 + et]], .7, 82, .9);                          // ear tuft
-            bdLine([[9.4, -.1], [6.8, .4]], .5, 84, .6);                                      // mouth
-            bdLine([[8.4, -.6], [12.5, -2]], .4, 83, .5); bdLine([[8.4, -.2], [12.6, .6]], .4, 85, .5);   // whiskers
-            ctx.fillStyle = '#111';
-            ctx.beginPath(); ctx.arc(5, -2.4, .7, 0, 7); ctx.fill();                          // eye
-            ctx.beginPath(); ctx.arc(10, -.9, .85, 0, 7); ctx.fill();                         // nose
+            ctx.rotate(q.head + q.sn * Math.sin(now * 17) * .07);
+            const ear = (bx, byE, len, tilt, tw, col, seed) => {
+                const tx = bx + Math.sin(tilt + tw) * len, ty = byE - Math.cos(tilt + tw) * len, dx = tx - bx, dy = ty - byE;
+                thSolid([[bx - 1.6, byE + .6], [bx - .9 + dx * .45, byE + dy * .5], [tx, ty], [bx + .7 + dx * .5, byE + dy * .55], [bx + 1.9, byE + .6]], col, lw * .9, seed);
+                bdLine([[bx, byE - .4], [bx + dx * .6, byE + dy * .6]], .4, seed + 4, .45);   // inner ear line
+                bdLine([[tx, ty], [tx + dx * .1 - .4, ty + dy * .1 - 1.8]], .6, seed + 3, .9); // ear tuft
+            };
+            const fwd = q.alert * .08;
+            ear(.5, -3.6, 5.2, -.12 + fwd, Math.sin(q.ear2 * Math.PI * 3) * q.ear2 * .35, FURD, 77);   // far ear
+            thSolid([[-.6, -1.4], [.1, -4.1], [2.8, -5.3], [5.6, -4.4], [8, -2.7], [10.3, -1.1], [10, .2], [7.2, .9], [5.3, 2.1], [2.4, 2.2], [-.1, .7]], FUR, lw, 78);
+            ctx.fillStyle = 'rgba(240,229,200,.6)'; ctx.beginPath(); ctx.moveTo(6, .9); ctx.lineTo(9.6, .2); ctx.lineTo(9.3, .9); ctx.lineTo(6.8, 1.6); ctx.closePath(); ctx.fill();   // pale chin
+            ear(2.7, -4.5, 5.8, .06 + fwd, Math.sin(q.ear * Math.PI * 3) * q.ear * .35, FUR, 80);      // near ear
+            bdLine([[2.4, .8], [4.6, 1.3]], .4, 88, .4);                                      // cheek fur
+            bdLine([[9.6, .1], [6.8, .6]], .5, 84, .6);                                       // mouth
+            const wv = Math.sin(now * 19) * .6 * q.sn;
+            bdLine([[8.6, -.5], [13.2, -2.5 + wv]], .35, 83, .5);                             // whiskers (they flutter when sniffing)
+            bdLine([[8.6, -.2], [13.4, -.2 + wv]], .35, 85, .5);
+            bdLine([[8.5, .1], [12.8, 2 + wv]], .35, 89, .45);
+            ctx.beginPath(); ctx.arc(5.3, -2.6, 1.45, 0, 7); ctx.strokeStyle = 'rgba(240,229,200,.75)'; ctx.lineWidth = .45; ctx.stroke();   // pale eye ring
+            ctx.strokeStyle = '#111'; ctx.fillStyle = '#111';
+            ctx.beginPath(); ctx.arc(5.3, -2.6, .62, 0, 7); ctx.fill();                       // tiny black eye
+            ctx.beginPath(); ctx.arc(10 + q.sn * Math.sin(now * 21) * .25, -.9, .8, 0, 7); ctx.fill();   // nose
             ctx.restore();
 
             ctx.restore();   // body frame
