@@ -95,6 +95,8 @@
         <div><span class="b" id="bp">J</span><span class="b" id="bk">K</span><span class="b" id="bj">▲</span></div>
         <span class="b" id="bd"
             style="position:fixed; right:18px; bottom:calc(env(safe-area-inset-bottom,0px) + 98px)">▼</span>
+        <span class="b" id="bu"
+            style="position:fixed; right:18px; bottom:calc(env(safe-area-inset-bottom,0px) + 258px)">W</span>
         <span class="b" id="bh"
             style="position:fixed; right:18px; bottom:calc(env(safe-area-inset-bottom,0px) + 178px)">H</span>
         <span class="b" id="bv"
@@ -177,6 +179,7 @@
         hold('bl', 'ArrowLeft'); hold('br', 'ArrowRight'); hold('bj', 'Space'); document.getElementById('bk').addEventListener('pointerdown', e => { e.preventDefault(); pressK() });
         document.getElementById('bj').addEventListener('pointerdown', pressJump);
         hold('bd', 'ArrowDown');
+        hold('bu', 'ArrowUp');
         document.getElementById('bp').addEventListener('pointerdown', e => { e.preventDefault(); pressAtk() });
         document.getElementById('bh').addEventListener('pointerdown', e => { e.preventDefault(); pressHorse() });
         document.getElementById('bv').addEventListener('pointerdown', e => { e.preventDefault(); P.female = !P.female });
@@ -1577,6 +1580,7 @@
 
         function comboPose(Q) {
             if (Q === PL && swim.on) { const sp = swimPose(); if (sp) return sp }
+            if (Q === PL && TH_CL.on && TH_CL.pose) return TH_CL.pose;
             if (Q === PL && Q.stc > 0) return Q.stcM >= 2 ? Q.stcPose : null;
             if (Q === PL && Q.stbk > 0) return stabPose(Q);
             if (Q === PL && Q.gu > 0) return guPose(Q);
@@ -8749,12 +8753,12 @@
         //  ROPE LADDER MODEL
         // =====================================================================
         const TH_NL = 32;
-        const TH_LD = { D: null, n: 0, y: [], x0: -258, w: 34, R: 24, dip: new Float32Array(TH_NL), vel: new Float32Array(TH_NL), load: new Float32Array(TH_NL), sw: 0, swv: 0, last: 0 };
+        const TH_LD = { D: null, n: 0, y: [], x0: -258, w: 16, R: 24, dip: new Float32Array(TH_NL), vel: new Float32Array(TH_NL), load: new Float32Array(TH_NL), sw: 0, swv: 0, last: 0 };
 
         function thLadderInit() {
             const D = TH_DY; if (TH_LD.D === D) return; TH_LD.D = D;
             const y0 = D + 34, yb = -12, len = yb - y0;
-            const n = Math.min(TH_NL, Math.max(6, Math.round(len / 24)));
+            const n = Math.min(TH_NL, Math.max(6, Math.round(len / 15)));
             const raw = [], sum0 = []; let sum = 0;
             for (let i = 0; i < n; i++) { const s = .88 + .24 * hash(i * 4.1 + 2); raw.push(s); sum += s; }   // uneven spacing
             let acc = 0; TH_LD.y = raw.map(s => { acc += s; return y0 + acc / sum * len; });
@@ -8789,221 +8793,260 @@
         function thDrawRopeLadder(now) {
             thLadderInit(); thLadderStep(now);
             const D = TH_DY, Y = TH_LD.y, d = TH_LD.dip, n = TH_LD.n, ROPE = '#3a2e22';
-            const topY = D + 14, pts = [[], []];
-            const ropeSeg = (side, a, b, seed) => {                                   // thick twisted rope with a little sag/bow
-                const mx = (a[0] + b[0]) / 2 + (hash(seed) - .5) * 1.8, my = (a[1] + b[1]) / 2;
-                bdLine([a, [mx, my], b], 3.4, seed, 1);
+            const DY = 6;                                   // depth: the far rope sits this much higher (seen from slightly above)
+            const topY = D + 14;
+
+            // near rope = right line, far rope = left line (shifted up for depth)
+            const jx = i => (hash(i * 3.7 + 1.3) - .5) * 1.6;                       // per-rung irregularity
+            const belly = i => 2.4 * Math.sin(Math.PI * (i + 1) / (n + 1));         // gentle outward sag in the middle
+            const nearP = i => { const x = thLadderX(i)[1]; return [x + belly(i) + jx(i), Y[i] + d[i]] };
+            const farP = i => { const x = thLadderX(i)[0]; return [x + belly(i) * .8 + jx(i + 9), Y[i] + d[i] - DY] };
+
+            const ropeSeg = (a, b, w, seed, al) => {
+                const mx = (a[0] + b[0]) / 2 + (hash(seed) - .5) * 1.6, my = (a[1] + b[1]) / 2;
+                bdLine([a, [mx, my], b], w, seed, al);
                 const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
-                for (let s = 3; s < len - 1; s += 4.6) { const t = s / len, x = lerp(a[0], b[0], t), y = lerp(a[1], b[1], t); bdLine([[x - 1.9, y - 1.2], [x + 1.9, y + 1.2]], .7, seed + s, .55); }
-            };
-            for (let side = 0; side < 2; side++) {                                    // ropes
-                let prev = [thLadderX(0)[side], topY];
-                for (let i = 0; i < n; i++) {
-                    const cur = [thLadderX(i)[side], Y[i] + d[i]];
-                    ropeSeg(side, prev, cur, 900 + i * 7 + side * 3); prev = cur;
+                for (let s = 3; s < len - 1; s += 4.4) {                              // twisted-strand ticks
+                    const t = s / len, x = lerp(a[0], b[0], t), y = lerp(a[1], b[1], t);
+                    bdLine([[x - 1.7, y - 1.1], [x + 1.7, y + 1.1]], .65, seed + s, .5 * al);
                 }
-                const tail = [prev[0] + (side ? 1.5 : -1.5), prev[1] + 14];           // free end hanging below the last rung
-                ropeSeg(side, prev, tail, 990 + side);
-                bdLine([[tail[0], tail[1]], [tail[0] - 1.2, tail[1] + 3]], 1, 995 + side, .9); bdLine([[tail[0], tail[1]], [tail[0] + 1.2, tail[1] + 3]], 1, 997 + side, .9);
+            };
+            const knot = (p, seed, r) => {
+                for (let k = 0; k < 2; k++) bdLine([[p[0] - 3, p[1] - 2.6 + k * 4.6], [p[0] + 3, p[1] - 1.6 + k * 4.6]], 1.4, seed + k, 1);   // wraps above/below the rung
+                ctx.fillStyle = ROPE; ctx.beginPath(); ctx.arc(p[0] + (hash(seed) - .5), p[1] + 1.2, r, 0, 7); ctx.fill(); ctx.lineWidth = .8; ctx.stroke();
+            };
+            const tail = (p, seed) => {                                              // free rope end with a little fray
+                const e = [p[0] + (hash(seed) - .5) * 3, p[1] + 13];
+                ropeSeg(p, e, 3, seed, 1);
+                bdLine([[e[0], e[1]], [e[0] - 1.3, e[1] + 3]], 1, seed + 1, .9); bdLine([[e[0], e[1]], [e[0] + 1.3, e[1] + 3]], 1, seed + 2, .9);
+            };
+
+            // ---- FAR rope (behind everything, slightly lighter and thinner) ----
+            {
+                let prev = [thLadderX(0)[0], D + 8 - DY * .4];
+                for (let i = 0; i < n; i++) { const cur = farP(i); ropeSeg(prev, cur, 2.5, 1200 + i * 7, .78); prev = cur }
+                tail(prev, 1290);
             }
-            for (let side = 0; side < 2; side++) {                                    // tied around the platform's front beam
-                const x = thLadderX(0)[side];
-                for (let k = 0; k < 4; k++) bdLine([[x - 4.2, D + 8 + k * 2.3], [x + 4.2, D + 9.4 + k * 2.3]], 1.6, 1000 + side * 9 + k, 1);
+            // far rope tied round the back of the platform beam
+            for (let k = 0; k < 3; k++) bdLine([[thLadderX(0)[0] - 3.2, D + 6 + k * 2.2], [thLadderX(0)[0] + 3.2, D + 7.2 + k * 2.2]], 1.3, 1210 + k, .8);
+
+            // ---- RUNGS: narrow planks running from the near rope back to the far rope ----
+            for (let i = 0; i < n; i++) {
+                const N = nearP(i), F = farP(i), th = 4 + hash(i * 1.9) * 1.2;
+                const ux = N[0] - F[0], uy = N[1] - F[1], ul = Math.hypot(ux, uy) || 1, ex = ux / ul, ey = uy / ul;
+                const A = [F[0] - ex * 3.5, F[1] - ey * 3.5];                         // plank pokes a little past each rope
+                const B = [N[0] + ex * 4.5, N[1] + ey * 4.5];
+                bdShape([A, B, [B[0], B[1] + th], [A[0], A[1] + th]], TH_WOODL, 1.4, 1300 + i * 5);                                  // plank body
+                bdShape([[B[0], B[1]], [B[0] + 3.4, B[1] - 1.6], [B[0] + 3.4, B[1] + th - 1.6], [B[0], B[1] + th]], TH_WOODD, 1.1, 1330 + i);   // end grain = depth
+                bdLine([[A[0] + 2, A[1] + th * .45], [B[0] - 2, B[1] + th * .45]], .5, 1360 + i, .45);                               // grain
+                bdLine([[A[0] + 1, A[1] + .6], [B[0], B[1] + .6]], .6, 1380 + i, .4);                                                // lit top edge
+            }
+            // far knots (they sit behind the planks' near parts)
+            for (let i = 0; i < n; i++) knot(farP(i), 1400 + i * 4, 1.7);
+
+            // ---- NEAR rope (in front, thicker) ----
+            {
+                const a0 = [thLadderX(0)[1], topY];
+                let prev = a0;
+                ropeSeg([a0[0], D + 4], a0, 3.6, 1500, 1);                           // runs up behind the beam edge
+                for (let i = 0; i < n; i++) { const cur = nearP(i); ropeSeg(prev, cur, 3.6, 1510 + i * 7, 1); prev = cur }
+                tail(prev, 1590);
+            }
+            // near rope wrapped round the front beam
+            {
+                const x = thLadderX(0)[1];
+                for (let k = 0; k < 4; k++) bdLine([[x - 4.2, D + 8 + k * 2.3], [x + 4.2, D + 9.4 + k * 2.3]], 1.6, 1600 + k, 1);
                 ctx.fillStyle = ROPE; ctx.beginPath(); ctx.arc(x + 1, D + 8, 2.6, 0, 7); ctx.fill(); ctx.lineWidth = 1; ctx.stroke();
             }
-            for (let i = 0; i < n; i++) {                                             // planks + knots
-                const [xl, xr] = thLadderX(i), y = Y[i] + d[i];
-                const L = xl - 5 - hash(i * 2.3) * 2.5, R = xr + 5 + hash(i * 3.1) * 2.5, tl = (hash(i * 5.7) - .5) * 2.2, tr = (hash(i * 6.9) - .5) * 2.2, th = 4.2 + hash(i * 1.9) * 1.4;
-                bdShape([[L, y + tl], [R, y + tr], [R + (hash(i * 7.7) - .5) * 1.6, y + tr + th], [L + (hash(i * 8.3) - .5) * 1.6, y + tl + th + .6]], TH_WOODL, 1.4, 800 + i * 5);
-                bdLine([[L + 3, y + tl + th * .5], [R - 3, y + tr + th * .5]], .5, 820 + i, .45);
-                for (const x of [xl, xr]) {
-                    bdLine([[x - 3, y - 2.4], [x + 3, y - 1.6]], 1.5, 830 + i * 4 + (x > 0 ? 1 : 0), 1);             // wraps above and below the plank
-                    bdLine([[x - 3, y + th + 1.4], [x + 3, y + th + 2.2]], 1.5, 840 + i * 4 + (x > 0 ? 1 : 0), 1);
-                    ctx.fillStyle = ROPE; ctx.beginPath(); ctx.arc(x + (hash(x + i) - .5) * 1.5, y - 2.4, 2.2, 0, 7); ctx.fill(); ctx.lineWidth = .9; ctx.stroke();   // knot
-                    ctx.beginPath(); ctx.arc(x, y + th + 2, 1.7, 0, 7); ctx.fill();
-                }
-            }
+            for (let i = 0; i < n; i++) knot(nearP(i), 1650 + i * 4, 2.2);
         }
 
         // =====================================================================
-        //  SIDE-VIEW CLIMBER  (profile stickman on the rope ladder)
-        //
-        //  Cycle = 2 rungs = 12 key poses (TH_CL_FRAMES; set 0 for fully smooth).
-        //  Each half-cycle (1 rung of body rise) runs this sequence:
-        //    0.00-0.20  REACH   older hand lifts off and reaches 2 rungs up
-        //    0.20-0.30  GRIP    hand closes on the rung, arm bends, torso leans in
-        //    0.22-0.70  PULL    shoulders lift first, hips follow a beat later (up -> settle)
-        //    0.45-0.72  STEP    opposite foot lifts, knee folds, searches and lands 2 rungs up
-        //    0.70-1.00  RISE/SETTLE  body finishes rising and settles; roles swap for the next half
-        //  Near hand/foot alternate with far hand/foot (contralateral), and every pose at
-        //  phase 1.0 equals phase 0.0 of the next half, so the loop has no jump.
-        //  The body only moves because the arms/legs move: height comes from the animation.
+        //  CLIMB v3: the REAL player character (drawChar) climbs the rope ladder
+        //  Only the pose changes (hip, lean, arm angles, foot targets). The character is never redrawn.
+        //  Per half-cycle (one rung): REACH hand -> GRIP -> PULL (shoulders, then hips rise) ->
+        //  STEP opposite foot -> LAND (compress) -> SETTLE. Arm0 + leg1 move on even halves, arm1 + leg0 on odd.
         // =====================================================================
-        const TH_CL = { on: false, phi: -1, mv: 0, mode: 'climb', t: 0, xS: 0, top: false, T: null };
-        const TH_CL_RATE = 1.8;          // half-cycles per second (one rung ~0.55 s)
-        const TH_CL_FRAMES = 12;         // key poses per 2-rung cycle (0 = smooth)
+        const TH_CL = { on: false, mode: '', phi: 0, mv: 0, t: 0, F: 1, top: false, pose: null, sp: false, low: 0 };
+        const TH_CL_RATE = 1.5;                    // half-cycles (rungs) per second
+        const TH_PMIN = -1;                        // lowest stance: one foot on the ground, one on the first rung
+        // hip = body distance from ladder centre, hs = hip height above the lower foot (crouch),
+        // a = which rung the lower hand holds above the lower foot, so = stand-off before the ladder, dk = stand spot on the deck
+        const TH_CLB = { hip: 28, hs: 150, a: 3, foot: 4.5, grip: 1.5, so: 60, dk: 20 };
 
-        const thSeg = (p, a, b) => { const t = Math.max(0, Math.min(1, (p - a) / (b - a))); return t * t * (3 - 2 * t); };
+        function thClimbActive() { return TH_CL.on; }
+
         function thLadderCx(y) { const top = TH_DY + 14, t = Math.max(0, Math.min(1, (y - top) / (-12 - top))); return TH_LD.x0 + TH_LD.sw * Math.pow(t, 1.5); }
-        function thRungU(u) {            // y of ladder rung u (0 = bottom rung, going up); extrapolated outside the ladder
+        function thRungU(u) {                       // local y of rung u (0 = bottom rung, going up), extrapolated outside the ladder
             const Y = TH_LD.y, n = TH_LD.n, d = TH_LD.dip, R = TH_LD.R;
             if (u <= 0) return Y[n - 1] + d[n - 1] - u * R;
             if (u >= n - 1) return Y[0] + d[0] - (u - (n - 1)) * R;
             const f = Math.floor(u), t = u - f, a = n - 1 - f, b = a - 1;
             return lerp(Y[a] + d[a], Y[b] + d[b], t);
         }
-        function thIK(a, t, l1, l2, pref) {
-            const dx = t[0] - a[0], dy = t[1] - a[1], d = Math.hypot(dx, dy) || 1e-3, dd = Math.min(d, l1 + l2 - .01), ux = dx / d, uy = dy / d;
-            const x = (l1 * l1 - l2 * l2 + dd * dd) / (2 * dd), h = Math.sqrt(Math.max(0, l1 * l1 - x * x));
-            const p1 = [a[0] + ux * x - uy * h, a[1] + uy * x + ux * h], p2 = [a[0] + ux * x + uy * h, a[1] + uy * x - ux * h];
-            return pref(p1) >= pref(p2) ? p1 : p2;
+
+        // ---- coordinate helpers: ladder-local units <-> character units (cu), world x in cu ----
+        const thWX = lx => (TH_WX + lx * TH_SC) / CSc();
+        const thCuY = yl => (yl * TH_SC - 4) / CSc();           // the character origin sits 4px below the treehouse origin
+        const thLocY = yc => (yc * CSc() + 4) / TH_SC;
+        const thXc = yc => thWX(thLadderCx(thLocY(yc)));        // ladder centre x at a height
+        const thHandX = (yc, F) => thWX(thLadderCx(thLocY(yc)) + F * (TH_LD.w / 2 + TH_CLB.grip));
+        const thSole = u => Math.min(0, thCuY(thRungU(u) - 3)); // sole height on rung u (never below the ground)
+        const thGrip = u => thCuY(Math.max(thRungU(u) - 1, TH_DY - 2));   // grip height on rung u (never above the deck)
+
+        const thStand = (xs, y0, F) => ({
+            hx: xs, hy: y0 - 169.15, lean: 0, kf: false, h: [null, null],
+            f: [{ x: xs + 20 * F, y: y0, lift: 0 }, { x: xs - 20 * F, y: y0, lift: 0 }]    // same numbers as the normal standing pose
+        });
+
+        // stance at climb phase Phi (integer = settled, fraction = inside a half-cycle)
+        function thStance(Phi, F) {
+            const B = TH_CLB, h = Math.floor(Phi), ph = Phi - h, even = (((h % 2) + 2) % 2) === 0;
+            const hr = sm((ph - .04) / .24), rise = sm((ph - .30) / .50), stp = sm((ph - .36) / .38);
+            const comp = 5 * Math.sin(Math.PI * clamp01((ph - .70) / .22));                    // slight compression as the foot lands
+            const hy = lerp(thSole(h), thSole(h + 1), rise) - B.hs + comp;                      // hips follow the pull
+            const hx = thXc(hy) - F * B.hip;
+            const lean = .17 + .09 * Math.sin(Math.PI * clamp01((ph - .24) / .56));             // leans into the ladder while pulling
+            const fx = u => thXc(thSole(u)) - F * B.foot;
+            const arcS = Math.sin(Math.PI * stp);
+            const swing = { x: lerp(fx(h), fx(h + 2), stp) - F * 12 * arcS, y: lerp(thSole(h), thSole(h + 2), stp) - 12 * arcS, lift: Math.min(20, 26 * arcS) };
+            const hold = { x: fx(h + 1), y: thSole(h + 1), lift: 0 };
+            const lo = even ? 1 : 0, f = []; f[lo] = swing; f[1 - lo] = hold;                  // one foot moves at a time
+            const gA = thGrip(h + B.a), gB = thGrip(h + B.a + 1), gC = thGrip(h + B.a + 2), arcH = Math.sin(Math.PI * hr);
+            const reach = { x: lerp(thHandX(gA, F), thHandX(gC, F), hr) - F * 8 * arcH, y: lerp(gA, gC, hr) - 8 * arcH, w: 1 };
+            const holdH = { x: thHandX(gB, F), y: gB, w: 1 };
+            return { hx, hy, lean, f, kf: true, h: even ? [reach, holdH] : [holdH, reach] };
         }
 
-        function thClimbTargets(Phi) {
-            const R = TH_LD.R, D = TH_DY;
-            if (TH_CL_FRAMES) { const h0 = Math.floor(Phi), F = TH_CL_FRAMES / 2; Phi = h0 + Math.round((Phi - h0) * F) / F; }
-            const h = Math.floor(Phi), ph = Phi - h, k = h, even = (((h % 2) + 2) % 2) === 0;
-            const hr = thSeg(ph, 0, .2), fs = thSeg(ph, .45, .72), rs = thSeg(ph, .2, .7), rh = thSeg(ph, .35, .9);
-            const hipY = thRungU(k + 2.4 + rh), cx = thLadderCx(hipY);
-            const pull = Math.sin(Math.PI * thSeg(ph, .15, .85));
-            const hip = [cx - 13 + 1.2 * Math.sin(Math.PI * rh), hipY];
-            const lam = .15 + .12 * pull;                                              // torso leans into the ladder while pulling
-            const shrug = -2.5 * Math.sin(Math.PI * thSeg(ph, .2, .6));                // shoulders pull up a beat before the hips
-            const fy = u => Math.min(thRungU(u) - 2.5, 0);                             // sole on top of the rung (never below ground)
-            const stepFoot = [cx - 1 - 5 * Math.sin(Math.PI * fs) + Math.sin(fs * 9) * 1.5 * (1 - fs) * (fs > 0 && fs < 1 ? 1 : 0),
-                              lerp(fy(k), fy(k + 2), fs) - 7 * Math.sin(Math.PI * fs)];  // lifts off, knee folds, searches, lands
-            const plantFoot = [cx + 1, fy(k + 1)];
-            const gy = u => Math.max(thRungU(u) - 1.5, D - 2);                         // hands grab rungs (or the deck edge at the top)
-            const reachHand = [cx + 9 - 3 * Math.sin(Math.PI * hr), lerp(gy(k + 4), gy(k + 6), hr) - 4 * Math.sin(Math.PI * hr)];
-            const holdHand = [cx + 9, gy(k + 5)];
-            return even ? { hip, lam, shrug, FN: stepFoot, FF: plantFoot, HF: reachHand, HN: holdHand }
-                        : { hip, lam, shrug, FF: stepFoot, FN: plantFoot, HN: reachHand, HF: holdHand };
+        // blend two stances (A = ladder stance, Z = standing). W holds the timing windows. Used for getting on / off.
+        function thMix(A, Z, u, W) {
+            const e = w => sm((u - w[0]) / (w[1] - w[0])), gh = W.hip(u), gx = W.hx(u);
+            const o = { hx: lerp(A.hx, Z.hx, gx), hy: lerp(A.hy, Z.hy, gh), lean: lerp(A.lean, Z.lean, gh), kf: u < .93, f: [], h: [] };
+            for (let i = 0; i < 2; i++) {
+                const s = e(W.f[i]), a = A.f[i], b = Z.f[i], sn = Math.sin(Math.PI * s);
+                o.f.push({ x: lerp(a.x, b.x, s), y: lerp(a.y, b.y, s) - W.arc[i] * sn, lift: Math.min(20, 26 * sn) });
+                const ha = A.h[i]; o.h.push(ha ? { x: ha.x, y: ha.y, w: 1 - e(W.hd) } : null);
+            }
+            return o;
         }
-        function thStandTargets(xS, yG) {
-            const R = TH_LD.R, hip = [xS, yG - 2.55 * R], lam = .03, T = 1.8 * R, sh = [hip[0] + Math.sin(lam) * T, hip[1] - T];
-            return { hip, lam, shrug: 0, FN: [xS + 3, yG], FF: [xS - 3, yG], HN: [sh[0] + 3, sh[1] + 2 * R], HF: [sh[0] - 2, sh[1] + 2.1 * R] };
-        }
-        function thBlend(A, B, e) {
-            const L = (p, q) => [lerp(p[0], q[0], e), lerp(p[1], q[1], e)];
-            const foot = (p, q, f) => { const r = [lerp(p[0], q[0], f), lerp(p[1], q[1], f)]; r[1] -= 9 * Math.sin(Math.PI * f); return r; };
-            return { hip: L(A.hip, B.hip), lam: lerp(A.lam, B.lam, e), shrug: lerp(A.shrug, B.shrug, e),
-                     FN: foot(A.FN, B.FN, thSeg(e, 0, .6)), FF: foot(A.FF, B.FF, thSeg(e, .4, 1)), HN: L(A.HN, B.HN), HF: L(A.HF, B.HF) };
-        }
-        function thSolvePose(Tg) {
-            const R = TH_LD.R, T = 1.8 * R, L1 = 1.3 * R, A1 = 1.1 * R, hip = Tg.hip;
-            const sh = [hip[0] + Math.sin(Tg.lam) * T, hip[1] - Math.cos(Tg.lam) * T + Tg.shrug];
-            const reach = (a, t, l) => { const dx = t[0] - a[0], dy = t[1] - a[1], d = Math.hypot(dx, dy); return d > l - .01 ? [a[0] + dx / d * (l - .01), a[1] + dy / d * (l - .01)] : t; };
-            const legP = p => (p[0] - hip[0]) + (hip[1] - p[1]) * .4, armP = p => -(p[0] - sh[0]) + (p[1] - sh[1]) * .5;   // knees forward, elbows back/down
-            const FN = reach(hip, Tg.FN, 2 * L1), FF = reach(hip, Tg.FF, 2 * L1), HN = reach(sh, Tg.HN, 2 * A1), HF = reach(sh, Tg.HF, 2 * A1);
-            return { hip, sh, FN, FF, HN, HF, kN: thIK(hip, FN, L1, L1, legP), kF: thIK(hip, FF, L1, L1, legP), eN: thIK(sh, HN, A1, A1, armP), eF: thIK(sh, HF, A1, A1, armP) };
+        // u = 0 -> ladder stance, u = 1 -> standing (bottom: on the ground, top: on the deck)
+        function thEdge(top, F, u) {
+            const B = TH_CLB, n = TH_LD.n; let A, Z, W;
+            if (!top) {
+                A = thStance(TH_PMIN, F); Z = thStand(thXc(0) - F * B.so, 0, F);
+                const lo = (((TH_PMIN % 2) + 2) % 2) === 0 ? 1 : 0;
+                W = { hip: v => sm((v - .1) / .75), hx: v => sm(v / .85), hd: [0, .4], f: [], arc: [] };
+                W.f[1 - lo] = [.10, .55]; W.arc[1 - lo] = 16;          // the foot on the first rung steps down first
+                W.f[lo] = [.35, .9]; W.arc[lo] = 0;
+            } else {
+                const pm = n - 2, y0 = TH_DY * TH_SC / CSc();
+                A = thStance(pm, F); Z = thStand(thXc(y0) + F * B.dk, y0, F);
+                const lo = (((pm % 2) + 2) % 2) === 0 ? 1 : 0;
+                W = { hip: v => .33 * sm(v / .45) + .67 * sm((v - .45) / .5), hx: v => sm((v - .2) / .7), hd: [.3, .65], f: [], arc: [] };
+                W.f[lo] = [.12, .5]; W.arc[lo] = 34;                   // lower foot comes up onto the deck first
+                W.f[1 - lo] = [.5, .92]; W.arc[1 - lo] = 26;           // then the other one
+            }
+            return thMix(A, Z, u, W);
         }
 
-        // ---- drawing: strictly profile, facing the ladder (right). Far limbs lighter, near limbs bolder ----
-        function thDrawClimber() {
-            const C = TH_CL; if (!C.on || !C.T) return;
-            const R = TH_LD.R, J = thSolvePose(C.T);
-            bdLine([J.sh, J.eF, J.HF], 2.2, 1100, .55); bdLine([J.hip, J.kF, J.FF], 2.4, 1101, .55); bdLine([J.FF, [J.FF[0] + 7, J.FF[1] + 2]], 2.2, 1102, .55);
-            bdLine([J.hip, J.sh], 2.8, 1103, 1);
-            const a = C.T.lam + .25, hr = .42 * R, nk = .3 * R, hc = [J.sh[0] + Math.sin(a) * (nk + hr), J.sh[1] - Math.cos(a) * (nk + hr)];
-            bdLine([J.sh, [J.sh[0] + Math.sin(a) * nk, J.sh[1] - Math.cos(a) * nk]], 2, 1104, 1);
-            ctx.save(); ctx.beginPath(); ctx.arc(hc[0], hc[1], hr, 0, 7); ctx.fillStyle = '#efeadc'; ctx.fill(); ctx.lineWidth = 2.1; ctx.strokeStyle = '#111'; ctx.stroke();
-            ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(hc[0] + hr * .45, hc[1] - hr * .1, 1.1, 0, 7); ctx.fill(); ctx.restore();   // eye: it faces the ladder
-            bdLine([J.hip, J.kN, J.FN], 2.8, 1105, 1); bdLine([J.FN, [J.FN[0] + 7, J.FN[1] + 2]], 2.6, 1106, 1);
-            bdLine([J.sh, J.eN, J.HN], 2.8, 1107, 1);
-            ctx.fillStyle = '#111'; for (const [p, r] of [[J.HF, 1.8], [J.HN, 2.1]]) { ctx.beginPath(); ctx.arc(p[0], p[1], r, 0, 7); ctx.fill(); }
+        // stance -> the pose object drawChar already understands (comboPose format)
+        function thAssemble(s, F) {
+            const sh = [87 * Math.sin(F * s.lean), s.hy - 87 * Math.cos(F * s.lean)];         // same shoulder drawChar computes
+            const arm = t => {
+                if (!t || t.w < .001) return [.08, 0];                                          // normal hanging arm
+                const [a, f] = ikTo(sh, t.x - s.hx, t.y, F);
+                return [lerp(.08, a, t.w), lerp(0, f, t.w)];
+            };
+            const A0 = arm(s.h[0]), A1 = arm(s.h[1]);
+            const leg = f => {                                                                  // never stretch the legs past their real length
+                const dx = (f.x - s.hx) * F, lim = 150, dyMax = Math.sqrt(Math.max(0, lim * lim - dx * dx));
+                let y = f.y, lift = f.lift; const dy = y - 12 - s.hy;
+                if (dy > dyMax) { y = s.hy + dyMax + 12; lift = Math.max(lift, 14); }
+                else if (dy < -dyMax) { y = s.hy - dyMax + 12; lift = Math.max(lift, 14); }
+                return [dx, y + lift, lift];
+            };
+            return {
+                w: 1, a0: A0[0], f0: A0[1], a1: A1[0], f1: A1[1], lean: s.lean, hipX: 0, hipY: 0, arch: .03, hx: 2, hy: 0,
+                hipAbs: s.hy, l0: leg(s.f[0]), l1: leg(s.f[1]), st: STEPS[0], sw: 0, ik: 0, kneeFull: s.kf !== false
+            };
         }
 
-        // ---- controller: call thLadderUpdate(dt) every frame in the player update; returns true while on the ladder ----
-        const TH_ADAPT = {
-            getLocalX: () => (P.x - TH_WX) / TH_SC,
-            setLocalX: lx => { P.x = TH_WX + lx * TH_SC; },
-            getLocalY: () => (P.thDeck ? (TH_DY + P.z / TH_SC) : (P.z / TH_SC)),
-            setLocalY: ly => {
-                if (P.thDeck) {
-                    P.z = (ly - TH_DY) * TH_SC;
-                } else {
-                    P.z = ly * TH_SC;
-                }
-            },
-            onGround: () => P.z >= 0 || !!P.thDeck,
-            stopMotion: () => { if ('vx' in P) P.vx = 0; if ('vz' in P) P.vz = 0; },
-            keys: () => ({
-                up: !!(keys && (keys.ArrowUp || keys.KeyW || keys.w || keys.W)),
-                down: !!(keys && (keys.ArrowDown || keys.KeyS || keys.s || keys.S)),
-                left: !!(keys && (keys.ArrowLeft || keys.KeyA || keys.a || keys.A)),
-                right: !!(keys && (keys.ArrowRight || keys.KeyD || keys.d || keys.D))
-            }),
-        };
-        let TH_GROUND_Y = 0;
-        function thClimbActive() { return TH_CL.on; }                 // skip your normal player drawing/movement while true
-
+        // ---- controller: call every frame from update(); returns true while the ladder owns the player ----
         function thLadderUpdate(dt) {
             thLadderInit();
-            const A = TH_ADAPT, C = TH_CL, k = A.keys(), D = TH_DY, n = TH_LD.n, PMIN = -1, PMAX = n - 3, x0 = TH_LD.x0;
+            const C = TH_CL, S = CSc(), n = TH_LD.n, pMax = n - 2;
+            const up = !!(keys.ArrowUp || keys.KeyW), down = !!(keys.ArrowDown || keys.KeyS), left = !!(keys.ArrowLeft || keys.KeyA), right = !!(keys.ArrowRight || keys.KeyD);
+
             if (!C.on) {
-                const lx = A.getLocalX(), ly = A.getLocalY();
-                if (k.up && Math.abs(lx - x0) < 22 && ly > -8 && ly < 8 && A.onGround()) {
-                    C.on = true; C.phi = PMIN; C.mode = 'in'; C.t = 0; C.xS = lx; C.mv = 0; C.top = false;
-                    P.thDeck = false; P.dh = 0; P.z = 0;
-                    A.stopMotion();
-                } else if (k.down && Math.abs(lx - x0) < 22 && P.thDeck) {
-                    // grab from top of deck to climb down
-                    C.on = true; C.phi = PMAX; C.mode = 'in'; C.t = 0; C.xS = lx; C.mv = 0; C.top = true;
-                    P.thDeck = false; P.dh = 0; P.z = D * TH_SC;
-                    A.stopMotion();
+                if (P.stc > 0 || P.mount || P.pk > 0 || P.fin > 0 || P.cs > 0 || P.thw > 0 || P.tt > 0 || P.stbk > 0 || P.fs > 0 || P.gu > 0 || P.yk > 0 || P.sgp > 0 || P.gun || P.sg || P.z < 0 || swim.on) return false;
+                if (Math.abs((P.x - TH_WX) / TH_SC - TH_LD.x0) >= 40) return false;
+                let top;
+                if (up && !P.thDeck && !P.dh) top = false; else if (down && P.thDeck) top = true; else return false;
+                Object.assign(C, { on: true, top, mode: 'walk', t: 0, mv: 0, pose: null, sp: !!keys.Space, low: 0 });
+                C.F = top ? (P.face || 1) : (P.x <= TH_WX + thLadderCx(0) * TH_SC ? 1 : -1);
+                P.idle = 0; P.fid = 0; P.fidK = 0; P.abuf = 0; P.jbuf = 0; P.clast = 0; P.grabbed = null;
+                if (P.skid) endSkid(); P.skidK = 0;
+            }
+            const F = C.F;
+
+            // ---- walk to the stand-off spot with the normal walk cycle ----
+            if (C.mode === 'walk') {
+                const gx = (C.top ? thXc(TH_DY * TH_SC / S) + F * TH_CLB.dk : thXc(0) - F * TH_CLB.so) * S;
+                const d = gx - P.x, dir = Math.sign(d) || F, sp = 170;
+                if (Math.abs(d) > sp * dt + .5) {
+                    P.x += dir * sp * dt; P.vx = dir * sp; P.face = dir; P.abuf = 0; P.jbuf = 0;
+                    P.phase += sp * dt / (280 * S) * Math.PI * 2;
+                    P.amp += (1 - P.amp) * Math.min(1, dt * 10);
+                    P.lean += (dir * .4 * (sp / 420) - P.lean) * Math.min(1, dt * 6);
+                    return true;
                 }
-                else return false;
+                P.x = gx; C.mode = 'in'; C.t = 0; P.dh = 0; P.thDeck = false;
             }
 
-            // jump off with space
-            if (keys && keys.Space) {
-                C.on = false; C.T = null;
-                P.vz = -JUMP_V * 0.75;
-                P.vx = (k.left ? -180 : k.right ? 180 : 0);
-                return false;
-            }
+            P.vx = 0; P.vz = 0; P.z = 0; P.face = F; P.amp = 0; P.lean = 0; P.idle = 0; P.fid = 0; P.abuf = 0; P.jbuf = 0;
+            if (!keys.Space) C.sp = false;
+            let st;
 
-            A.stopMotion();
-            if (C.mode === 'in') { C.t = Math.min(1, C.t + dt / .3); if (C.t >= 1) C.mode = 'climb'; }
-            else if (C.mode === 'climb') {
-                const settled = Math.abs(C.phi - Math.round(C.phi)) < 1e-3, inp = k.up || k.down;
-                let want = (k.up ? 1 : 0) - (k.down ? 1 : 0);
-                if (!inp && !settled) want = C.mv;                     // finish the reach/step already in progress
-                if (want !== 0) {
-                    const prev = C.phi; C.mv = want; C.phi += want * TH_CL_RATE * dt;
-                    if (!inp) { if (want > 0 && Math.floor(C.phi) > Math.floor(prev)) { C.phi = Math.floor(C.phi); C.mv = 0; }
-                                if (want < 0 && Math.ceil(C.phi) < Math.ceil(prev)) { C.phi = Math.ceil(C.phi); C.mv = 0; } }
-                }
-                if (C.phi >= PMAX) { C.phi = PMAX; if (k.up) { C.mode = 'out'; C.top = true; C.t = 0; } }
-                if (C.phi <= PMIN) { C.phi = PMIN; if (k.down || k.left || k.right) { C.mode = 'out'; C.top = false; C.t = 0; } }
-            } else {                                                   // 'out'
+            if (C.mode === 'in') {                                           // standing -> first stance
                 C.t = Math.min(1, C.t + dt / .6);
-                if (C.t >= 1) {
-                    C.on = false;
-                    if (C.top) {
-                        P.thDeck = true;
-                        P.dh = -D * TH_SC;
-                        P.z = 0;
-                        A.setLocalX(x0 + 16);
-                        A.setLocalY(D);
-                    } else {
-                        P.thDeck = false;
-                        P.dh = 0;
-                        P.z = 0;
-                        A.setLocalX(x0);
-                        A.setLocalY(0);
+                st = thEdge(C.top, F, 1 - C.t);
+                if (C.t >= 1) { C.mode = 'climb'; C.phi = C.top ? pMax : TH_PMIN; C.mv = 0; }
+            } else if (C.mode === 'climb') {
+                if (keys.Space && !C.sp) {                                   // let go and fall / jump off
+                    C.on = false; C.pose = null; C.mode = '';
+                    P.thDeck = false; P.dh = 0; P.z = Math.min(0, C.low * S);
+                    P.vz = -JUMP_V * .75; P.vx = ((right ? 1 : 0) - (left ? 1 : 0)) * 200; P.jbuf = 0;
+                    return false;
+                }
+                const settled = Math.abs(C.phi - Math.round(C.phi)) < 1e-3, inp = up || down;
+                let want = (up ? 1 : 0) - (down ? 1 : 0);
+                if (!inp && !settled) want = C.mv;                           // finish the rung already in progress
+                if (want) {
+                    const prev = C.phi; C.mv = want; C.phi += want * TH_CL_RATE * dt;
+                    if (!inp) {
+                        if (want > 0 && Math.floor(C.phi) > Math.floor(prev)) { C.phi = Math.floor(C.phi); C.mv = 0; }
+                        if (want < 0 && Math.ceil(C.phi) < Math.ceil(prev)) { C.phi = Math.ceil(C.phi); C.mv = 0; }
                     }
-                    C.T = null;
+                }
+                if (C.phi >= pMax) { C.phi = pMax; if (up) { C.mode = 'out'; C.top = true; C.t = 0; } }
+                if (C.phi <= TH_PMIN) { C.phi = TH_PMIN; if (down || left || right) { C.mode = 'out'; C.top = false; C.t = 0; } }
+                st = thStance(C.phi, F);
+            } else {                                                         // 'out': stance -> standing (deck or ground)
+                C.t = Math.min(1, C.t + dt / (C.top ? 1.1 : .7));
+                st = thEdge(C.top, F, C.t);
+                if (C.t >= 1) {
+                    P.x = st.hx * S; C.on = false; C.pose = null; C.mode = '';
+                    P.vx = 0; P.vz = 0; P.z = 0; P.face = F;
+                    if (C.top) { P.thDeck = true; P.dh = -TH_DY * TH_SC; } else { P.thDeck = false; P.dh = 0; }
                     return false;
                 }
             }
-            const cl = thClimbTargets(C.phi); let Tg = cl, w = 1;
-            if (C.mode === 'in') { Tg = thBlend(thStandTargets(C.xS, 0), cl, C.t); w = C.t; }
-            else if (C.mode === 'out') { Tg = thBlend(cl, C.top ? thStandTargets(x0 + 16, D) : thStandTargets(x0, 0), C.t); w = 1 - C.t; }
-            C.T = Tg;
-            A.setLocalX(Tg.hip[0]); A.setLocalY(Math.max(Tg.FN[1], Tg.FF[1]));         // camera/player follow the climber
-            for (const f of [Tg.FN, Tg.FF]) thLadderLoad(f[1], .5 * w);                 // feet and hands load the ropes
-            for (const h of [Tg.HN, Tg.HF]) thLadderLoad(h[1], .2 * w);
+
+            P.x = st.hx * S;
+            C.low = Math.max(st.f[0].y, st.f[1].y);
+            C.pose = thAssemble(st, F);
+            for (const f of st.f) thLadderLoad(thLocY(f.y), .5);              // feet and hands load the rungs
+            for (const hd of st.h) if (hd) thLadderLoad(thLocY(hd.y), .2 * hd.w);
             return true;
         }
 
@@ -9218,7 +9261,6 @@
             bdLine([[-281, D - 38], [-235, D - 37]], 2.8, 762);
             bdLine([[-276, D - 18], [-262, D - 36]], 1.4, 763, .8); bdLine([[-240, D - 18], [-254, D - 36]], 1.4, 764, .8);
             thDrawRopeLadder(now);
-            thDrawClimber();                                          // profile stickman, drawn over the ladder
 
             // ---- J. sunlight, airy crown, twigs ----
             if (day > .05) {
@@ -9242,7 +9284,7 @@
             if (typeof thClimbActive === 'function' && thClimbActive()) return;
             const S = CSc(), now = performance.now();
             const lx = (P.x - TH_WX) / TH_SC;
-            const near = Math.abs(lx - TH_LD.x0) < 26;
+            const near = Math.abs(lx - TH_LD.x0) < 40;
             if (!near) return;
             const atBottom = !P.thDeck && P.z >= -6 && P.z <= 6;
             const atTop = P.thDeck;
@@ -12975,7 +13017,7 @@
             drawBGoreAir(gy);
             drawHorse(gy);
             beginSwimDraw(gy);
-            if (!(typeof thClimbActive === 'function' && thClimbActive())) drawChar(W / 2, gy - P.dh, P);
+            drawChar(W / 2, gy - P.dh, P);
             endSwimDraw();
             drawBreath(gy);
             drawStairHint(gy);
