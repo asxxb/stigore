@@ -10445,6 +10445,8 @@
 
             ctx.translate(ox, gl); ctx.scale(S, S);
             const pk = mtY(MT_X), top = (x) => mtY(x);
+            const fadeR = MT_X + 60, fadeL = MT_X - 900;
+            const pnt = (x) => Math.max(0, Math.min(1, (x - fadeL) / (fadeR - fadeL)));   // 1 = fully painted, 0 = bare paper
             const body = () => { ctx.beginPath(); ctx.moveTo(x0, 2); for (let x = x0; x < x1; x += 8) ctx.lineTo(x, top(x)); ctx.lineTo(x1, top(x1)); ctx.lineTo(x1, 2); ctx.closePath(); };
 
             // 2. soft green body, shaded right side, contours, ticks, foot mist
@@ -10478,15 +10480,48 @@
             const g = ctx.createLinearGradient(0, -600, 0, 2);                           // mist melts the foot into the ground
             g.addColorStop(0, 'rgba(239,232,212,0)'); g.addColorStop(1, 'rgba(239,232,212,.6)');
             ctx.fillStyle = g; ctx.fillRect(x0, -600, x1 - x0, 602);
+
+            // --- unpainted half: color washes out to paper, pencil takes over ---
+            const wash = ctx.createLinearGradient(fadeR, 0, fadeL, 0);
+            wash.addColorStop(0, 'rgba(239,232,212,0)'); wash.addColorStop(.45, 'rgba(239,232,212,.75)'); wash.addColorStop(1, 'rgba(239,232,212,1)');
+            ctx.fillStyle = wash; ctx.fillRect(fadeL - 200, -MT_H - 100, fadeR - fadeL + 200, MT_H + 110);
+
+            ctx.lineCap = 'butt'; ctx.strokeStyle = '#a9b988';                    // dry-brush streaks where the paint runs out
+            for (let i = 0; i < 70; i++) {
+                const x = fadeR - hash(i * 3.3) * 600, y = -hash(i * 5.9) * MT_H * .95;
+                if (y < top(x) + 20) continue;
+                ctx.globalAlpha = .35 * (1 - (fadeR - x) / 600); ctx.lineWidth = 8 + hash(i) * 10;
+                const len = 80 + hash(i * 7.1) * 200;
+                ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - len, y + len * .12); ctx.stroke();
+            }
+            ctx.lineCap = 'round'; ctx.strokeStyle = '#3a362e'; ctx.lineWidth = 1.2 / S;   // loose pencil hatching
+            for (let i = 0; i < 70; i++) {
+                const x = fadeL + 100 + i * 14 + hash(i * 2.1) * 10, yt = top(x);
+                if (yt > -30) continue;
+                const y0 = yt + 14 + hash(i * 4.7) * 60, len = 120 + hash(i * 6.1) * 420;
+                ctx.globalAlpha = (1 - pnt(x)) * (.25 + .35 * hash(i * 8.3));
+                ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x - len * .18, y0 + len); ctx.stroke();
+            }
+            ctx.globalAlpha = 1;
             ctx.restore();
 
-            // 3. wobbly ink outline
-            ctx.lineWidth = 3 / S; ctx.strokeStyle = '#111'; ctx.beginPath();
-            for (let x = x0, f = 1; x <= x1; x += 8, f = 0) { const y = top(x) + (hash(Math.round(x / 8) * 1.37) - .5) * 3; f ? ctx.moveTo(x, y) : ctx.lineTo(x, y); }
-            ctx.stroke();
+            // 3. outline: bold ink on the painted side, thin broken pencil (doubled) on the unfinished side
+            ctx.strokeStyle = '#111'; ctx.lineCap = 'round';
+            const wob = (v) => top(v) + (hash(Math.round(v / 8) * 1.37) - .5) * 3;
+            for (let x = x0; x < x1; x += 8) {
+                const p = pnt(x);
+                if (hash(Math.floor(x / 48) + 7) > .35 + .65 * p) continue;           // pencil gaps (never on the painted side)
+                ctx.globalAlpha = .12 + .88 * Math.sqrt(p); ctx.lineWidth = (1.1 + 1.9 * p) / S;
+                ctx.beginPath(); ctx.moveTo(x, wob(x)); ctx.lineTo(x + 8, wob(x + 8)); ctx.stroke();
+                if (p < .9) {                                                         // second, sloppy sketch line
+                    ctx.globalAlpha *= .55; ctx.lineWidth = .9 / S;
+                    ctx.beginPath(); ctx.moveTo(x + 3, wob(x + 3) + 6); ctx.lineTo(x + 11, wob(x + 11) + 5); ctx.stroke();
+                }
+            }
+            ctx.globalAlpha = 1;
 
             // 4. sparse bushes + grass tufts (scaled up so they read at this size)
-            const TX = MT_X - 520;
+            const TX = MT_X + 700;
             const bush = (x, s) => {
                 const y = top(x) + 3 * s; ctx.fillStyle = '#6f8f4f'; ctx.lineWidth = 1.6 / S;
                 for (const [dx, dy, r] of [[-5, -4, 5], [0, -7, 6], [6, -4, 5]]) { ctx.beginPath(); ctx.arc(x + dx * s, y + dy * s, r * s, 0, 7); ctx.fill(); ctx.stroke(); }
@@ -10496,11 +10531,11 @@
             for (let i = 0; i < 60; i++) {
                 const x = MT_X - MT_WL + 120 + i * step + (hash(i * 2.7) - .5) * 50;
                 if (x < x0 - 60 || x > x1 + 60 || Math.abs(x - TX) < 160 || top(x) > -12) continue;
-                bush(x, 2 + hash(i * 4.1) * 1.6);
+                ctx.globalAlpha = pnt(x); bush(x, 2 + hash(i * 4.1) * 1.6); ctx.globalAlpha = 1;
             }
             ctx.lineWidth = 1.6 / S; ctx.strokeStyle = '#3f5f32'; ctx.beginPath();
             for (let x = Math.ceil(x0 / 32) * 32; x <= x1; x += 32) {
-                const h0 = hash(x * .37); if (h0 > .55 || top(x) > -10) continue;
+                const h0 = hash(x * .37); if (h0 > .55 || top(x) > -10 || pnt(x) < .4) continue;
                 const y = top(x) + 4 + h0 * 10, n = 4 + Math.floor(hash(x * .3) * 3);
                 for (let j = 0; j < n; j++) { const a = (j - n / 2) * 7; ctx.moveTo(x + a, y); ctx.quadraticCurveTo(x + a + (j - n / 2) * 2, y - 12, x + a * 1.5, y - 18 - hash(x + j) * 8); }
             }
@@ -14873,6 +14908,8 @@
             if (hitstop > 0) { hitstop -= dt0; dt = 0 }
 
             update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); sgTick(dt); sgGroundTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); waterFXTick(dt); brainTick(dt); hzTick(dt); gibTick(dt); boneTick(dt); weatherTick(dt); horseTick(dt); birdTick(dt); fowlTick(dt); frogTick(dt); duckTick(dt); crocTick(dt); bgTick(dt); dayTick(dt0); fireflyTick(dt0); stExtrasTick(dt0);
+            const MT_STOP = TH_WX + (MT_X - 120) * TH_SC;     // just past the summit
+            if (P.x < MT_STOP) { P.x = MT_STOP; if (P.vx < 0) P.vx = 0; }
             deckTick();
             updateCamera(dt);
             shake = Math.max(0, shake - dt0 * 60);
