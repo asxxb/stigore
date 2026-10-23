@@ -8700,12 +8700,14 @@
         const TH_WX = -9300;               // world x of the trunk
         const TH_SC = 3.4 * BLD;           // scale (stilt house uses 4.2 * BLD)
         const TH_DY = -330;                // deck height above ground (local units)
+        const TH_HX = 50;   // extra cabin wall height (was 0)
+        const TH_WO = 20;   // how far the windows rise, so they sit mid-wall
         const TH_LANT = [214, -398];       // lantern centre (local units), used by the night light
         const TH_BARK = 'rgba(150,120,85,.40)', TH_WOODL = 'rgba(196,160,108,.50)', TH_WOODD = 'rgba(140,104,66,.55)';
         const TH_LEAF = ['rgba(110,135,95,.26)', 'rgba(135,150,100,.24)', 'rgba(95,120,100,.24)'];
 
         // glowing cabin window at night + lantern perches for birds
-        NIGHT_LIGHTS.push({ wx: TH_WX, sc: TH_SC, r: [[52, -402, 34, 30, 1, 1]] });
+        NIGHT_LIGHTS.push({ wx: TH_WX, sc: TH_SC, r: [[52, TH_DY - 72 - TH_WO, 34, 30, 1, 1]] });
         PERCH.push({ x: TH_WX + 14 * TH_SC, y: -335 * TH_SC, by: null }, { x: TH_WX + 92 * TH_SC, y: -241 * TH_SC, by: null }, { x: TH_WX + 214 * TH_SC, y: -398 * TH_SC, by: null });
 
         // ---------- helpers ----------
@@ -9148,8 +9150,8 @@
             const sc = TH_SC, sx = W / 2 + TH_WX - P.x;
             if (sx + 340 * sc < -50 || sx - 640 * sc > W + 50) return;
             const now = performance.now() / 1000, D = TH_DY, day = 1 - DN.d, BY = D - 6;
-            const H = v => D - 120 - (v - 120) * .62;                       // compact crown above the roof
-            const WT = D - 95;                                              // top of cabin walls
+            const H = v => D - 120 - TH_HX - (v - 120) * .62;   // crown rises with the roof
+            const WT = D - 95 - TH_HX;                          // top of cabin walls
             bdBegin(sx, gy, sc);
 
             // ---- A. ground, distant trees, path ----
@@ -9228,21 +9230,21 @@
             thPlankFill(SIDE, 130, 152, BY, WT - 11, 19);
             bdLine([[-130, BY], [-130, WT]], 3.2, 20); bdLine([[130, BY], [130, WT]], 3.2, 21);
             bdRect(-134, BY - 3, 268, 4, TH_WOODD, 1.4, 25);                 // sill beam
-            bdShape([[-130, D - 90], [130, D - 90.4], [130, D - 86], [-130, D - 85.6]], TH_WOODD, 1.2, 28);   // belt course ties the whole facade together
-            thWin(-74, D - 66, 22, 26, 45);
-            thWin(52, D - 72, 34, 30, 43);                                   // glows at night
-            thWin(92, D - 72, 28, 30, 47);
+            bdShape([[-130, D - 90 - TH_HX], [130, D - 90.4 - TH_HX], [130, D - 86 - TH_HX], [-130, D - 85.6 - TH_HX]], TH_WOODD, 1.2, 28);   // belt course ties the whole facade together
+            thWin(-74, D - 66 - TH_WO, 22, 26, 45);
+            thWin(52, D - 72 - TH_WO, 34, 30, 43);                                   // glows at night
+            thWin(92, D - 72 - TH_WO, 28, 30, 47);
             bdShape([[-112, BY], [-111.5, D - 72], [-82, D - 73], [-82, BY]], 'rgba(150,108,64,.62)', 1.7, 31);   // door (left of the tree bay)
             bdPlanks(-112, -82, BY - 2, D - 71, 6, 32);
             bdLine([[-112, D - 46], [-82, D - 45]], 1, 33, .6);
             ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(-88, D - 38, 1.5, 0, 7); ctx.fill();
             bdShape([[-120, D - 80], [-74, D - 80.5], [-70, D - 74], [-124, D - 73.5]], TH_WOODD, 1.3, 36);       // awning
             bdLine([[-116, D - 74], [-116, D - 80]], 1.6, 37, .9); bdLine([[-78, D - 74], [-78, D - 80]], 1.6, 38, .9);
-            bdRect(-78, D - 40, 30, 4, TH_WOODD, 1.1, 47); bdRect(48, D - 42, 42, 4, TH_WOODD, 1.1, 48); bdRect(88, D - 42, 36, 4, TH_WOODD, 1.1, 49);   // window sills
+            bdRect(-78, D - 40 - TH_WO, 30, 4, TH_WOODD, 1.1, 47); bdRect(48, D - 42 - TH_WO, 42, 4, TH_WOODD, 1.1, 48); bdRect(88, D - 42 - TH_WO, 36, 4, TH_WOODD, 1.1, 49);   // window sills
 
             // THE TREE BAY: an intentional structural opening in the otherwise continuous front wall; the tree passes through the cabin here
             {
-                const BX0 = -44, BX1 = 36, BT = D - 80, BB = D - 11, cx = -5, bay = [[BX0, BT], [BX1, BT], [BX1, BB], [BX0, BB]];
+                const BX0 = -44, BX1 = 36, BT = D - 80 - TH_HX, BB = D - 11, cx = -5, bay = [[BX0, BT], [BX1, BT], [BX1, BB], [BX0, BB]];
                 thTint(bay, 'rgb(142,116,82)');                                                         // interior back wall
                 for (let y = BT + 7; y < BB - 10; y += 8 + hash(y) * 1.5) bdLine([[BX0 + 2, y], [BX1 - 2, y + (hash(y + 1) - .5)]], .6, y, .35);
                 thTint(bay, 'rgba(40,28,16,.22)');
@@ -9265,7 +9267,7 @@
 
             // flat roof: thick rough boards, irregular edges, overhang, beams
             {
-                const x0 = -150, x1 = 150, T = D - 108, B = D - 94, top = [], bot = [];
+                const x0 = -150, x1 = 150, T = D - 108 - TH_HX, B = D - 94 - TH_HX, top = [], bot = [];
                 for (let x = x0; x <= x1; x += 37.5) { top.push([x, T + (hash(x * .3) - .5) * 1.8]); bot.push([x, B + (hash(x * .7) - .5) * 1.8]); }
                 thTint([[x0, T + 1], [x1, T], [x1 + 22, T - 11], [x1 + 22, B - 11], [x1, B], [x0, B]], 'rgb(236,228,200)');   // opaque underlay (covers trunk)
                 thSolid([[x0, T], [x1, T], [x1 + 22, T - 11], [x0 + 22, T - 11]], TH_WOODL, 1.8, 6);                         // top face (gives depth)
