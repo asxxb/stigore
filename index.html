@@ -10426,6 +10426,7 @@
             return -(MT_H * Math.pow(1 - u * u, 1.35) + 90 * Math.exp(-Math.pow((x - (MT_X - 1300)) / 260, 2)) * (1 - u));   // round peak + soft knoll
         }
         function mtGround(wx) { return -mtY((wx - TH_WX) / TH_SC) * TH_SC; }   // height above ground in px at world x (for the player)
+        const MT_STOP_X = () => TH_WX + (MT_X - 120) * TH_SC;   // function, so it follows TH_WX / MT_X if you change them
 
         function drawMountain(gy) {
             const S = TH_SC, ox = W / 2 + TH_WX - P.x, gl = gy + 1;
@@ -14908,8 +14909,11 @@
             if (hitstop > 0) { hitstop -= dt0; dt = 0 }
 
             update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); sgTick(dt); sgGroundTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); waterFXTick(dt); brainTick(dt); hzTick(dt); gibTick(dt); boneTick(dt); weatherTick(dt); horseTick(dt); birdTick(dt); fowlTick(dt); frogTick(dt); duckTick(dt); crocTick(dt); bgTick(dt); dayTick(dt0); fireflyTick(dt0); stExtrasTick(dt0);
-            const MT_STOP = TH_WX + (MT_X - 120) * TH_SC;     // just past the summit
-            if (P.x < MT_STOP) { P.x = MT_STOP; if (P.vx < 0) P.vx = 0; }
+            const stopX = MT_STOP_X();
+            const gap = HORSE.x - stopX;                                  // distance left before the dead end
+            if (gap < 350 && HORSE.vx < 0) HORSE.vx *= Math.max(0, 1 - dt * 6 * (1 - gap / 350));   // eases to stop
+            if (P.x < stopX) { P.x = stopX; if (P.vx < 0) P.vx = 0; }
+            if (HORSE.x < stopX) { HORSE.x = stopX; if (HORSE.vx < 0) HORSE.vx = 0; }
             deckTick();
             updateCamera(dt);
             shake = Math.max(0, shake - dt0 * 60);
