@@ -7342,6 +7342,18 @@
                 ctx.quadraticCurveTo(nc[0], nc[1], n1[0], n1[1]);
             };
 
+            const beh = h.hDead && h.beheaded;
+            let NG = null;
+            if (beh) {
+                NG = horseNeckGeo(); h.stump = horseStumpWorld(NG);
+                const L = 700, nx = -NG.ty, ny = NG.tx;
+                ctx.save(); ctx.beginPath();
+                ctx.moveTo(NG.ex + nx * L, NG.ey + ny * L); ctx.lineTo(NG.ex - nx * L, NG.ey - ny * L);
+                ctx.lineTo(NG.ex - nx * L - NG.tx * L, NG.ey - ny * L - NG.ty * L);
+                ctx.lineTo(NG.ex + nx * L - NG.tx * L, NG.ey + ny * L - NG.ty * L);
+                ctx.closePath(); ctx.clip();
+            }
+
             // ---- outline pass (drawn under the body so everything merges) ----
             yawIn('n', 46);
             ctx.strokeStyle = '#111';
@@ -7952,6 +7964,7 @@
             }
 
             yawOut();
+            if (beh) { ctx.restore(); drawHorseStump(NG); }
 
             // ============================================================
             // SADDLE
@@ -11228,6 +11241,275 @@
             pc: [null, null, null, null], jf: [null, null, null, null], lw: [0, 0, 0, 0], pd: [0, 0, 0, 0]
         });
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        // ================= HORSE: HEAD SHATTER + NECK STUMP =================
+        const HZ_BEHEAD_ALL = false;    // true = every kill removes the head, false = only headshot kills
+        const HZ_CUT = .8;             // where the neck is severed (0 = shoulder, 1 = poll)
+        const HZ_SPRAY_T = 1.8;        // seconds of arterial spray from the stump
+        Object.assign(HRS, { beheaded: 0, stump: null, sprayT: 0, stSeed: 7 });
+        const hz = { bone: [], brain: [], vein: [] };
+
+        // neck curve in horse-local space (same formulas drawHorse uses) + the cut point and its tangent
+        function horseNeckGeo() {
+            const h = HRS, by = hrsBob() + h.cmp, gk = h.gk, rg = h.rg, kk = sm(Math.abs(h.vx) / 50);
+            const nod = Math.sin(h.ph * 2 * Math.PI) * 5 * kk * (.2 + rg) + (h.huff > 0 ? huffOff(h.huff) : 0);
+            const n0 = [46, -124 + by];
+            const n1 = [lerp(88 + 4 * rg, 100, gk) + h.nkFwd, lerp(-188 + by + nod - 4 * rg, -52, gk) + h.nkLow];
+            const nc = [lerp(76, 90, gk) + h.nkFwd * .55, lerp(-152 + by, -100, gk) + h.nkLow * .4];
+            const t = HZ_CUT, u = 1 - t;
+            let tx = 2 * u * (nc[0] - n0[0]) + 2 * t * (n1[0] - nc[0]), ty = 2 * u * (nc[1] - n0[1]) + 2 * t * (n1[1] - nc[1]);
+            const tl = Math.hypot(tx, ty) || 1; tx /= tl; ty /= tl;
+            return {
+                ex: u * u * n0[0] + 2 * u * t * nc[0] + t * t * n1[0],
+                ey: u * u * n0[1] + 2 * u * t * nc[1] + t * t * n1[1], tx, ty
+            };
+        }
+        // -> [world x, world y, dirX, dirY] (direction points out of the stump, where the head was)
+        function horseStumpWorld(G) {
+            const h = HRS, S = CSc(), cx = S * HORSE_W, ky = S * HORSE_H, F = h.base;
+            const dx = F * cx * G.tx, dy = ky * G.ty, dl = Math.hypot(dx, dy) || 1;
+            return [h.x + F * cx * G.ex, h.z + ky * G.ey, dx / dl, dy / dl];
+        }
+
+        // ---------- the shatter: bone shards, brain matter, tearing veins ----------
+        function horseShatter(F) {
+            const h = HRS, S = CSc(), R = Math.random, cx = S * HORSE_W, ky = S * HORSE_H;
+            const Z = horseZones().head, hx = h.x + h.base * Z[0] * cx, hy = h.z + Z[1] * ky;
+            const st = horseStumpWorld(horseNeckGeo());
+            h.stump = st; h.sprayT = 0; h.stSeed = R() * 90;
+
+            // BONE DEBRIS: small sharp shards, very fast, slow tumble
+            for (let i = 0; i < 24; i++) {
+                const a = R() * Math.PI * 2, sp = 650 + R() * 950;
+                const pts = [[1.7 + R() * .5, (R() - .5) * .3], [.3, -.45 - R() * .35], [-1 + R() * .2, -.25], [-1.3, .2 + R() * .2], [.1, .5 + R() * .35]];
+                hz.bone.push({
+                    x: hx + (R() - .5) * 34 * S, y: Math.min(-6, hy + (R() - .5) * 26 * S),
+                    vx: Math.cos(a) * sp + F * 220, vy: Math.sin(a) * sp - 180,
+                    rot: R() * 6.28, vr: (R() - .5) * 9, s: (3.5 + R() * 6.5) * S, pts, landed: false, bn: 0, t: 0
+                });
+            }
+            // BRAIN MATTER: bigger, soft blobs, slower launch, heavier gravity
+            for (let i = 0; i < 16; i++) hz.brain.push({
+                x: hx + (R() - .5) * 30 * S, y: Math.min(-6, hy + (R() - .5) * 22 * S),
+                vx: F * (50 + R() * 260) + (R() - .5) * 260, vy: -(60 + R() * 300),
+                r: (5 + R() * 7) * S, rot: R() * 6, vr: (R() - .5) * 7, seed: R() * 99, landed: false, bn: 0, t: 0, bl: 0
+            });
+            // VEINS: anchored in the stump, the free end flies off, the line stretches and thins until it snaps
+            const cols = ['#b3141c', '#8c0d14', '#6b2a5a', '#e9786c'];
+            for (let i = 0; i < 8; i++) {
+                const off = (i - 3.5) * 2.8, nx = -st[3], ny = st[2], ax = st[0] + nx * off, ay = st[1] + ny * off;
+                const a = Math.atan2(st[3], st[2]) + (R() - .5) * 1.1, sp = 260 + R() * 420;
+                hz.vein.push({
+                    ax, ay, bx: ax + Math.cos(a) * 6, by: ay + Math.sin(a) * 6,
+                    vx: Math.cos(a) * sp + F * 60, vy: Math.sin(a) * sp - 80, avx: 0, avy: 0,
+                    att: 1, off, max: (80 + R() * 90) * S, w: (1.5 + R() * 1.4) * S, col: cols[i % 4], t: 0, bl: 0
+                });
+            }
+            // blast of blood from where the head was
+            spray(hx, hy, 80, 760, F); spray(hx, hy, 36, 520, -F); spray(hx, hy, 24, 340, 0);
+            burst(hx, hy, 50, 520, F); burst(hx, hy, 20, 300, -F);
+            impacts.push({ x: hx, y: hy, t: 0, life: .35, s: 190, seed: R() * 50 });
+        }
+
+        function hzTick(dt) {
+            if (!(dt > 0)) return;
+            const S = CSc(), R = Math.random, h = HRS;
+            for (let i = hz.bone.length - 1; i >= 0; i--) {
+                const b = hz.bone[i]; b.t += dt;
+                if (!b.landed) {
+                    b.vy += 1500 * dt; b.x += b.vx * dt; b.y += b.vy * dt; b.rot += b.vr * dt;
+                    if (onWater(b.x) && b.y >= waterSurfaceY(b.x)) { splash(b.x, 1.4, 3); addBubble(b.x, 6); hz.bone.splice(i, 1); continue }
+                    if (!onWater(b.x) && b.y >= -b.s * .3) {
+                        b.y = -b.s * .3;
+                        if (Math.abs(b.vy) > 260 && b.bn < 2) { b.vy *= -.3; b.vx *= .55; b.vr *= .5; b.bn++; burst(b.x, -2, 2, 100, Math.sign(b.vx) || 1) }
+                        else { b.landed = true; b.t = 0; b.vx = b.vy = b.vr = 0 }
+                    }
+                } else if (b.t > 18) hz.bone.splice(i, 1);
+            }
+            for (let i = hz.brain.length - 1; i >= 0; i--) {
+                const b = hz.brain[i]; b.t += dt;
+                if (!b.landed) {
+                    b.vy += 2600 * dt; b.vx *= Math.exp(-.5 * dt); b.x += b.vx * dt; b.y += b.vy * dt; b.rot += b.vr * dt;
+                    b.bl -= dt; if (b.bl <= 0 && b.t < 1.2) { b.bl = .05; bgDrop(b.x, b.y, b.vx * .05 + (R() - .5) * 30, 10 + R() * 30, 1 + R() * 1.4) }
+                    if (onWater(b.x) && b.y >= waterSurfaceY(b.x)) { splash(b.x, 1.8, 4); wClouds.push({ x: b.x, y: 4, r: 4, g: 12, t: 0, life: 1.5, k: 0 }); hz.brain.splice(i, 1); continue }
+                    if (!onWater(b.x) && b.y >= -b.r * .4) {
+                        b.y = -b.r * .4;
+                        if (b.vy > 420 && !b.bn) { b.vy *= -.22; b.vx *= .5; b.bn = 1; for (let k = 0; k < 3; k++) bgDrop(b.x, -2, (R() - .5) * 140, -(40 + R() * 100), 1 + R()) }
+                        else { b.landed = true; b.t = 0; b.vx = b.vy = b.vr = 0; bgStain(b.x, b.r * 2.6, true) }
+                    }
+                } else if (b.t > 16) hz.brain.splice(i, 1);
+            }
+            for (let i = hz.vein.length - 1; i >= 0; i--) {
+                const v = hz.vein[i]; v.t += dt;
+                if (v.att) {
+                    const st = h.stump;
+                    if (!h.beheaded || !st) v.att = 0;
+                    else { v.ax = st[0] - st[3] * v.off; v.ay = st[1] + st[2] * v.off }   // anchor follows the stump
+                }
+                if (v.att) {
+                    v.vy += 900 * dt; v.vx *= Math.exp(-.5 * dt); v.bx += v.vx * dt; v.by += v.vy * dt;
+                    if (Math.hypot(v.bx - v.ax, v.by - v.ay) > v.max) {                 // tissue tears
+                        v.att = 0; v.avx = -v.vx * .2 + (R() - .5) * 60; v.avy = -(60 + R() * 140);
+                        for (let k = 0; k < 6; k++) bgDrop(v.ax, v.ay, (R() - .5) * 200, -(30 + R() * 160), 1 + R() * 1.4);
+                    }
+                } else {
+                    v.avy += 1500 * dt; v.ax += v.avx * dt; v.ay += v.avy * dt; v.avx *= Math.exp(-.8 * dt);
+                    v.vy += 1500 * dt; v.bx += v.vx * dt; v.by += v.vy * dt; v.vx *= Math.exp(-.8 * dt);
+                    const fl = -1.5 * S;
+                    if (v.ay > fl) { v.ay = fl; v.avx = v.avy = 0 }
+                    if (v.by > fl) { v.by = fl; v.vx = v.vy = 0 }
+                }
+                v.bl -= dt; if (v.bl <= 0 && v.t < 3) { v.bl = .07; bgDrop(v.bx, v.by, (R() - .5) * 20, 10 + R() * 20, 1 + R()) }
+                if (onWater(v.bx) && v.by >= waterSurfaceY(v.bx)) { splash(v.bx, 1, 2); hz.vein.splice(i, 1); continue }
+                if (v.t > 22) hz.vein.splice(i, 1);
+            }
+        }
+
+        function drawHzFx(gy) {
+            if (!hz.bone.length && !hz.brain.length && !hz.vein.length) return;
+            const S = CSc(), X = x => x - P.x + W / 2, Y = y => gy + 4 + y;
+            ctx.save(); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+            for (const v of hz.vein) {                                  // veins: elongate, thin out, then snap
+                const ax = X(v.ax), ay = Y(v.ay), bx = X(v.bx), by = Y(v.by);
+                if (Math.max(ax, bx) < -80 || Math.min(ax, bx) > W + 80) continue;
+                const L = Math.hypot(bx - ax, by - ay), s = v.att ? clamp01(L / v.max) : 1, w = v.w * (1 - .62 * s);
+                const sag = v.att ? (1 - s) * 14 * S : Math.min(24 * S, Math.max(0, v.max * .8 - L) * .3);
+                const mx = (ax + bx) / 2, my = (ay + by) / 2 + sag;
+                ctx.globalAlpha = v.t > 18 ? Math.max(0, 1 - (v.t - 18) / 4) : 1;
+                const pass = (lw, col, al) => { ctx.globalAlpha *= al; ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.beginPath(); ctx.moveTo(ax, ay); ctx.quadraticCurveTo(mx, my, bx, by); ctx.stroke(); ctx.globalAlpha /= al };
+                pass(w + 1.8, '#3a0508', 1); pass(w, v.col, 1); pass(w * .3, '#fbd5cc', .55);
+                ctx.fillStyle = '#8c0d14'; ctx.beginPath(); ctx.arc(bx, by, w * .6 + .8, 0, 7); ctx.fill();
+                if (!v.att) { ctx.beginPath(); ctx.arc(ax, ay, w * .6 + .8, 0, 7); ctx.fill() }
+            }
+            for (const b of hz.bone) {                                  // bone shards: sharp polygons
+                const sx = X(b.x); if (sx < -40 || sx > W + 40) continue;
+                ctx.globalAlpha = b.landed ? Math.min(1, (18 - b.t) / 3) : 1;
+                ctx.save(); ctx.translate(sx, Y(b.y)); ctx.rotate(b.rot);
+                ctx.beginPath(); b.pts.forEach((p, i) => i ? ctx.lineTo(p[0] * b.s, p[1] * b.s) : ctx.moveTo(p[0] * b.s, p[1] * b.s)); ctx.closePath();
+                ctx.fillStyle = '#efe9da'; ctx.fill(); ctx.strokeStyle = '#111'; ctx.lineWidth = 1.4; ctx.stroke();
+                ctx.fillStyle = '#a8261f'; ctx.beginPath(); ctx.arc(-b.s * .9, 0, Math.max(.8, b.s * .16), 0, 7); ctx.fill();   // marrow at the broken end
+                ctx.restore();
+            }
+            for (const b of hz.brain) {                                 // brain matter: soft, wet, deep pink/red
+                const sx = X(b.x); if (sx < -40 || sx > W + 40) continue;
+                ctx.globalAlpha = b.landed ? Math.min(1, (16 - b.t) / 3) : 1;
+                ctx.save(); ctx.translate(sx, Y(b.y)); ctx.rotate(b.landed ? b.rot * .2 : b.rot); ctx.scale(1, b.landed ? .55 : 1);
+                const n = 7, pts = [];
+                for (let j = 0; j < n; j++) { const a = j / n * Math.PI * 2, r = b.r * (.8 + .35 * hash(b.seed + j * 2.1)); pts.push([Math.cos(a) * r, Math.sin(a) * r * .85]) }
+                const mid = (p, q) => [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2], m0 = mid(pts[n - 1], pts[0]);
+                ctx.beginPath(); ctx.moveTo(m0[0], m0[1]);
+                for (let j = 0; j < n; j++) { const p = pts[j], m = mid(p, pts[(j + 1) % n]); ctx.quadraticCurveTo(p[0], p[1], m[0], m[1]) }
+                ctx.closePath(); ctx.fillStyle = '#b83a4c'; ctx.fill(); ctx.strokeStyle = '#5a0e1a'; ctx.lineWidth = 1.5; ctx.stroke();
+                ctx.strokeStyle = '#7e1f2e'; ctx.lineWidth = 1; ctx.beginPath();
+                ctx.moveTo(-b.r * .5, -b.r * .1); ctx.quadraticCurveTo(0, -b.r * .5, b.r * .45, -b.r * .05);
+                ctx.moveTo(-b.r * .35, b.r * .3); ctx.quadraticCurveTo(0, b.r * .05, b.r * .4, b.r * .35); ctx.stroke();
+                ctx.fillStyle = 'rgba(255,190,200,.55)'; ctx.beginPath(); ctx.ellipse(-b.r * .3, -b.r * .35, b.r * .3, b.r * .16, -.4, 0, 7); ctx.fill();   // wet sheen
+                ctx.restore();
+            }
+            ctx.restore();
+        }
+
+        // ---------- neck stump: dynamic spray + residual dripping ----------
+        function horseStumpTick(dt) {
+            const h = HRS, R = Math.random, S = CSc(), st = h.stump; if (!st) return;
+            h.sprayT -= dt;
+            const t = h.hDT;
+            if (t < HZ_SPRAY_T) {                                       // heartbeat-pulsed arterial spray that fades out
+                const k = 1 - t / HZ_SPRAY_T, pulse = .35 + .65 * Math.max(0, Math.cos(t * 10));
+                if (h.sprayT <= 0) {
+                    h.sprayT = .028;
+                    const base = Math.atan2(st[3], st[2]);
+                    for (let i = 0; i < 3; i++) {
+                        const a = base + (R() - .5) * .85, sp = (240 + R() * 560) * pulse * (.35 + .65 * k);
+                        bgDrop(st[0] + (R() - .5) * 8 * S, st[1] + (R() - .5) * 8 * S, Math.cos(a) * sp, Math.sin(a) * sp, 1.2 + R() * 2.2);
+                    }
+                }
+            } else if (t < 9 && h.sprayT <= 0) {                        // the wound seals into a slow drip
+                h.sprayT = .09 + R() * .1;
+                bgDrop(st[0] + (R() - .5) * 14 * S, st[1] + 6 * S, (R() - .5) * 20, 10 + R() * 30, 1.4 + R() * 1.6);
+            }
+        }
+
+        // drawn in horse-local space, outside the neck clip, at the cut point
+        function drawHorseStump(G) {
+            const h = HRS, grow = sm(h.hDT / 1.4), sd = h.stSeed, HW = 12.5;
+            ctx.save(); ctx.translate(G.ex, G.ey); ctx.rotate(Math.atan2(G.ty, G.tx));
+            ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+
+            // 1) static blood foundation: dark clotted stain with ragged fingers running back along the neck
+            {
+                const N = 7, pts = [[2, -HW]];
+                for (let i = 0; i <= N; i++) {
+                    const y = -HW + 2 * HW * i / N, l = (6 + 20 * hash(sd + i * 3.1)) * grow + 3;
+                    pts.push([-l, y]); if (i < N) pts.push([-l * .3, y + HW / N]);
+                }
+                pts.push([2, HW]);
+                ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath();
+                ctx.fillStyle = '#4a0a10'; ctx.globalAlpha = .93; ctx.fill(); ctx.globalAlpha = 1;
+                ctx.strokeStyle = '#2a0408'; ctx.lineWidth = 1; ctx.stroke();
+                ctx.strokeStyle = 'rgba(150,40,50,.5)'; ctx.lineWidth = 1.4;      // glossy streaks
+                for (const y of [-6, 1, 7]) { ctx.beginPath(); ctx.moveTo(-1, y); ctx.lineTo(-(5 + 14 * grow * hash(sd + y)), y + 1); ctx.stroke() }
+            }
+            // 2) torn flesh face
+            {
+                const M = 9, face = [];
+                for (let i = 0; i <= M; i++) face.push([(i % 2 ? 2.6 : .2) + hash(sd + i * 5.7) * 1.6, -HW - 1.5 + (2 * HW + 3) * i / M]);
+                ctx.beginPath(); ctx.moveTo(-3, -HW - 1.5); face.forEach(p => ctx.lineTo(p[0], p[1])); ctx.lineTo(-3, HW + 1.5); ctx.closePath();
+                ctx.fillStyle = '#8c0d14'; ctx.fill(); ctx.strokeStyle = '#3a0508'; ctx.lineWidth = 1.6; ctx.stroke();
+                ctx.beginPath(); ctx.ellipse(-.5, 0, 2.6, HW - 4, 0, 0, 7); ctx.fillStyle = '#d4443a'; ctx.fill();            // muscle
+                ctx.strokeStyle = '#f1b8ae'; ctx.lineWidth = .9; ctx.beginPath(); ctx.ellipse(-.5, 0, 2.6, HW - 4.5, 0, 0, 7); ctx.stroke();
+                ctx.beginPath(); ctx.ellipse(.6, 6.5, 2, 3, 0, 0, 7); ctx.fillStyle = '#ecd2c6'; ctx.fill();                  // windpipe
+                ctx.strokeStyle = '#5a0a10'; ctx.lineWidth = 1; ctx.stroke();
+                ctx.beginPath(); ctx.ellipse(.8, 6.5, .8, 1.5, 0, 0, 7); ctx.fillStyle = '#3a0508'; ctx.fill();
+            }
+            // 3) spine: small grey/white vertebra in the middle of the stump
+            ctx.beginPath(); ctx.ellipse(1.9, -2, 3.6, 4.6, 0, 0, 7); ctx.fillStyle = '#d9d6cc'; ctx.fill();
+            ctx.strokeStyle = '#111'; ctx.lineWidth = 1.3; ctx.stroke();
+            ctx.beginPath(); ctx.ellipse(2.1, -2.8, 1.1, 1.6, 0, 0, 7); ctx.fillStyle = '#3a3d44'; ctx.fill();               // spinal canal
+            ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.lineWidth = .8; ctx.beginPath(); ctx.moveTo(.2, -4.2); ctx.lineTo(1.6, -5.8); ctx.stroke();
+            ctx.restore();
+        }
+
+        // REPLACES the horseKill from the previous answer (delete the old one)
+        function horseKill(F, hx, hy, kind, sg) {
+            const h = HRS, S = CSc(), R = Math.random;
+            h.hDead = 1; h.hDT = 0; h.hLife = 0; h.rear = 0; h.panic = 0; h.huff = 0; h.thud = 0; h.hBar = 0; h.bleed = 0;
+            if (h.q > 0 || h.base !== h.tf) { h.base = h.tf; h.face = h.tf; h.Y = null; h.q = 0; h.qv = 0; h.qt = 0 }
+            h.vx = F * (sg ? 260 : 140);
+            h.beheaded = (HZ_BEHEAD_ALL || kind === 'head') ? 1 : 0;
+            spray(hx, hy, 60, 640, F); spray(hx, hy, 30, 420, -F); burst(hx, hy, 36, 420, F);
+            birdGore(hx, hy, F, 2.6); birdGore(hx, hy, -F, 1.6);
+            for (let i = 0; i < 10; i++) boneSplinter(hx, hy, F, 420);
+            if (h.beheaded) horseShatter(F);
+            impacts.push({ x: hx, y: hy, t: 0, life: .35, s: 170, seed: R() * 50 });
+            hitstop = Math.max(hitstop, .12); shake = Math.max(shake, 14);
+            combo.n++; combo.t = 2; combo.pop = 1.4;
+            banner.t = 1.2; banner.text = h.beheaded ? 'HORSE BEHEADED!' : 'HORSE DOWN!';
+        }
+
+
+
+
+
+
+
+
+
+
         // ================= HORSE: SHOOTABLE / KILLABLE (only while NOT mounted) =================
         Object.assign(HRS, { hDead: 0, hLife: 120, hDT: 0, wnd: [], bleed: 0, bleedT: 0, panic: 0, pdir: 1, hBar: 0, pool: null, thud: 0, lastBlast: -1 });
         const HORSE_HP = 120;
@@ -11302,28 +11584,11 @@
             }
         }
 
-        function horseKill(F, hx, hy, kind, sg) {
-            const h = HRS, S = CSc(), R = Math.random;
-            h.hDead = 1; h.hDT = 0; h.hLife = 0; h.rear = 0; h.panic = 0; h.huff = 0; h.thud = 0; h.hBar = 0; h.bleed = 0;
-            if (h.q > 0 || h.base !== h.tf) { h.base = h.tf; h.face = h.tf; h.Y = null; h.q = 0; h.qv = 0; h.qt = 0 }   // finish any turn instantly
-            h.vx = F * (sg ? 260 : 140);
-            spray(hx, hy, 60, 640, F); spray(hx, hy, 30, 420, -F); burst(hx, hy, 36, 420, F);
-            birdGore(hx, hy, F, 2.6); birdGore(hx, hy, -F, 1.6);       // organs, veins, blood
-            for (let i = 0; i < 10; i++) boneSplinter(hx, hy, F, 420);
-            if (kind === 'head') for (let i = 0; i < 10 && brainBits.length < 140; i++) brainBits.push({
-                x: hx + (R() - .5) * 20 * S, y: Math.min(-8, hy), vx: F * (80 + R() * 400) + (R() - .5) * 240, vy: -(100 + R() * 360),
-                r: (3 + R() * 5) * S, rot: R() * 6, vr: (R() - .5) * 16, k: R() < .5 ? 0 : R() < .6 ? 1 : 2, landed: false, bounced: 0, t: 0
-            });
-            impacts.push({ x: hx, y: hy, t: 0, life: .35, s: 170, seed: R() * 50 });
-            hitstop = Math.max(hitstop, .12); shake = Math.max(shake, 14);
-            combo.n++; combo.t = 2; combo.pop = 1.4;
-            banner.t = 1.2; banner.text = 'HORSE DOWN!';
-        }
-
         function horseDrip() {
             const h = HRS, S = CSc(), cx = S * HORSE_W, ky = S * HORSE_H, F = h.face, R = Math.random, Z = horseZones();
-            if (!h.wnd.length) return;
-            const w = h.wnd[(R() * h.wnd.length) | 0], z = Z[w.k];
+            const ws = h.beheaded ? h.wnd.filter(w => w.k !== 'head' && w.k !== 'n1') : h.wnd;
+            if (!ws.length) return;
+            const w = ws[(R() * ws.length) | 0], z = Z[w.k];
             bgDrop(h.x + F * (z[0] + w.ox) * cx + (R() - .5) * 6, Math.min(-2, h.z + (z[1] + w.oy) * ky), (R() - .5) * 30, 10 + R() * 30, 1.4 + R() * 1.6);
         }
 
@@ -11360,6 +11625,7 @@
                 burst(h.x, -4, 14, 260, h.face); burst(h.x, -4, 10, 220, -h.face);
                 h.pool = bgStain(h.x, 30 * S, true);
             }
+            if (h.beheaded) horseStumpTick(dt);
             if (h.pool && h.hDT < 16) h.pool.gw = Math.min(140, h.pool.gw + dt * 12);     // pool keeps spreading
             h.bleedT -= dt;
             if (h.hDT < 9 && h.bleedT <= 0 && h.wnd.length) { h.bleedT = .07; horseDrip() }
@@ -11369,7 +11635,7 @@
         function horseRevive() {
             const h = HRS;
             Object.assign(h, {
-                hDead: 0, hLife: HORSE_HP, hDT: 0, wnd: [], bleed: 0, panic: 0, hBar: 0, pool: null, thud: 0,
+                hDead: 0, beheaded: 0, stump: null, hLife: HORSE_HP, hDT: 0, wnd: [], bleed: 0, panic: 0, hBar: 0, pool: null, thud: 0,
                 cmp: 0, cmpV: 0, gk: 0, jw: 0, nkLow: 0, nkLowV: 0, nkFwd: 0, nkFwdV: 0, pitch: 0, pitchV: 0, amp: 0, rg: 0, vx: 0,
                 tail: null, x: h.home, goal: h.home, wait: 2, gz: 0, gT: 3, pc: [null, null, null, null], jf: [null, null, null, null]
             });
@@ -13899,7 +14165,7 @@
             let dt = dt0;
             if (hitstop > 0) { hitstop -= dt0; dt = 0 }
 
-            update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); sgTick(dt); sgGroundTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); waterFXTick(dt); brainTick(dt); gibTick(dt); boneTick(dt); weatherTick(dt); horseTick(dt); birdTick(dt); fowlTick(dt); frogTick(dt); duckTick(dt); crocTick(dt); bgTick(dt); dayTick(dt0); fireflyTick(dt0); stExtrasTick(dt0);
+            update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); sgTick(dt); sgGroundTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); waterFXTick(dt); brainTick(dt); hzTick(dt); gibTick(dt); boneTick(dt); weatherTick(dt); horseTick(dt); birdTick(dt); fowlTick(dt); frogTick(dt); duckTick(dt); crocTick(dt); bgTick(dt); dayTick(dt0); fireflyTick(dt0); stExtrasTick(dt0);
             deckTick();
             updateCamera(dt);
             shake = Math.max(0, shake - dt0 * 60);
@@ -13923,6 +14189,7 @@
             drawCords(gy);
             drawVeins(gy);
             drawBrainBits(gy);
+            drawHzFx(gy);
             drawGibs(gy);
             drawLegVeins(gy);
             drawBones(gy);
