@@ -407,7 +407,7 @@
                 fidgetTick(P, true, dt);
                 return;
             }
-            const dir = (P.fin > 0 || P.sm === 1 || P.ln > 0 || P.lb > 0 || P.fs > 0 || P.yk > 0 || P.gu > 0 || P.sgp > 0 || P.mount || P.ldLock) ? 0 : (keys.ArrowRight || keys.KeyD ? 1 : 0) - (keys.ArrowLeft || keys.KeyA ? 1 : 0);
+            const dir = (P.fin > 0 || P.sm === 1 || P.ln > 0 || P.lb > 0 || P.fs > 0 || P.yk > 0 || P.gu > 0 || P.sgp > 0 || P.mount || P.ldLock || P.sqSl > 0) ? 0 : (keys.ArrowRight || keys.KeyD ? 1 : 0) - (keys.ArrowLeft || keys.KeyA ? 1 : 0);
             const run = keys.ShiftLeft || keys.ShiftRight;
             const max = run ? 520 : 190;
             const grounded = P.z >= 0;
@@ -479,6 +479,7 @@
             comboTick(dt);
             stabTick(dt);
             ldTick(dt);
+            sqSlashTick(dt);
             const target = Math.min(1, sp / 200) * (run && sp > 220 ? 1.25 : 1);
             P.amp += (target - P.amp) * Math.min(1, dt * 10);
             const tl = Math.max(-1, Math.min(1, P.vx / 420)) * 0.4;
@@ -739,6 +740,7 @@
             if (P.sg) { banner.t = .6; banner.text = 'DROP SHOTGUN FIRST (Z)'; return }
             if (P.kn === 1 && P.kt > .5 && (keys.ArrowDown || keys.KeyS) && !(P.gu > 0) && P.stbk === 0 && P.fs === 0 && !(P.yk > 0) && P.pk === 0 && P.z >= 0 && !P.fin && !P.thw && !P.tt && !P.cs && pressGut()) return;
             if (P.kn === 2 && P.kt > .5 && P.fs === 0 && P.stbk === 0 && P.z >= 0 && !P.fin && !P.thw && !P.tt && !P.cs && pressFootStab()) return;
+            if (P.kn > 0 && P.kt > .5 && P.sqSl === 0 && P.z >= 0 && !P.fin && !P.thw && !P.tt && !P.cs && P.stbk === 0 && pressSqSlash()) return;
             // If knife is in hand and fully drawn, do a stomach stab instead of punching
             if (P.kn > 0 && P.kt > 0.5 && P.stbk === 0 && P.z >= 0 && !P.fin && !P.thw && !P.tt) {
                 pressStab(); return;
@@ -1688,6 +1690,7 @@
             if (Q === PL && Q.pu > 0) return puPose(Q);
             if (Q === PL && Q.stc > 0) return Q.stcM >= 2 ? Q.stcPose : null;
             if (Q === PL && Q.stbk > 0) return stabPose(Q);
+            if (Q === PL && Q.sqSl > 0 && Q.sqRows) return sqPose(Q);
             if (Q === PL && Q.gu > 0) return guPose(Q);
             if (Q === PL && Q.yk > 0) return ykPose(Q);
             if (Q === PL && Q.fs > 0) return footStabPose(Q);
@@ -2224,6 +2227,7 @@
                         let rr = blade + KNIFE_SPRITE_TILT;
                         if (P.fs > 0) rr += wrapA(1.3 - rr) * fsW();
                         if (P.gu > 0) rr += wrapA(Math.PI / 2 + KNIFE_SPRITE_TILT - rr) * guW();   // blade pointing straight down
+                        if (P.sqSl > 0 && CUR === PL) rr += wrapA(P.sqBl - rr) * P.sqW;   // blade angle comes from the slash keyframes
                         ctx.rotate(rr);
                     } ctx.scale(sc, sc);
                     ctx.drawImage(KN, -nw * KGX, -nh * KGY); ctx.restore();
@@ -3042,6 +3046,7 @@
                 (P.armFullPts || (P.armFullPts = []))[i] = [sh, lastArm[0], lastArm[1]];
                 (P.fistInfo || (P.fistInfo = []))[i] = { x: lastArm[1][0], y: lastArm[1][1], a: Math.atan2(lastArm[1][1] - lastArm[0][1], (lastArm[1][0] - lastArm[0][0]) * F), F };
             }
+            if (P === PL && P.sqSl > 0) sqTrailPush(F, S);
             if (P === PL && P.gunK < .05 && P.sgK < .05 && (mk > .9 || (mpa && MP.dis && MP.t < 1.15) || (mpa && !MP.dis && MP.t > 2.9))) drawReins(F);
             if (P === PL && P.puHeld) drawHeldItem(F, S, now);
             const grabHdOffX = isGrabbed ? F * 4 - F * hk * 10 + Math.sin(now * 23) * 1.5 : 0;
@@ -9333,6 +9338,9 @@
             cc: 0, pz: 0, pzT: 2, pzPend: false, spd: 1, spdT: 0, frz: 1.5, cr: 0, br: 0, pant: 0,
             alert: 0, sh: 0, shDir: 1, shT: 5, tdesc: 0
         };
+        const thSqHalves = [], thSqLinks = [];
+        const SQ_REACH = 170;                 // slash reach (character units, scaled by CSc)
+        P.sqSl = 0; P.sqHit = 0;
 
         function thTrunkX(y) {                       // left edge of the trunk at height y (squirrel clings here)
             const D = TH_DY, K = [[8, -8, 62], [D * .2, -16, 58], [D * .45, -5, 50], [D * .7, -14, 48], [D + 40, -8, 42], [D, -5, 41]];
@@ -9429,7 +9437,218 @@
             banner.t = .8; banner.text = 'SQUIRREL SPLATTER!';
         }
 
+        // squirrel in slash range? -> { c: world centre, dx } or null
+        function sqReach() {
+            const q = TH_SQ; if (q.dead > 0) return null;
+            const S = CSc(), c = thSqCenter(q), dx = c[0] - P.x, rel = c[1] + (P.dh || 0);
+            if (Math.abs(dx) > SQ_REACH * S || rel < -240 * S || rel > 30 * S) return null;
+            return { c, dx };
+        }
+        // ================= SQUIRREL SLASH: wind-up -> diagonal strike -> follow-through -> recoil =================
+        // columns: [t, a0, f0, blade, lean, hipX, hipY, headX, headY, a1, f1]
+        // a0/f0 = knife arm (shoulder, elbow), blade = knife angle (0 fwd, +down, -up), a1/f1 = off-hand counterweight
+        const SQ_HI = [   // target at chest height: standing slash
+            [0, .12, .30, .30, 0, 0, 0, 0, 0, .08, 0],
+            [.08, .9, .8, -.3, -.05, -2, 3, -1, 0, .4, .2],              // knife lifts and starts to fold
+            [.24, 2.45, 1.75, -2.0, -.15, -8, 8, -3, 1, 1.0, .5],        // WIND-UP: hand behind the head, body loaded back, hips sunk
+            [.30, 1.7, 1.45, -1.5, .08, 4, 9, 0, 1, .3, .7],             // hips + shoulder already turning, forearm still lagging
+            [.36, 1.45, .15, .55, .32, 13, 9, 5, 1, -.7, .6],            // IMPACT: arm extended, blade through the target
+            [.50, .85, .35, 1.30, .40, 16, 8, 6, 2, -.95, .5],           // FOLLOW-THROUGH past the target
+            [.64, 1.0, .55, .95, .24, 10, 5, 3, 1, -.4, .4],             // small RECOIL
+            [.90, .12, .30, .30, 0, 0, 0, 0, 0, .08, 0]
+        ];
+        const SQ_LO = [   // target on the ground: crouch and reach down
+            [0, .12, .30, .30, 0, 0, 0, 0, 0, .08, 0],
+            [.08, .9, .8, -.3, -.05, -2, 3, -1, 0, .4, .2],
+            [.24, 2.45, 1.75, -2.0, -.15, -8, 8, -3, 1, 1.0, .5],
+            [.30, 1.5, 1.4, -1.3, .30, 8, 22, 2, 2, .3, .7],
+            [.36, .95, .12, 1.0, .72, 18, 46, 8, 6, -.7, .6],
+            [.50, .55, .30, 1.35, .80, 22, 50, 10, 7, -.95, .5],
+            [.64, .8, .55, 1.0, .5, 14, 26, 5, 3, -.4, .4],
+            [.90, .12, .30, .30, 0, 0, 0, 0, 0, .08, 0]
+        ];
+        const SQ_HIT = .34, SQ_END = .90;
+        const sqTrail = [];
+        P.sqSl = 0; P.sqHit = 0; P.sqW = 0; P.sqBl = 0; P.sqRows = null;
+
+        function pressSqSlash() {
+            const r = sqReach(); if (!r) return false;
+            let bd = 1e9;
+            for (const e of ENEMIES) if (!(e.dead > 0 || e.dying > 0)) bd = Math.min(bd, Math.abs(e.x - P.x));
+            if (bd < Math.abs(r.dx)) return false;                       // an enemy is closer: normal stab
+            if (P.skid) endSkid();
+            const S = CSc(), h = -(r.c[1] + (P.dh || 0)) / S;             // target height above the feet
+            const lk = clamp01(1 - (h - 15) / 105);                       // 1 = on the ground, 0 = chest height
+            P.sqRows = SQ_HI.map((row, i) => row.map((v, j) => j === 0 ? v : lerp(v, SQ_LO[i][j], lk)));
+            P.face = r.dx >= 0 ? 1 : -1;
+            P.sqSl = .0001; P.sqHit = 0; P.vx = 0;
+            P.idle = 0; P.fid = 0; P.abuf = 0;
+            return true;
+        }
+
+        function sqPose(Q) {
+            const t = Q.sqSl, r = mpRow(t, Q.sqRows);
+            const w = sm(t / .07) * (1 - sm((t - .80) / .10)), hw = r[4] * w;
+            Q.sqW = w; Q.sqBl = r[2];
+            return {
+                w, a0: r[0], f0: Math.max(0, r[1]), a1: r[8], f1: Math.max(0, r[9]),
+                lean: r[3], hipX: r[4], hipY: r[5], arch: .03 + .04 * clamp01(r[3] / .5), hx: r[6], hy: r[7],
+                l0: [26 - hw, 0, 0], l1: [-28 - hw, 0, 0],               // feet stay planted while the hips move over them
+                kneeFull: true, st: STEPS[0], sw: 0, ik: 0
+            };
+        }
+
+        function sqTrailPush(F, S) {                                     // ink trail along the blade tip (called from drawChar)
+            const A = P.armPts && P.armPts[0];
+            if (!A || !(P.sqSl > .26 && P.sqSl < .58)) return;
+            const wr = A[1], L = KNIFE_LEN * .9, b = P.sqBl;
+            sqTrail.push({ x: P.x + (wr[0] + F * Math.cos(b) * L) * S, y: (wr[1] + Math.sin(b) * L) * S, t: 0 });
+        }
+        function drawSqTrail(gy) {
+            if (sqTrail.length < 2) return;
+            ctx.save(); ctx.strokeStyle = '#111'; ctx.lineCap = 'round';
+            for (let i = 1; i < sqTrail.length; i++) {
+                const a = sqTrail[i - 1], b = sqTrail[i], k = 1 - b.t / .16; if (k <= 0) continue;
+                ctx.globalAlpha = .8 * k; ctx.lineWidth = 1 + 5 * k * (i / sqTrail.length);
+                ctx.beginPath(); ctx.moveTo(a.x - P.x + W / 2, gy - P.dh + 4 + a.y); ctx.lineTo(b.x - P.x + W / 2, gy - P.dh + 4 + b.y); ctx.stroke();
+            }
+            ctx.restore();
+        }
+
+        function sqSlashTick(dt) {
+            for (let i = sqTrail.length - 1; i >= 0; i--) { sqTrail[i].t += dt; if (sqTrail[i].t > .16) sqTrail.splice(i, 1); }
+            if (!(P.sqSl > 0)) return;
+            P.sqSl += dt; P.abuf = 0; P.jbuf = 0; P.idle = 0; P.fid = 0;
+            P.vx *= Math.max(0, 1 - dt * 14);                            // feet stay put
+            if (!P.sqHit && P.sqSl >= SQ_HIT) {
+                P.sqHit = 1;
+                const r = sqReach();
+                if (r && r.dx * P.face > -20 * CSc()) thSqSlice(P.face, r.c);
+            }
+            if (P.sqSl >= SQ_END) { P.sqSl = 0; P.sqHit = 0; P.sqRows = null; }
+        }
+
+        function thSqSlice(F, c) {
+            const q = TH_SQ; if (q.dead > 0) return;
+            const S = TH_SQ_S, a = -Math.PI / 2 * q.p, ca = Math.cos(a), sa = Math.sin(a), qf = q.F;
+            const ex = [qf * ca, qf * sa], ey = [-sa, ca];           // squirrel's own axes (x = nose direction, y = down)
+            const lx = .5, ly = -8;                                   // cut point on the torso (squirrel units)
+            const cx = q.x + (qf * lx * ca - ly * sa) * S, cy = q.y - q.hop * (1 - q.p) + (qf * lx * sa + ly * ca) * S;
+            const snap = Object.assign({}, q, { dead: 0, sh: 0, noShadow: true });
+            const deck = q.lvl === 1 && q.y <= TH_DY + 30, R = Math.random;
+            const pair = [];
+            for (const side of [1, -1]) {                             // +1 = head half, -1 = tail half
+                const h = {
+                    snap, cx, cy, ex, ey, side, dx: 0, dy: 0, deck, rot: 0, t: 0, landed: false, bn: 0, bl: 0,
+                    vx: (ex[0] * side * 170 + F * (110 + R() * 80)) / TH_SC,
+                    vy: (ex[1] * side * 170 - 230 - R() * 120) / TH_SC,
+                    vr: (R() * 2 - 1) * 2 + side * F * 2.5
+                };
+                thSqHalves.push(h); pair.push(h);
+            }
+            for (let i = 0; i < 7; i++) {                             // veins + gut stretching between the halves
+                const gut = i < 2;
+                thSqLinks.push({
+                    a: pair[0], b: pair[1], off: (-4.5 + R() * 8) * S, alive: true, gut,
+                    w: gut ? 1.3 : .5 + R() * .5, col: gut ? '#e9786c' : ['#b3141c', '#8c0d14', '#6b2a5a'][i % 3],
+                    max: 20 + R() * 22, seed: R() * 99
+                });
+            }
+            const wx = TH_WX + cx * TH_SC, wy = cy * TH_SC - 4;
+            birdGore(wx, wy, F, 1.8); birdGore(wx, wy, -F, 1.3);      // organs, mini veins, blood, mist
+            spray(wx, wy, 40, 520, F); spray(wx, wy, 26, 420, -F); spray(wx, wy, 14, 260, 0);
+            burst(wx, wy, 22, 340, F);
+            impacts.push({ x: wx, y: wy, t: 0, life: .28, s: 110, seed: R() * 50 });
+            q.dead = 16; q.queue = []; q.sh = 0;
+            combo.n++; combo.dmg += 40; combo.t = 1.8; combo.pop = 1.3; birdKills++;
+            hitstop = Math.max(hitstop, .05); shake = Math.max(shake, 3);
+            banner.t = 1; banner.text = 'SQUIRREL SLICED!';
+        }
+
+        function thSqHalvesTick(dt) {
+            const g = 1500 / TH_SC, R = Math.random;
+            for (let i = thSqHalves.length - 1; i >= 0; i--) {
+                const h = thSqHalves[i]; h.t += dt;
+                const x = h.cx + h.dx, y = h.cy + h.dy, wx = TH_WX + x * TH_SC, wy = y * TH_SC - 4;
+                if (!h.landed) {
+                    h.vy += g * dt; h.dx += h.vx * dt; h.dy += h.vy * dt; h.rot += h.vr * dt;
+                    const fl = ((h.deck && Math.abs(x) < 288) ? TH_DY : 0) - 4;
+                    if (h.cy + h.dy >= fl) {
+                        h.dy = fl - h.cy;
+                        if (Math.abs(h.vy) * TH_SC > 260 && !h.bn) { h.vy *= -.25; h.vx *= .5; h.vr *= .5; h.bn = 1; burst(wx, fl * TH_SC - 4, 6, 200, Math.sign(h.vx) || 1); }
+                        else {
+                            h.landed = true; h.vx = h.vy = h.vr = 0;
+                            shake = Math.max(shake, 2);
+                            burst(wx, fl * TH_SC - 4, 6, 160, Math.sign(h.vx) || 1);
+                            if (fl > -10) bgStain(wx, 14, true);       // pool of blood on the ground
+                        }
+                    }
+                    h.bl -= dt;
+                    if (h.t < 3 && h.bl <= 0) { h.bl = .05; bgDrop(wx, wy, (R() - .5) * 60, 10 + R() * 40, 1.2 + R() * 1.6); }
+                } else {
+                    h.rot += (Math.round(h.rot / Math.PI) * Math.PI - h.rot) * Math.min(1, dt * 10);
+                    if (h.t < 5 && Math.random() < dt * 6) bgDrop(wx, wy, (R() - .5) * 20, 5 + R() * 20, 1.2 + R());
+                }
+                if (h.t > 15) thSqHalves.splice(i, 1);
+            }
+            for (let i = thSqLinks.length - 1; i >= 0; i--) {
+                const L = thSqLinks[i];
+                if (!thSqHalves.includes(L.a) || !thSqHalves.includes(L.b)) { thSqLinks.splice(i, 1); continue; }
+                if (!L.alive) continue;
+                const A = thSqEnd(L.a, L.off), B = thSqEnd(L.b, L.off);
+                if (Math.hypot(B[0] - A[0], B[1] - A[1]) > L.max) {   // the strand snaps
+                    L.alive = false;
+                    for (const P_ of [A, B]) for (let k = 0; k < 4; k++)
+                        bgDrop(TH_WX + P_[0] * TH_SC, P_[1] * TH_SC - 4, (R() - .5) * 200, -(20 + R() * 120), 1 + R() * 1.4);
+                }
+            }
+        }
+        function thSqEnd(h, off) {                  // point on a half's cut face (treehouse-local)
+            const c = Math.cos(h.rot), s = Math.sin(h.rot), vx = h.ey[0] * off, vy = h.ey[1] * off;
+            return [h.cx + h.dx + vx * c - vy * s, h.cy + h.dy + vx * s + vy * c];
+        }
+
+        // call right after thSquirrel(TH_SQ, now) inside drawTreehouse
+        function thSqHalvesDraw(now) {
+            if (!thSqHalves.length) return;
+            const S = TH_SQ_S;
+            for (const h of thSqHalves) {
+                const ex = h.ex, ey = h.ey, cx = h.cx, cy = h.cy;
+                ctx.save(); ctx.globalAlpha = Math.min(1, (15 - h.t) / 3);
+                ctx.translate(cx + h.dx, cy + h.dy); ctx.rotate(h.rot); ctx.translate(-cx, -cy);
+                ctx.save();                                           // clip to one side of the cut
+                ctx.save(); ctx.transform(ex[0], ex[1], ey[0], ey[1], cx, cy);
+                ctx.beginPath(); ctx.rect(h.side > 0 ? 0 : -100, -100, 100, 200); ctx.restore();
+                ctx.clip();
+                thSquirrel(h.snap, now);
+                ctx.restore();
+                ctx.save(); ctx.transform(ex[0], ex[1], ey[0], ey[1], cx, cy); ctx.scale(S, S);   // the cut face
+                const x0 = h.side > 0 ? 0 : -2.6;
+                ctx.fillStyle = '#a8141c'; ctx.fillRect(x0, -5.6, 2.6, 10);
+                ctx.strokeStyle = '#4a0508'; ctx.lineWidth = .35; ctx.strokeRect(x0, -5.6, 2.6, 10);
+                ctx.fillStyle = '#e9786c'; ctx.beginPath(); ctx.ellipse(x0 + 1.3, -1.8, .9, 2.2, 0, 0, 7); ctx.fill();   // lung
+                ctx.fillStyle = '#6e1a22'; ctx.beginPath(); ctx.ellipse(x0 + 1.3, 2, .9, 1.6, 0, 0, 7); ctx.fill();      // liver
+                ctx.fillStyle = '#efe9da'; ctx.beginPath(); ctx.arc(x0 + 1.3, -4.2, .55, 0, 7); ctx.fill();              // spine
+                ctx.restore();
+                ctx.restore();
+            }
+            ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+            for (const L of thSqLinks) {                              // stretching veins / gut, thinner as they stretch
+                if (!L.alive) continue;
+                const A = thSqEnd(L.a, L.off), B = thSqEnd(L.b, L.off);
+                const d = Math.hypot(B[0] - A[0], B[1] - A[1]), k = d / L.max, w = L.w * (1 - .6 * k);
+                const sag = Math.max(0, 9 - d * .5), mx = (A[0] + B[0]) / 2, my = (A[1] + B[1]) / 2 + sag;
+                ctx.globalAlpha = Math.min(1, (15 - L.a.t) / 3);
+                for (const [lw, col] of [[w + .5, '#111'], [w, L.col]]) {
+                    ctx.strokeStyle = col; ctx.lineWidth = lw;
+                    ctx.beginPath(); ctx.moveTo(A[0], A[1]); ctx.quadraticCurveTo(mx, my, B[0], B[1]); ctx.stroke();
+                }
+            }
+            ctx.restore();
+        }
+
         function thSqRespawn(q) {
+            thSqHalves.length = 0; thSqLinks.length = 0;
             Object.assign(q, {
                 x: -190, y: 0, p: 0, lvl: 0, F: 1, air: 0, hop: 0, up: 0, sn: 0, cr: 0, cc: 0,
                 pz: 0, pzPend: false, sh: 0, alert: 0, queue: [], dead: 0
@@ -9440,6 +9659,7 @@
         function thSqUpdate(now) {
             const q = TH_SQ; let dt = now - q.last; q.last = now;
             if (!(dt > 0)) return; dt = Math.min(dt, .05);
+            thSqHalvesTick(dt);
             if (q.dead > 0) { q.dead -= dt; if (q.dead <= 0) thSqRespawn(q); return; }
             q.t += dt;
             const rnd = Math.random, m = q.mode, k = Math.min(1, dt * 7);
@@ -9635,7 +9855,7 @@
             const toBody = (x, y) => { const dx = x + 3, dy = y + 5; return [dx * pc + dy * ps - 3, -dx * ps + dy * pc - 5]; };
 
             ctx.save();
-            if (p < .2) { ctx.beginPath(); ctx.ellipse(q.x + 1, q.y + .8, 5 - jmp * 1.2, .9, 0, 0, 7); ctx.fillStyle = 'rgba(70,55,35,.14)'; ctx.fill(); }   // faint ground shadow
+            if (p < .2 && !q.noShadow) { ctx.beginPath(); ctx.ellipse(q.x + 1, q.y + .8, 5 - jmp * 1.2, .9, 0, 0, 7); ctx.fillStyle = 'rgba(70,55,35,.14)'; ctx.fill(); }   // faint ground shadow
             ctx.translate(q.x, q.y - (q.hop + jmp * 3.6) * (1 - p));
             ctx.rotate(-Math.PI / 2 * p);                           // p = 1: clinging head-up (or head-down) to the trunk
             ctx.scale(F * TH_SQ_S, TH_SQ_S);
@@ -9942,7 +10162,7 @@
                 for (const [a, b] of [[-200, -172], [-146, -134], [170, 198], [226, 254]]) bdLine([[a, D - 1], [b, D - 26]], .9, a, .7);
             }
 
-            thSqUpdate(now); thSquirrel(TH_SQ, now);
+            thSqUpdate(now); thSquirrel(TH_SQ, now); thSqHalvesDraw(now);
             // ---- I. ROPE LADDER: gate posts at the deck edge, ladder tied round the front beam, hanging to the ground ----
             bdLine([[-276, D], [-277, D - 38]], 3.4, 760); bdLine([[-240, D], [-239, D - 38]], 3.4, 761);
             bdLine([[-281, D - 38], [-235, D - 37]], 2.8, 762);
@@ -14339,6 +14559,7 @@
             beginSwimDraw(gy);
             drawChar(W / 2, gy - P.dh, P);
             endSwimDraw();
+            drawSqTrail(gy);
             drawBreath(gy);
             drawStairHint(gy);
             drawLadderHint(gy);
