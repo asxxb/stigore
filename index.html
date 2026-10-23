@@ -2169,6 +2169,8 @@
         const KNIFE_LEN = 105;
         const KNIFE_TILT = .12;
         const KNIFE_SPRITE_TILT = .23;
+        const KNIFE_GROUND = 'flat';   // 'flat' = lying on the ground, 'stuck' = blade stuck in the ground
+        const KNIFE_FLAT_LIFT = 9;     // flat mode: how high the knife centre sits above the ground (tune if it floats or sinks)
         // ---- toss / flip / catch tuning ----
         const TOSS_REL = .2, TOSS_CATCH = .85;
         const TOSS_H = 72;
@@ -5230,41 +5232,22 @@
             const sp = k.v * .45;
             dropKnife(k.x, Math.min(k.y, -4), k.F, k.F * Math.cos(k.th) * sp, Math.sin(k.th) * sp - 60, k.th);
         }
+        function knifeRest(S) {
+            return KNIFE_GROUND === 'flat'
+                ? { th: 0, y: -KNIFE_FLAT_LIFT * S }
+                : { th: 1.1, y: -(0.64 * KNIFE_LEN * Math.sin(1.1) - 8) * S };
+        }
         function updateGroundKnives(dt) {
-            const S = CSc();
-            const STUCK = 1.1;
-
-            // Push the planted knife slightly deeper into the ground.
-            const GROUND_SINK = 15;
-
-            const rest =
-                -(0.64 * KNIFE_LEN * Math.sin(STUCK) - 8) * S
-                + GROUND_SINK;
-
+            const S = CSc(), R = knifeRest(S);
             for (const g of groundKnives) {
                 g.t += dt;
-
                 if (g.landed) continue;
-
-                g.vy += 1500 * dt;
-                g.y += g.vy * dt;
-                g.x += g.vx * dt;
-
+                g.vy += 1500 * dt; g.y += g.vy * dt; g.x += g.vx * dt;
                 g.vx *= Math.max(0, 1 - 1.2 * dt);
-
-                g.th +=
-                    (STUCK - g.th) *
-                    Math.min(1, dt * 4.5);
-
-                if (g.y >= rest) {
-                    g.y = rest;
-                    g.landed = true;
-                    g.th = STUCK;
-                    g.t = 0;
-                    g.vx = 0;
-
-                    burst(g.x, -4, 8, 180, g.F);
-                    shake = Math.max(shake, 2);
+                g.th += (R.th - g.th) * Math.min(1, dt * 4.5);
+                if (g.y >= R.y) {
+                    g.y = R.y; g.landed = true; g.th = R.th; g.t = 0; g.vx = 0;
+                    burst(g.x, -4, 8, 180, g.F); shake = Math.max(shake, 2);
                 }
             }
         }
@@ -14116,16 +14099,25 @@
             if (puBlocked()) return;
             const S = CSc();
             let it = puNearest(), itd = it ? Math.abs(it.x - P.x) : 1e9;
-            // nearest landed knife on the ground (only if you don't already own one)
             let kg = null, kd = 1e9;
             if (!hasKnife) for (const g of groundKnives) {
                 if (!g.landed) continue;
                 const d = Math.abs(g.x - P.x);
                 if (d < PU_R * S && d < kd) { kd = d; kg = g; }
             }
-            if (kg && kd < itd) {                       // convert the knife into a normal pickup item
+            if (kg && kd < itd) {
                 groundKnives.splice(groundKnives.indexOf(kg), 1);
-                it = { id: ++itemSeq, type: 'knife', x: kg.x, seed: Math.random() * 99, F: kg.F };
+                // where the handle is, relative to the knife centre (same maths as stuckGrip)
+                const nw = KN.naturalWidth || 220, nh = KN.naturalHeight || 65, r = kg.th + KNIFE_SPRITE_TILT;
+                const gdx = (KGX - KCOMX) * KNIFE_LEN, gdy = (KGY - KCOMY) * KNIFE_LEN * nh / nw;
+                const gx = kg.F * (gdx * Math.cos(r) - gdy * Math.sin(r));
+                const gy = gdx * Math.sin(r) + gdy * Math.cos(r);
+                it = {
+                    id: ++itemSeq, type: 'knife', seed: Math.random() * 99,
+                    F: kg.F, th: kg.th, cx: kg.x, ky: kg.y,                 // knife centre + pose, used for drawing
+                    x: kg.x + gx * S,                                       // the hand reaches for the handle...
+                    h: Math.max(2, -(kg.y / S + gy))                        // ...at the handle's real height
+                };
                 groundItems.push(it);
             }
             if (!it) return;
@@ -14142,16 +14134,17 @@
         // choose crouch depth, torso lean and foot spread from the item's height and distance
         function puSolve() {
             const S = CSc(), it = P.puIt, F = P.face, def = ITEM_DEFS[it.type];
-            const dx = Math.max(10, (it.x - P.x) * F / S), hk = clamp01(def.h / 34);
+            const ih = (it.h !== undefined) ? it.h : def.h;
+            const dx = Math.max(10, (it.x - P.x) * F / S), hk = clamp01(ih / 34);
             const dep = lerp(116, 72, hk);                      // low objects: deep crouch, taller: smaller bend
             const hipY = -169 + dep, hipX = -6 - 6 * clamp01((dx - 30) / 30);   // hips shift back
             let best = 1.45, bd = 1e9;
             for (let L = .25; L <= 1.45; L += .025) {           // smallest lean that lets the fist reach the item
-                const shF = hipX + 87 * Math.sin(L), shY = hipY - 87 * Math.cos(L), d = Math.hypot(dx - shF, -def.h - shY);
+                const shF = hipX + 87 * Math.sin(L), shY = hipY - 87 * Math.cos(L), d = Math.hypot(dx - shF, -ih - shY);
                 if (d <= 118) { best = L; break }
                 if (d < bd) { bd = d; best = L }
             }
-            P.puC = { dep, hipX, lean: best, dx, h: def.h, ff: lerp(16, 34, clamp01((dx - 30) / 32)), fr: -22 };
+            P.puC = { dep, hipX, lean: best, dx, h: ih, ff: lerp(16, 34, clamp01((dx - 30) / 32)), fr: -22 };
         }
 
         function puGrab() {
@@ -14236,9 +14229,9 @@
             ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#111';
             if (it.type === 'knife') {
                 if (KN.complete && KN.naturalWidth) {
-                    const sc = KNIFE_LEN / KN.naturalWidth * (inHand ? .85 : 1);
-                    ctx.scale(sc, sc);
-                    ctx.drawImage(KN, -KN.naturalWidth * KCOMX, -KN.naturalHeight * KCOMY);
+                    const sc = KNIFE_LEN / KN.naturalWidth * .85, nw = KN.naturalWidth, nh = KN.naturalHeight;
+                    ctx.rotate(-Math.PI / 2 + .3); ctx.scale(sc, sc);
+                    ctx.drawImage(KN, -nw * KGX, -nh * KGY);   // handle at the origin, so it sits in the fist
                 }
             } else if (it.type === 'stick') {
                 if (!inHand) ctx.rotate((hash(it.seed) - .5) * .3);
@@ -14263,9 +14256,18 @@
         function drawGroundItems(gy) {
             const S = CSc(), now = performance.now() / 1000, near = puBlocked() ? null : puNearest();
             for (const it of groundItems) {
-                const sx = it.x - P.x + W / 2; if (sx < -80 || sx > W + 80) continue;
+                const sx = it.x - P.x + W / 2; if (sx < -120 || sx > W + 120) continue;
+                if (it.type === 'knife') {
+                    if (KN.complete && KN.naturalWidth) {
+                        const nw = KN.naturalWidth, nh = KN.naturalHeight, sc = KNIFE_LEN / nw * S;
+                        ctx.save(); ctx.translate(it.cx - P.x + W / 2, gy + 4 + it.ky); ctx.scale(it.F, 1);
+                        ctx.rotate(it.th + KNIFE_SPRITE_TILT); ctx.scale(sc, sc);
+                        ctx.drawImage(KN, -nw * KCOMX, -nh * KCOMY); ctx.restore();
+                    }
+                    continue;   // the picked-up knife has no ring / hint
+                }
                 ctx.save(); ctx.translate(sx, gy + 4);
-                if (it === near) {                              // dashed ring + T hint
+                if (it === near) {
                     ctx.save(); ctx.strokeStyle = '#111'; ctx.lineWidth = 2; ctx.setLineDash([5, 5]); ctx.globalAlpha = .5 + .2 * Math.sin(now * 4);
                     ctx.beginPath(); ctx.ellipse(0, 2, 30 * S, 6, 0, 0, 7); ctx.stroke(); ctx.restore();
                     ctx.fillStyle = '#111'; ctx.font = 'italic bold 20px Georgia,serif'; ctx.textAlign = 'center'; ctx.fillText('T', 0, -34 * S - 4 * Math.sin(now * 5));
