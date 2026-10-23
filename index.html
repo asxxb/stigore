@@ -103,6 +103,7 @@
             style="position:fixed; left:18px; bottom:calc(env(safe-area-inset-bottom,0px) + 98px)">♀</span>
         <span class="b" id="bm"
             style="position:fixed; left:18px; bottom:calc(env(safe-area-inset-bottom,0px) + 178px)">M</span>
+        <span class="b" id="bt" style="position:fixed; left:18px; bottom:calc(env(safe-area-inset-bottom,0px) + 258px)">T</span>
     </div>
     <script>
         const cv = document.getElementById('c'), ctx = cv.getContext('2d');
@@ -151,6 +152,7 @@
             if (e.code === 'Space') e.preventDefault();
             if (e.repeat) return;
             if (e.code === 'KeyV') { P.female = !P.female; banner.t = .8; banner.text = P.female ? 'WOMAN' : 'MAN'; }
+            if (P.pu > 0 && e.code !== 'KeyN') return;   // no other actions during PICKUP
             if (e.code === 'KeyC') pressSmoke();
             if (e.code === 'KeyN') { const toNight = DN.d < .5; DN.t = toNight ? 0 : .5; banner.t = .8; banner.text = toNight ? 'MIDNIGHT' : 'NOON'; }
             if (e.code === 'KeyO') pressLantern();
@@ -169,6 +171,7 @@
             if (e.code === 'KeyJ') pressAtk();
             if (e.code === 'KeyM') pressKick();
             if (e.code === 'KeyX') pressSuperJump();
+            if (e.code === 'KeyT') pressPickup();
         });
         addEventListener('keyup', e => keys[e.code] = 0);
         function hold(id, k) {
@@ -190,6 +193,7 @@
                 pressKick();
             }));
         }
+        document.getElementById('bt').addEventListener('pointerdown', e => { e.preventDefault(); pressPickup() });
 
 
         const P = {
@@ -372,6 +376,7 @@
         function update(dt) {
             if (P.stc > 0 || P.pk > 0 || P.mount || swim.on || (typeof thClimbActive === 'function' && thClimbActive())) ldCancel();
             if (P.stc > 0) { stairTick(dt); return; }
+            if (P.pu > 0) { puTick(dt); return; }
             if (typeof thLadderUpdate === 'function' && thLadderUpdate(dt)) return;
             if (typeof updateSwim === 'function' && updateSwim()) {
                 P.vz = 0; P.z = 0;
@@ -1662,6 +1667,7 @@
         function comboPose(Q) {
             if (Q === PL && swim.on) { const sp = swimPose(); if (sp) return sp }
             if (Q === PL && TH_CL.on && TH_CL.pose) return TH_CL.pose;
+            if (Q === PL && Q.pu > 0) return puPose(Q);
             if (Q === PL && Q.stc > 0) return Q.stcM >= 2 ? Q.stcPose : null;
             if (Q === PL && Q.stbk > 0) return stabPose(Q);
             if (Q === PL && Q.gu > 0) return guPose(Q);
@@ -3017,6 +3023,7 @@
                 (P.fistInfo || (P.fistInfo = []))[i] = { x: lastArm[1][0], y: lastArm[1][1], a: Math.atan2(lastArm[1][1] - lastArm[0][1], (lastArm[1][0] - lastArm[0][0]) * F), F };
             }
             if (P === PL && P.gunK < .05 && P.sgK < .05 && (mk > .9 || (mpa && MP.dis && MP.t < 1.15) || (mpa && !MP.dis && MP.t > 2.9))) drawReins(F);
+            if (P === PL && P.puHeld) drawHeldItem(F, S, now);
             const grabHdOffX = isGrabbed ? F * 4 - F * hk * 10 + Math.sin(now * 23) * 1.5 : 0;
             const grabHdOffY = isGrabbed ? 6 - hk * 2 : 0;
             const fnn = (P !== PL && P.fst === 1 && PL.fin > 0) ? finK(PL.fin) : null;
@@ -13498,6 +13505,188 @@
         }
 
 
+        // ================= UNIVERSAL PICKUP (T) =================
+        const PU_R = 200;                       // interaction radius (character units, scaled by CSc)
+        const ITEM_DEFS = {                     // h = height of the item's centre above the ground (grab height)
+            stick: { label: 'STICK', h: 3 },
+            stone: { label: 'STONE', h: 5 },
+            plant: { label: 'HERB',  h: 13 }
+        };
+        const groundItems = [], INV = {};
+        let itemSeq = 0;
+        P.pu = 0; P.puM = 0; P.puT = 0; P.puT2 = 0; P.puIt = null; P.puHeld = null; P.puC = null; P.puSent = 0;
+        // pu modes: 1 approach, 2 crouch+reach, 3 hold after grab, 4 rise
+
+        function dropItem(type, x) { groundItems.push({ id: ++itemSeq, type, x, seed: Math.random() * 99 }) }
+        (function () {                          // test items around the start position; remove or replace as needed
+            for (const [t, o] of [['stick', 140], ['stone', -210], ['plant', 320], ['stick', -420], ['stone', 520], ['plant', -640]]) dropItem(t, P.x + o);
+        })();
+
+        function puBlocked() {
+            return P.pu > 0 || P.mount || P.z < 0 || P.pk > 0 || P.stc > 0 || P.cs > 0 || P.fin > 0 || P.thw > 0 || P.tt > 0 ||
+                P.stbk > 0 || P.fs > 0 || P.gu > 0 || P.yk > 0 || P.sgp > 0 || P.sm > 0 || P.ln > 0 || P.lb > 0 || P.ld > 0 ||
+                P.gun || P.gs === 2 || P.sg || P.kn !== 0 || P.kt > .05 || swim.on || TH_CL.on || P.dh > 0;
+        }
+        function puNearest() {
+            const S = CSc(); let b = null, bd = 1e9;
+            for (const it of groundItems) {
+                const d = Math.abs(it.x - P.x);
+                if (d < PU_R * S && d < bd && !inPond(it.x, 0)) { bd = d; b = it }
+            }
+            return b;
+        }
+        function pressPickup() {
+            if (puBlocked()) return;
+            const it = puNearest(); if (!it) return;           // nothing in range: do nothing
+            if (P.skid) endSkid(); P.skidK = 0;
+            P.pu = .0001; P.puM = 1; P.puT = 0; P.puT2 = 0; P.puIt = it; P.puHeld = null; P.puSent = 0; P.puC = null;
+            if (Math.abs(it.x - P.x) > 2) P.face = it.x >= P.x ? 1 : -1;   // turn toward it
+            P.idle = 0; P.fid = 0; P.abuf = 0; P.jbuf = 0; P.grabbed = null; P.clast = 0;
+        }
+        function puCancel() {
+            if (P.puHeld) groundItems.push(P.puHeld);
+            P.pu = 0; P.puM = 0; P.puIt = null; P.puHeld = null; P.puC = null;
+        }
+
+        // choose crouch depth, torso lean and foot spread from the item's height and distance
+        function puSolve() {
+            const S = CSc(), it = P.puIt, F = P.face, def = ITEM_DEFS[it.type];
+            const dx = Math.max(10, (it.x - P.x) * F / S), hk = clamp01(def.h / 34);
+            const dep = lerp(116, 72, hk);                      // low objects: deep crouch, taller: smaller bend
+            const hipY = -169 + dep, hipX = -6 - 6 * clamp01((dx - 30) / 30);   // hips shift back
+            let best = 1.45, bd = 1e9;
+            for (let L = .25; L <= 1.45; L += .025) {           // smallest lean that lets the fist reach the item
+                const shF = hipX + 87 * Math.sin(L), shY = hipY - 87 * Math.cos(L), d = Math.hypot(dx - shF, -def.h - shY);
+                if (d <= 118) { best = L; break }
+                if (d < bd) { bd = d; best = L }
+            }
+            P.puC = { dep, hipX, lean: best, dx, h: def.h, ff: lerp(16, 34, clamp01((dx - 30) / 32)), fr: -22 };
+        }
+
+        function puGrab() {
+            const it = P.puIt, k = groundItems.indexOf(it);
+            if (k >= 0) groundItems.splice(k, 1);               // gone from the ground...
+            P.puHeld = it; P.puM = 3; P.puT2 = 0;               // ...and now in the hand
+            burst(it.x, -2, 4, 100, P.face);
+        }
+
+        function puTick(dt) {
+            const S = CSc(), F = P.face, it = P.puIt;
+            P.abuf = 0; P.jbuf = 0; P.idle = 0; P.fid = 0; P.vz = 0; P.z = 0;
+            if (swim.on || inPond(P.x, -10) || (P.puM < 3 && (!it || groundItems.indexOf(it) < 0))) { puCancel(); return }
+
+            if (P.puM === 1) {                                  // short walk (forward or a step back) to a comfortable distance
+                P.puT += dt;
+                const dx = (it.x - P.x) * F / S, tgt = dx > 62 ? 56 : (dx < 30 ? 38 : null);
+                if (tgt === null || P.puT > 2.5) { P.puM = 2; P.puT2 = 0; P.vx = 0; puSolve(); return }
+                const rem = (dx - tgt) * S, sp = 120, sg = Math.sign(rem), mv = sg * Math.min(Math.abs(rem), sp * dt);
+                P.x += F * mv; P.vx = sg * F * sp;
+                P.phase += sg * sp * dt / (280 * S) * Math.PI * 2;
+                P.amp += (1 - P.amp) * Math.min(1, dt * 10);
+                P.lean += (Math.max(-1, Math.min(1, P.vx / 420)) * .4 - P.lean) * Math.min(1, dt * 6);
+                return;
+            }
+            P.vx = 0; P.amp += (0 - P.amp) * Math.min(1, dt * 14); P.lean += (0 - P.lean) * Math.min(1, dt * 14);
+            P.puT2 += dt;
+
+            if (P.puM === 2) {
+                if (P.puT2 >= .95) {                            // only collect once the fist is actually on the item
+                    const A = P.armPts && P.armPts[0], c = P.puC; let ok = false;
+                    if (A && c) {
+                        const el = A[0], wr = A[1]; let dx = wr[0] - el[0], dy = wr[1] - el[1]; const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
+                        ok = Math.hypot(wr[0] + dx * PALM * .8 - F * c.dx, wr[1] + dy * PALM * .8 + c.h) < 16;
+                    }
+                    if (ok || P.puT2 > 1.5) puGrab();
+                }
+            } else if (P.puM === 3) {                           // brief pause at the lowest point, item in hand
+                if (P.puT2 >= .28) { P.puM = 4; P.puT2 = 0 }
+            } else {
+                if (!P.puSent && P.puT2 >= .42) {               // hand -> inventory
+                    P.puSent = 1; const h = P.puHeld;
+                    if (h) { INV[h.type] = (INV[h.type] || 0) + 1; banner.t = .8; banner.text = 'PICKED UP: ' + ITEM_DEFS[h.type].label }
+                    P.puHeld = null;
+                    if (typeof playSfx === 'function') playSfx('pickup');   // hook for an audio system, if you add one
+                }
+                if (P.puT2 >= .75) { P.pu = 0; P.puM = 0; P.puIt = null; P.puHeld = null; P.puC = null }   // PICKUP -> IDLE / run (by input)
+            }
+        }
+
+        function puPose(Q) {
+            const m = Q.puM, c = Q.puC; if (m < 2 || !c) return null;   // mode 1 uses the normal walk cycle
+            const F = Q.face, t = Q.puT2;
+            let comp, ln, hp, rw, w = 1, rest = [.08, 0];
+            if (m === 2) { comp = sm(t / .75); ln = sm((t - .15) / .7); hp = sm(t / .55); rw = sm((t - .4) / .55); w = sm(t / .18) }   // knees, then torso, then arm
+            else if (m === 3) { comp = ln = hp = rw = 1; rest = [.4, 1.0] }
+            else { comp = 1 - sm(t / .62); ln = 1 - sm((t - .12) / .5); hp = 1 - sm((t - .1) / .55); rw = 1 - sm((t - .08) / .42); w = 1 - sm((t - .58) / .17); rest = [.4, 1.0] }   // legs push first, torso follows
+            const push = m === 4 ? Math.sin(Math.PI * clamp01(t / .6)) * 7 : 0;
+            const hipX = c.hipX * hp + push, hipYa = -169 + c.dep * comp, L = c.lean * ln;
+            const sh = [F * (hipX + 87 * Math.sin(L)), hipYa - 87 * Math.cos(L)];       // real shoulder position
+            const tipX = F * c.dx, tipY = -c.h;
+            let ux = tipX - sh[0], uy = tipY - sh[1]; { const l_ = Math.hypot(ux, uy) || 1; ux /= l_; uy /= l_ }
+            let ha = 0, hf = 0;
+            for (let i = 0; i < 3; i++) { [ha, hf] = ik2(sh, tipX - ux * PALM * .8, tipY - uy * PALM * .8, F); ux = Math.sin(ha + hf) * F; uy = Math.cos(ha + hf) }
+            return {
+                w, a0: lerp(rest[0], ha, rw), f0: lerp(rest[1], hf, rw),
+                a1: lerp(.08, -1.0, ln), f1: lerp(0, .3, ln),                         // opposite arm swings back for balance
+                lean: L, hipX, hipY: 0, hipAbs: hipYa, arch: .02 + .08 * ln, hx: 2 + 8 * ln, hy: 2 + 7 * ln,   // head looks down at the item
+                l0: [c.ff - hipX, 0, 0], l1: [c.fr - hipX, 0, 0],                     // feet stay planted while the hips move
+                kneeFull: true, st: STEPS[0], sw: 0, ik: 0
+            };
+        }
+
+        // ---------- item art (centred on the origin, ink style) ----------
+        function drawItemShape(it, now, inHand) {
+            ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#111';
+            if (it.type === 'stick') {
+                if (!inHand) ctx.rotate((hash(it.seed) - .5) * .3);
+                const path = () => { ctx.beginPath(); ctx.moveTo(-18, 2); ctx.lineTo(0, -1); ctx.lineTo(18, -2); ctx.moveTo(2, -1); ctx.lineTo(9, -8) };
+                path(); ctx.lineWidth = 6; ctx.stroke(); path(); ctx.strokeStyle = 'rgb(150,110,70)'; ctx.lineWidth = 3.2; ctx.stroke();
+            } else if (it.type === 'stone') {
+                ctx.beginPath();
+                for (let j = 0; j < 8; j++) { const a = j / 8 * 6.283, r = 7 + hash(it.seed + j * 3) * 3; const x = Math.cos(a) * r * 1.2, y = Math.sin(a) * r * .8; j ? ctx.lineTo(x, y) : ctx.moveTo(x, y) }
+                ctx.closePath(); ctx.fillStyle = 'rgb(165,160,150)'; ctx.fill(); ctx.lineWidth = 2; ctx.stroke();
+                ctx.lineWidth = 1; ctx.globalAlpha = .5; ctx.beginPath(); ctx.moveTo(-4, -3); ctx.lineTo(1, -4.5); ctx.stroke(); ctx.globalAlpha = 1;
+            } else {                                            // plant: stem, leaves, small flower (base at +13)
+                const sw = inHand ? 0 : Math.sin(now * 1.8 + it.seed) * 1.5 + wind.v * .004;
+                ctx.strokeStyle = '#111'; ctx.lineWidth = 3.6; ctx.beginPath(); ctx.moveTo(0, 13); ctx.quadraticCurveTo(sw * .3, 0, sw, -13); ctx.stroke();
+                ctx.strokeStyle = 'rgb(95,125,70)'; ctx.lineWidth = 1.8; ctx.stroke();
+                ctx.fillStyle = 'rgba(110,145,80,.95)'; ctx.strokeStyle = '#111'; ctx.lineWidth = 1;
+                for (const [y, d] of [[3, 1], [-3, -1]]) { ctx.beginPath(); ctx.ellipse(d * 6 + sw * .3, y, 6, 2.4, d * -.5, 0, 7); ctx.fill(); ctx.stroke() }
+                ctx.save(); ctx.translate(sw, -14);
+                for (let k = 0; k < 5; k++) { ctx.rotate(1.2566); ctx.fillStyle = '#faf8f2'; ctx.beginPath(); ctx.ellipse(3.4, 0, 3.2, 1.8, 0, 0, 7); ctx.fill(); ctx.stroke() }
+                ctx.fillStyle = '#e8b830'; ctx.beginPath(); ctx.arc(0, 0, 1.8, 0, 7); ctx.fill(); ctx.restore();
+            }
+        }
+        function drawGroundItems(gy) {
+            const S = CSc(), now = performance.now() / 1000, near = puBlocked() ? null : puNearest();
+            for (const it of groundItems) {
+                const sx = it.x - P.x + W / 2; if (sx < -80 || sx > W + 80) continue;
+                ctx.save(); ctx.translate(sx, gy + 4);
+                if (it === near) {                              // dashed ring + T hint
+                    ctx.save(); ctx.strokeStyle = '#111'; ctx.lineWidth = 2; ctx.setLineDash([5, 5]); ctx.globalAlpha = .5 + .2 * Math.sin(now * 4);
+                    ctx.beginPath(); ctx.ellipse(0, 2, 30 * S, 6, 0, 0, 7); ctx.stroke(); ctx.restore();
+                    ctx.fillStyle = '#111'; ctx.font = 'italic bold 20px Georgia,serif'; ctx.textAlign = 'center'; ctx.fillText('T', 0, -34 * S - 4 * Math.sin(now * 5));
+                }
+                ctx.scale(S, S); ctx.translate(0, -ITEM_DEFS[it.type].h); drawItemShape(it, now, false); ctx.restore();
+            }
+        }
+        // called from drawChar (character space): item in the fist, fist redrawn on top so the fingers wrap it
+        function drawHeldItem(F, S, now) {
+            const it = P.puHeld, A = P.armPts && P.armPts[0]; if (!it || !A) return;
+            const el = A[0], wr = A[1]; let dx = wr[0] - el[0], dy = wr[1] - el[1]; const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
+            ctx.save(); ctx.translate(wr[0] + dx * PALM * .75, wr[1] + dy * PALM * .75);
+            ctx.rotate(Math.atan2(dy, dx) + Math.PI / 2);
+            if (it.type === 'plant') ctx.translate(0, 9);
+            ctx.scale(.85, .85); drawItemShape(it, now, true); ctx.restore();
+            const f = P.fistInfo && P.fistInfo[0];
+            if (f && FIST.complete) { ctx.save(); ctx.translate(f.x, f.y); ctx.scale(f.F, 1); ctx.rotate(f.a - Math.PI / 2); ctx.drawImage(FIST, -FIST.naturalWidth / 2, -4); ctx.restore() }
+        }
+        function drawInvHUD() {
+            const ks = Object.keys(INV).filter(k => INV[k] > 0); if (!ks.length) return;
+            ctx.save(); ctx.fillStyle = '#111'; ctx.globalAlpha = .85; ctx.font = 'italic 20px Georgia,serif'; ctx.textAlign = 'left';
+            ctx.fillText('pack: ' + ks.map(k => ITEM_DEFS[k].label.toLowerCase() + ' ×' + INV[k]).join(' · '), 24, H - 24); ctx.restore();
+        }
+
         function frame(now) {
 
 
@@ -13517,6 +13706,7 @@
             drawWindowGlow(gy);
             drawSkid(gy);
             drawSplats(gy);
+            drawGroundItems(gy);
             drawBGoreGround(gy);
             drawButts(gy);
             drawGhosts(gy);
@@ -13562,6 +13752,7 @@
             drawGunHUD();
             drawShotgunHUD();
             drawBirdsHUD();
+            drawInvHUD();
             requestAnimationFrame(frame);
         }
         requestAnimationFrame(frame);
