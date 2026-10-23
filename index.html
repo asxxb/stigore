@@ -103,7 +103,8 @@
             style="position:fixed; left:18px; bottom:calc(env(safe-area-inset-bottom,0px) + 98px)">♀</span>
         <span class="b" id="bm"
             style="position:fixed; left:18px; bottom:calc(env(safe-area-inset-bottom,0px) + 178px)">M</span>
-        <span class="b" id="bt" style="position:fixed; left:18px; bottom:calc(env(safe-area-inset-bottom,0px) + 258px)">T</span>
+        <span class="b" id="bt"
+            style="position:fixed; left:18px; bottom:calc(env(safe-area-inset-bottom,0px) + 258px)">T</span>
     </div>
     <script>
         const cv = document.getElementById('c'), ctx = cv.getContext('2d');
@@ -9274,8 +9275,10 @@
         }
 
         function thSqRespawn(q) {
-            Object.assign(q, { x: -190, y: 0, p: 0, lvl: 0, F: 1, air: 0, hop: 0, up: 0, sn: 0, cr: 0, cc: 0,
-                               pz: 0, pzPend: false, sh: 0, alert: 0, queue: [], dead: 0 });
+            Object.assign(q, {
+                x: -190, y: 0, p: 0, lvl: 0, F: 1, air: 0, hop: 0, up: 0, sn: 0, cr: 0, cc: 0,
+                pz: 0, pzPend: false, sh: 0, alert: 0, queue: [], dead: 0
+            });
             thSqStart(q, 'idle', .3);
         }
 
@@ -13510,7 +13513,7 @@
         const ITEM_DEFS = {                     // h = height of the item's centre above the ground (grab height)
             stick: { label: 'STICK', h: 3 },
             stone: { label: 'STONE', h: 5 },
-            plant: { label: 'HERB',  h: 13 }
+            plant: { label: 'HERB', h: 13 }
         };
         const groundItems = [], INV = {};
         let itemSeq = 0;
