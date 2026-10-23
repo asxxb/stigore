@@ -8603,7 +8603,7 @@
         const TH_LEAF = ['rgba(110,135,95,.26)', 'rgba(135,150,100,.24)', 'rgba(95,120,100,.24)'];
 
         // glowing cabin window at night + lantern perches for birds
-        NIGHT_LIGHTS.push({ wx: TH_WX, sc: TH_SC, r: [[76, -402, 34, 30, 1, 1]] });
+        NIGHT_LIGHTS.push({ wx: TH_WX, sc: TH_SC, r: [[52, -402, 34, 30, 1, 1]] });
         PERCH.push({ x: TH_WX + 14 * TH_SC, y: -335 * TH_SC, by: null }, { x: TH_WX + 92 * TH_SC, y: -241 * TH_SC, by: null }, { x: TH_WX + 214 * TH_SC, y: -398 * TH_SC, by: null });
 
         // ---------- helpers ----------
@@ -8706,8 +8706,8 @@
         //     tied around the platform's front beam, hanging down to just above the ground.
         //   * Bigger, taller, deeper cabin (wide front, visible side wall) with a FLAT
         //     overhanging plank roof on beams.
-        //   * Trunk is entirely BEHIND the cabin: one clean, uninterrupted wooden house.
-        //     The trunk stays visible below the platform, above the roof and in the crown.
+        //   * v5: the tree GROWS THROUGH the cabin: floor hole -> interior (seen through a framed
+        //     tree bay in an otherwise continuous front wall) -> opening in the flat roof -> crown.
         //   * One continuous, wider platform.
         //
         //  Keep TH_DY around -330 (house high in the tree). Everything is relative to it.
@@ -8866,23 +8866,24 @@
             thLimb([[-5, H(255)], [-80, H(285)], [-170, H(305)], [-265, H(335)]], [15, 11, 7, 2], 22, 'rgba(140,112,80,.30)', 1.6, 3);
 
             // ---- C. THE TREE: roots, tall tapering trunk, crown ----
-            const TRUNK_PTS = [[-8, 8], [-14, D * .2], [-6, D * .45], [-12, D * .7], [-8, D + 40], [-10, D], [-4, D - 60], [-6, D - 120], [-2, H(180)], [0, H(235)], [4, H(265)]];
-            const TRUNK_W = [62, 57, 52, 47, 44, 40, 36, 32, 27, 22, 17];
+            const TRUNK_PTS = [[-8, 8], [-16, D * .2], [-5, D * .45], [-14, D * .7], [-8, D + 40], [-5, D], [1, D - 60], [-3, D - 120], [-1, H(180)], [2, H(235)], [4, H(265)]];
+            const TRUNK_W = [62, 58, 50, 48, 42, 41, 35, 32, 28, 23, 17];             // thickness changes, burl swellings
             const trunk = () => {
                 thLimb(TRUNK_PTS, TRUNK_W, 40, null, 2.1, 16);
                 ctx.beginPath(); ctx.ellipse(-16, -62, 5, 8.5, .1, 0, 7); ctx.lineWidth = 1; ctx.stroke();
                 ctx.beginPath(); ctx.ellipse(-16, -62, 2, 4, .1, 0, 7); ctx.fillStyle = 'rgba(90,64,40,.35)'; ctx.fill();
-                for (let y = -34; y > D + 24; y -= 40) { const x = -10 + (hash(y * .7) - .5) * 26; bdLine([[x, y], [x + (hash(y) - .5) * 4, y - 26]], .7, y, .4); }
+                for (let y = -34; y > H(200); y -= 40) { const x = -6 + (hash(y * .7) - .5) * 22; bdLine([[x, y], [x + (hash(y) - .5) * 4, y - 26]], .7, y, .4); }   // bark seams all the way up
                 thLimb([[0, D * .55], [30, D * .55 - 14], [58, D * .55 - 34]], [14, 9, 3], 46, null, 1.5, 1);
             };
             thLimb([[-28, -24], [-58, -6], [-98, 2], [-140, 5]], [18, 13, 7, 2], 31, null, 1.7, 2);
             thLimb([[-20, -14], [-44, -2], [-70, 6]], [11, 7, 2], 32, null, 1.6, 1);
             thLimb([[22, -24], [52, -8], [96, 2], [132, 5]], [17, 12, 6, 2], 33, null, 1.7, 2);
             thLimb([[14, -14], [40, 0], [66, 7]], [10, 6, 2], 34, null, 1.6, 1);
-            thLimb([[-2, H(235)], [-60, H(262)], [-130, H(290)], [-210, H(300)], [-280, H(296)]], [20, 15, 10, 5, 2], 37, null, 1.7, 3);
-            thLimb([[4, H(240)], [65, H(268)], [135, H(296)], [215, H(310)], [285, H(306)]], [21, 16, 10, 5, 2], 39, null, 1.7, 3);
-            thLimb([[0, H(262)], [-30, H(310)], [-70, H(345)], [-120, H(362)]], [14, 10, 6, 2], 44, null, 1.7, 3);
-            thLimb([[4, H(265)], [40, H(315)], [95, H(350)], [150, H(364)]], [14, 10, 6, 2], 45, null, 1.7, 3);
+            // major limbs start LOW on the trunk at the trunk's own width and sweep out, so they read as the trunk splitting
+            thLimb([[-2, H(205)], [-22, H(238)], [-72, H(272)], [-142, H(292)], [-215, H(300)], [-285, H(296)]], [27, 22, 16, 10, 5, 2], 37, null, 1.7, 3);
+            thLimb([[0, H(207)], [24, H(242)], [76, H(274)], [146, H(298)], [220, H(310)], [290, H(306)]], [27, 22, 16, 10, 5, 2], 39, null, 1.7, 3);
+            thLimb([[-1, H(240)], [-20, H(285)], [-60, H(330)], [-115, H(362)]], [18, 12, 7, 2], 44, null, 1.7, 3);
+            thLimb([[3, H(242)], [28, H(290)], [80, H(335)], [145, H(364)]], [18, 12, 7, 2], 45, null, 1.7, 3);
             thLimb([[4, H(265)], [0, H(320)], [8, H(380)], [24, H(415)]], [17, 13, 8, 2], 38, null, 1.7, 3);
             trunk();
 
@@ -8920,15 +8921,40 @@
             thPlankFill(SIDE, 130, 152, BY, WT - 11, 19);
             bdLine([[-130, BY], [-130, WT]], 3.2, 20); bdLine([[130, BY], [130, WT]], 3.2, 21);
             bdRect(-134, BY - 3, 268, 4, TH_WOODD, 1.4, 25);                 // sill beam
-            thWin(-110, D - 72, 34, 30, 45);
-            thWin(76, D - 72, 34, 30, 43);                                   // glows at night
-            bdShape([[-16, BY], [-15.5, D - 72], [16, D - 73], [16, BY]], 'rgba(150,108,64,.62)', 1.7, 31);   // door
-            bdPlanks(-16, 16, BY - 2, D - 71, 6, 32);
-            bdLine([[-16, D - 46], [16, D - 45]], 1, 33, .6);
-            ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(10, D - 38, 1.5, 0, 7); ctx.fill();
-            bdShape([[-26, D - 80], [26, D - 80.5], [30, D - 74], [-30, D - 73.5]], TH_WOODD, 1.3, 36);           // little awning over the door
-            bdLine([[-22, D - 74], [-22, D - 80]], 1.6, 37, .9); bdLine([[22, D - 74], [22, D - 80]], 1.6, 38, .9);
-            bdRect(-114, D - 42, 42, 4, TH_WOODD, 1.1, 47); bdRect(72, D - 42, 42, 4, TH_WOODD, 1.1, 48);       // window sills
+            bdShape([[-130, D - 90], [130, D - 90.4], [130, D - 86], [-130, D - 85.6]], TH_WOODD, 1.2, 28);   // belt course ties the whole facade together
+            thWin(-74, D - 66, 22, 26, 45);
+            thWin(52, D - 72, 34, 30, 43);                                   // glows at night
+            thWin(92, D - 72, 28, 30, 47);
+            bdShape([[-112, BY], [-111.5, D - 72], [-82, D - 73], [-82, BY]], 'rgba(150,108,64,.62)', 1.7, 31);   // door (left of the tree bay)
+            bdPlanks(-112, -82, BY - 2, D - 71, 6, 32);
+            bdLine([[-112, D - 46], [-82, D - 45]], 1, 33, .6);
+            ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(-88, D - 38, 1.5, 0, 7); ctx.fill();
+            bdShape([[-120, D - 80], [-74, D - 80.5], [-70, D - 74], [-124, D - 73.5]], TH_WOODD, 1.3, 36);       // awning
+            bdLine([[-116, D - 74], [-116, D - 80]], 1.6, 37, .9); bdLine([[-78, D - 74], [-78, D - 80]], 1.6, 38, .9);
+            bdRect(-78, D - 40, 30, 4, TH_WOODD, 1.1, 47); bdRect(48, D - 42, 42, 4, TH_WOODD, 1.1, 48); bdRect(88, D - 42, 36, 4, TH_WOODD, 1.1, 49);   // window sills
+
+            // THE TREE BAY: an intentional structural opening in the otherwise continuous front wall; the tree passes through the cabin here
+            {
+                const BX0 = -44, BX1 = 36, BT = D - 80, BB = D - 11, cx = -5, bay = [[BX0, BT], [BX1, BT], [BX1, BB], [BX0, BB]];
+                thTint(bay, 'rgb(142,116,82)');                                                         // interior back wall
+                for (let y = BT + 7; y < BB - 10; y += 8 + hash(y) * 1.5) bdLine([[BX0 + 2, y], [BX1 - 2, y + (hash(y + 1) - .5)]], .6, y, .35);
+                thTint(bay, 'rgba(40,28,16,.22)');
+                bdShape([[BX0, BB - 12], [BX1, BB - 12], [BX1, BB], [BX0, BB]], TH_WOODL, 1.2, 50);     // interior floor
+                for (let x = BX0 + 5; x < BX1; x += 6 + hash(x) * 3) bdLine([[x, BB - 12], [x + (hash(x) - .5) * 2, BB]], .6, x, .55);
+                ctx.save(); ctx.beginPath(); ctx.ellipse(cx, BB - 6, 26, 4.8, 0, 0, 7); ctx.fillStyle = 'rgba(30,20,10,.65)'; ctx.fill(); ctx.lineWidth = 1.3; ctx.stroke(); ctx.restore();   // irregular hole in the floor
+                thClip([[BX0, BT], [BX1, BT], [BX1, BB - 6], [BX0, BB - 6]], trunk);                    // the living trunk rises out of the hole through the interior
+                ctx.save(); ctx.strokeStyle = '#111'; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.ellipse(cx, BB - 6, 26, 4.8, 0, 0, Math.PI); ctx.stroke(); ctx.restore();   // front lip of the hole
+                bdShape([[BX0, BB - 12], [cx - 30, BB - 12], [cx - 28, BB - 5], [cx - 33, BB], [BX0, BB]], TH_WOODL, 1.1, 51);   // floorboards end ragged against the hole
+                bdShape([[BX1, BB - 12], [cx + 30, BB - 12], [cx + 27, BB - 6], [cx + 32, BB], [BX1, BB]], TH_WOODL, 1.1, 52);
+                for (const [dx, k] of [[-26, 1], [24, 2]]) bdLine([[cx + dx, BB - 10], [cx + dx * .85, BB - 3]], .8, 53 + k, .8);
+                bdShape([[BX0, BT + 13], [cx - 16, BT + 12], [cx - 16, BT + 18], [BX0, BT + 19]], TH_WOODD, 1.3, 55);   // timber ties wall <-> trunk
+                bdShape([[cx + 16, BT + 12], [BX1, BT + 13], [BX1, BT + 19], [cx + 16, BT + 18]], TH_WOODD, 1.3, 56);
+                bdLine([[BX0 + 4, BT + 19], [cx - 18, BT + 40]], 1.8, 57, .85); bdLine([[BX1 - 4, BT + 19], [cx + 18, BT + 40]], 1.8, 58, .85);
+                bdLine([[BX0, BT], [BX0 - .5, BB]], 3.2, 59); bdLine([[BX1, BT], [BX1 + .5, BB]], 3.2, 62);               // heavy framing posts
+                bdShape([[BX0 - 6, BT - 5], [BX1 + 6, BT - 5.5], [BX1 + 6, BT + 1], [BX0 - 6, BT + 1.5]], TH_WOODD, 1.4, 63);   // lintel, joins the belt course
+                bdShape([[BX0 - 6, BB], [BX1 + 6, BB], [BX1 + 6, BB + 4], [BX0 - 6, BB + 4]], TH_WOODD, 1.3, 64);              // threshold
+                bdLine([[BX0, BT + 6], [BX0 - 11, BT + 18]], 1.7, 65, .9); bdLine([[BX1, BT + 6], [BX1 + 11, BT + 18]], 1.7, 66, .9);
+            }
 
             // flat roof: thick rough boards, irregular edges, overhang, beams
             {
@@ -8936,7 +8962,15 @@
                 for (let x = x0; x <= x1; x += 37.5) { top.push([x, T + (hash(x * .3) - .5) * 1.8]); bot.push([x, B + (hash(x * .7) - .5) * 1.8]); }
                 thTint([[x0, T + 1], [x1, T], [x1 + 22, T - 11], [x1 + 22, B - 11], [x1, B], [x0, B]], 'rgb(236,228,200)');   // opaque underlay (covers trunk)
                 thSolid([[x0, T], [x1, T], [x1 + 22, T - 11], [x0 + 22, T - 11]], TH_WOODL, 1.8, 6);                         // top face (gives depth)
-                for (let x = x0 + 8; x < x1; x += 20 + hash(x) * 8) bdLine([[x, T], [x + 22, T - 11]], .6, x, .5);
+                const rcx = -2, rcy = T - 5.5;                                                     // hole centre on the roof's top face
+                for (let x = x0 + 8; x < x1; x += 20 + hash(x) * 8) if (Math.abs(x + 11 - rcx) > 27) bdLine([[x, T], [x + 22, T - 11]], .6, x, .5);   // boards stop short of the opening
+                ctx.save(); ctx.beginPath(); ctx.ellipse(rcx, rcy, 21, 4.8, 0, 0, 7); ctx.fillStyle = 'rgba(30,20,10,.62)'; ctx.fill(); ctx.lineWidth = 1.3; ctx.stroke(); ctx.restore();
+                bdShape([[rcx - 36, T - 2.5], [rcx - 22, T - 3.5], [rcx - 21, T - 7], [rcx - 29, T - 9], [rcx - 37, T - 8]], TH_WOODL, 1.1, 160);   // cut roof boards fitted round the trunk
+                bdShape([[rcx + 22, T - 3.5], [rcx + 36, T - 2.5], [rcx + 38, T - 8], [rcx + 30, T - 9], [rcx + 21, T - 7]], TH_WOODL, 1.1, 161);
+                bdShape([[rcx - 14, T - .5], [rcx + 14, T - .2], [rcx + 18, T - 3], [rcx - 18, T - 3.4]], TH_WOODL, 1.1, 162);                 // front board with a scooped notch
+                thClip([[rcx - 60, H(440)], [rcx + 60, H(440)], [rcx + 60, rcy], [rcx - 60, rcy]], trunk);                                      // trunk continues up out of the roof
+                ctx.save(); ctx.strokeStyle = '#111'; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.ellipse(rcx, rcy, 21, 4.8, 0, 0, Math.PI); ctx.stroke(); ctx.restore();   // front lip of the roof opening
+                bdLine([[rcx - 21, rcy + 1], [rcx - 25, rcy - 5]], 1.1, 163, .8); bdLine([[rcx + 21, rcy + 1], [rcx + 25, rcy - 5]], 1.1, 164, .8);   // little wedge battens
                 thSolid([[x1, T], [x1 + 22, T - 11], [x1 + 22, B - 11], [x1, B]], C_ROOF, 1.9, 9);                           // right end face
                 thSolid(top.concat(bot.slice().reverse()), C_ROOF, 1.9, 7);                                                    // front face
                 for (let x = x0 + 14; x < x1; x += 18 + hash(x * 2) * 14) bdLine([[x, T + 1.5], [x + (hash(x) - .5) * 2, B - 1.5]], .6, x, .5);   // board seams
