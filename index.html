@@ -5232,16 +5232,40 @@
             dropKnife(k.x, Math.min(k.y, -4), k.F, k.F * Math.cos(k.th) * sp, Math.sin(k.th) * sp - 60, k.th);
         }
         function updateGroundKnives(dt) {
-            const S = CSc(), STUCK = 1.1, rest = -(0.64 * KNIFE_LEN * Math.sin(STUCK) - 8) * S;
+            const S = CSc();
+            const STUCK = 1.1;
+
+            // Push the planted knife slightly deeper into the ground.
+            const GROUND_SINK = 15;
+
+            const rest =
+                -(0.64 * KNIFE_LEN * Math.sin(STUCK) - 8) * S
+                + GROUND_SINK;
+
             for (const g of groundKnives) {
                 g.t += dt;
+
                 if (g.landed) continue;
-                g.vy += 1500 * dt; g.y += g.vy * dt; g.x += g.vx * dt;
-                g.vx *= Math.max(0, 1 - 1.2 * dt);                              // air drag
-                g.th += (STUCK - g.th) * Math.min(1, dt * 4.5);                 // tip pitches down as it falls
+
+                g.vy += 1500 * dt;
+                g.y += g.vy * dt;
+                g.x += g.vx * dt;
+
+                g.vx *= Math.max(0, 1 - 1.2 * dt);
+
+                g.th +=
+                    (STUCK - g.th) *
+                    Math.min(1, dt * 4.5);
+
                 if (g.y >= rest) {
-                    g.y = rest; g.landed = true; g.th = STUCK; g.t = 0; g.vx = 0;
-                    burst(g.x, -4, 8, 180, g.F); shake = Math.max(shake, 2);
+                    g.y = rest;
+                    g.landed = true;
+                    g.th = STUCK;
+                    g.t = 0;
+                    g.vx = 0;
+
+                    burst(g.x, -4, 8, 180, g.F);
+                    shake = Math.max(shake, 2);
                 }
             }
         }
@@ -5262,19 +5286,101 @@
         }
         function drawGroundKnives(gy) {
             if (!KN.complete || !KN.naturalWidth) return;
-            const S = CSc(), nw = KN.naturalWidth, nh = KN.naturalHeight, sc = KNIFE_LEN / nw * S;
+
+            const S = CSc();
+            const nw = KN.naturalWidth;
+            const nh = KN.naturalHeight;
+            const sc = KNIFE_LEN / nw * S;
+
             for (const g of groundKnives) {
-                const sx = g.x - P.x + W / 2; if (sx < -150 || sx > W + 150) continue;
-                ctx.save(); ctx.translate(sx, gy + 4 + g.y); ctx.scale(g.F, 1);
-                const wob = g.landed ? Math.sin(g.t * 45) * .14 * Math.exp(-g.t * 7) : 0;
-                ctx.rotate(g.th + KNIFE_SPRITE_TILT + wob); ctx.scale(sc, sc);
-                ctx.drawImage(KN, -nw * KCOMX, -nh * KCOMY); ctx.restore();
-                if (g.landed && !hasKnife) {   // dashed ring + E hint when you're in range
-                    const near = Math.abs(g.x - P.x) < PICKUP_R * S, now = performance.now();
-                    ctx.save(); ctx.strokeStyle = '#111'; ctx.lineWidth = 2; ctx.setLineDash([6, 6]);
-                    ctx.globalAlpha = (near ? .55 : .3) + .2 * Math.sin(now / 250);
-                    ctx.beginPath(); ctx.ellipse(sx, gy + 6, PICKUP_R * S, 8, 0, 0, 7); ctx.stroke(); ctx.restore();
-                    if (near) { ctx.save(); ctx.fillStyle = '#111'; ctx.font = 'italic bold 22px Georgia,serif'; ctx.textAlign = 'center'; ctx.fillText('E', sx, gy - 50 * S - 4 * Math.sin(now / 200)); ctx.restore() }
+                const sx = g.x - P.x + W / 2;
+                if (sx < -150 || sx > W + 150) continue;
+
+                const wob = g.landed
+                    ? Math.sin(g.t * 45) * .14 * Math.exp(-g.t * 7)
+                    : 0;
+
+                // -------------------------------------------------
+                // KNIFE
+                // -------------------------------------------------
+                ctx.save();
+
+                // The knife can penetrate the floor, but anything
+                // below the floor is hidden.
+                ctx.beginPath();
+                ctx.rect(
+                    0,
+                    0,
+                    W,
+                    gy + 4
+                );
+                ctx.clip();
+
+                ctx.translate(sx, gy + 4 + g.y);
+                ctx.scale(g.F, 1);
+                ctx.rotate(g.th + KNIFE_SPRITE_TILT + wob);
+                ctx.scale(sc, sc);
+
+                ctx.drawImage(
+                    KN,
+                    -nw * KCOMX,
+                    -nh * KCOMY
+                );
+
+                ctx.restore();
+
+                // -------------------------------------------------
+                // PICKUP INDICATOR
+                // -------------------------------------------------
+                if (g.landed && !hasKnife) {
+                    const near =
+                        Math.abs(g.x - P.x) < PICKUP_R * S;
+
+                    const now = performance.now();
+
+                    ctx.save();
+
+                    ctx.strokeStyle = '#111';
+                    ctx.lineWidth = 2;
+                    ctx.setLineDash([6, 6]);
+
+                    ctx.globalAlpha =
+                        (near ? .55 : .3) +
+                        .2 * Math.sin(now / 250);
+
+                    ctx.beginPath();
+
+                    ctx.ellipse(
+                        sx,
+                        gy + 6,
+                        PICKUP_R * S,
+                        8,
+                        0,
+                        0,
+                        7
+                    );
+
+                    ctx.stroke();
+                    ctx.restore();
+
+                    if (near) {
+                        ctx.save();
+
+                        ctx.fillStyle = '#111';
+                        ctx.font =
+                            'italic bold 22px Georgia,serif';
+
+                        ctx.textAlign = 'center';
+
+                        ctx.fillText(
+                            'E',
+                            sx,
+                            gy - 50 * S -
+                            4 * Math.sin(now / 200)
+                        );
+
+                        ctx.restore();
+                    }
                 }
             }
         }
@@ -14179,6 +14285,7 @@
             drawSkid(gy);
             drawSplats(gy);
             drawGroundItems(gy);
+            drawGroundKnives(gy);
             drawBGoreGround(gy);
             drawButts(gy);
             drawGhosts(gy);
