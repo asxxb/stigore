@@ -9753,11 +9753,7 @@
 
             // ---- A. ground, distant trees, path ----
             bdLine([[-640, 3], [-300, 6], [100, 5], [320, 3]], 2.2, 11, .25);
-            ctx.save(); ctx.globalAlpha = .32;
-            for (const [x, h, s, t] of [[-690, 170, 3, 0], [-560, 130, 8, 1], [430, 190, 5, 0], [560, 150, 9, 1]]) {
-                ctx.save(); ctx.translate(x, -2); if (t) fRound(h, s, FW_WASH[1]); else fPine(h, s, FW_WASH[0]); ctx.restore();
-            }
-            ctx.restore();
+
             {
                 const top = [], bt = [];
                 for (let x = -640; x <= -40; x += 40) { top.push([x, 1 + (hash(x * .31) - .5) * 2]); bt.push([x, 8 + (hash(x * .57) - .5) * 2.5]); }
