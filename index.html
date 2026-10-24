@@ -15917,7 +15917,7 @@
             let tx = (sx === null ? m.x : sx) - (Math.sign(DD.dir) || 1) * (d.gap * sc + Math.sin(DD.clock * d.gw + d.gph) * 13);
             tx = clampN(tx, DD_X0 - 60, DD_X1 + 60);
             d.gx = tx; const dist = Math.abs(tx - d.x);
-            d.maxV = 56 * sc * d.spd * (dist > 120 * sc ? 1.7 : 1);
+            d.maxV = 56 * sc * d.spd * (dist > 120 * sc ? 1.7 : 1) + Math.max(0, dist - 300) * .8;
             if (d.peck > 0) d.peck -= dt;
             if (dist < 8 && Math.abs(d.vx) < 8) {
                 d.faceT -= dt;
@@ -15931,6 +15931,7 @@
             const want = a.gx - a.x; let v = clampN(want * 2.4, -a.maxV, a.maxV); if (Math.abs(want) < 3) v = 0;
             a.vx += (v - a.vx) * Math.min(1, dt * 5);
             a.x += a.vx * dt;
+            if (a.x > POND_X - POND_RX - 60 && a.x < POND_X) { a.x = POND_X - POND_RX - 60; if (a.vx > 0) a.vx = 0; }
             if (Math.abs(a.vx) > 7) a.face = Math.sign(a.vx);
             a.fv += clampN(a.face - a.fv, -dt * 6, dt * 6);
             a.ph += Math.abs(a.vx) * dt / (28 * S * DD_SIZE * a.s) * 6.283;
@@ -16107,23 +16108,33 @@
             m.dip = 0; m.hdT = 1; m.peck = 0;
         }
 
-        // ---- ducklings: stop, cluster, look up, bounce; after release the nearest one goes first ----
+        // ---- ducklings: cluster under her, follow the player while she is held, nearest one goes first on release ----
         function ddKidReact(d, dt, S, m) {
             const g = DD.g, sc = S * DD_SIZE, now = performance.now() / 1000, active = g.ph === 'grab' || g.ph === 'held';
             if (active) {
-                const n = DD.k.length, slot = (d.i - (n - 1) / 2) * 15 * sc;
-                let tx = g.ox + slot;
-                if ((d.i === 1 || d.i === 3) && g.t > .4) tx += Math.sign(P.x - g.ox) * Math.min(30 * sc, Math.abs(P.x - g.ox) * .5);   // two brave ones edge toward the player
-                d.gx = tx; d.maxV = 30 * sc; d.hdT = 1; d.peck = 0;
-                if (Math.abs(g.ax - d.x) > 5) d.face = Math.sign(g.ax - d.x);
-                d.up = (d.up || 0) + (sm((g.t - .15) / .3) - (d.up || 0)) * Math.min(1, dt * 7);
-                d.bn = (d.bn || 0) + (Math.abs(Math.sin(now * 9 + d.seed * 2)) * 2.4 * sm((g.t - .3) / .2) - (d.bn || 0)) * Math.min(1, dt * 10);
+                // smoothed travel direction of the player (-1..1), 0 when standing
+                g.fd = (g.fd || 0) + (clampN(P.vx / 150, -1, 1) - (g.fd || 0)) * Math.min(1, dt * 3);
+                const mv = Math.abs(g.fd), n = DD.k.length;
+                const slot = (d.i - (n - 1) / 2) * 15 * sc * (1 - mv);              // tight cluster when still
+                const trail = -g.fd * (18 + d.i * 15) * sc;                          // string out behind when moving
+                const tx = m.x + slot + trail;                                       // m.x follows the hand
+                const dist = Math.abs(tx - d.x);
+                d.gx = tx;
+                // keep pace: base waddle speed, plus player speed, plus catch-up when far behind
+                d.maxV = Math.max(34 * sc, Math.min(620, Math.abs(P.vx) * 1.15 + dist * 2.2)) * (.9 + .2 * d.spd);
+                d.hdT = 1; d.peck = 0;
+                if (dist > 8) d.face = Math.sign(tx - d.x) || d.face;                // run toward the player
+                else if (Math.abs(g.ax - d.x) > 5) d.face = Math.sign(g.ax - d.x);   // otherwise look up at her
+                const still = 1 - .75 * mv;
+                d.up = (d.up || 0) + (sm((g.t - .15) / .3) * still - (d.up || 0)) * Math.min(1, dt * 7);
+                d.bn = (d.bn || 0) + (Math.abs(Math.sin(now * 9 + d.seed * 2)) * 2.4 * sm((g.t - .3) / .2) * still - (d.bn || 0)) * Math.min(1, dt * 10);
             } else {
                 d.up = (d.up || 0) * Math.max(0, 1 - dt * 4); d.bn = (d.bn || 0) * Math.max(0, 1 - dt * 8);
                 if (g.rt > .22 + (d.rk || 0) * .22) {
                     const F = Math.sign(m.fv) || 1;
                     d.gx = m.x - F * (14 + (d.rk || 0) * 13) * sc * .9;
-                    d.maxV = 64 * sc * d.spd * (Math.abs(d.gx - d.x) > 100 * sc ? 1.6 : 1);
+                    const dist = Math.abs(d.gx - d.x);
+                    d.maxV = Math.min(620, 64 * sc * d.spd * (dist > 100 * sc ? 1.6 : 1) + Math.max(0, dist - 200) * 1.2);
                     d.face = Math.sign(d.gx - d.x) || d.face;
                 } else { d.gx = d.x; d.maxV = 0; d.face = Math.sign(m.x - d.x) || d.face }
             }
