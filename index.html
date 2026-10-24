@@ -310,6 +310,7 @@
         hold('bd', 'ArrowDown');
         hold('bu', 'ArrowUp');
         document.getElementById('bp').addEventListener('pointerdown', e => { e.preventDefault(); pressAtk() });
+        hold('bp', 'KeyJ');
         document.getElementById('bh').addEventListener('pointerdown', e => { e.preventDefault(); pressHorse() });
         document.getElementById('bv').addEventListener('pointerdown', e => { e.preventDefault(); P.female = !P.female });
         const bmBtn = document.getElementById('bm');
@@ -873,7 +874,7 @@
         const combo = { n: 0, dmg: 0, t: 0, pop: 0 }, banner = { t: 0, text: '' };
         let hitstop = 0, shake = 0;
         function pressAtk() {
-            if (duckHandBusy()) return;
+            if (duckHandBusy()) { if (!(P.kn === 1 && DD.g.mode === 'foot')) { banner.t = .7; banner.text = 'DRAW KNIFE (K), THEN HOLD J'; } return }
             if (P.mount) { if (P.mount === 2 && pressMSlash()) return; banner.t = .6; banner.text = P.mount === 2 ? 'DRAW KNIFE FIRST (K)' : 'DISMOUNT FIRST (H)'; return }
             if (P.sg) { banner.t = .6; banner.text = 'DROP SHOTGUN FIRST (Z)'; return }
             if (P.kn === 1 && P.kt > .5 && (keys.ArrowDown || keys.KeyS) && !(P.gu > 0) && P.stbk === 0 && P.fs === 0 && !(P.yk > 0) && P.pk === 0 && P.z >= 0 && !P.fin && !P.thw && !P.tt && !P.cs && pressGut()) return;
@@ -3247,6 +3248,7 @@
                     const o = ddArm(sh, F, S);
                     if (o && o[2] > .001) { ang += wrapA(o[0] - ang) * o[2]; flex = flex * (1 - o[2]) + o[1] * o[2]; }
                 }
+                if (P === PL && i === 1 && DD.g.on && DD.g.sawW > .02) { const o = ddSawArm(sh, F, S); if (o) { ang += wrapA(o[0] - ang) * o[2]; flex = flex * (1 - o[2]) + o[1] * o[2]; } }
                 if (isGrabbed) {
                     ang = .12; flex = .15;     // arms just hang while he is held
                 } else if (hk > 0) {
@@ -7113,7 +7115,7 @@
                 if (waterBit(g, dt, gibs, i, 16, g.k === 1 ? 110 : 95, g.k === 2 ? 0 : .12, g.k === 2)) continue;
                 if (!g.landed) {
                     g.t += dt; g.vy += 1500 * dt; g.x += g.vx * dt; g.y += g.vy * dt; g.rot += g.vr * dt;
-                    g.bl -= dt; if (g.bl <= 0 && g.t < (g.k === 3 ? 3.5 : 1.4)) { g.bl = .04; blood.push({ x: g.x, y: g.y, vx: g.vx * .1 + (Math.random() - .5) * 30, vy: 10 + Math.random() * 30, r: 1.2 + Math.random() * 1.5, t: 0 }) }
+                    g.bl -= dt; if (g.bl <= 0 && g.t < ((g.k === 3 || g.k === 4) ? 3.5 : 1.4)) { g.bl = .04; blood.push({ x: g.x, y: g.y, vx: g.vx * .1 + (Math.random() - .5) * 30, vy: 10 + Math.random() * 30, r: 1.2 + Math.random() * 1.5, t: 0 }) }
                     if (g.y >= -g.s * .3) {
                         g.y = -g.s * .3;
                         if (Math.abs(g.vy) > 180 && g.bn < 3) {
@@ -7241,6 +7243,26 @@
                         ctx.strokeStyle = '#111'; ctx.lineWidth = w + 2; ctx.beginPath(); ctx.moveTo(r * dx, r * 1.05); ctx.quadraticCurveTo(r * (dx + .2), r * (1.05 + len * .5), r * (dx - .1), r * (1.05 + len)); ctx.stroke();
                         ctx.strokeStyle = col; ctx.lineWidth = w; ctx.stroke();
                     }
+                } else if (g.k === 4) {                                   // severed duck head
+                    ctx.scale(g.f || 1, 1);
+                    const r = g.s, tn = performance.now() / 1000, tw = (g.landed && g.t < 9) ? Math.max(0, Math.sin(tn * 9 + g.seed)) : 0;
+                    ctx.lineWidth = 2.2; ctx.strokeStyle = '#111';
+                    if (!g.landed || g.t < 8) {                           // tendon strip swaying from the neck
+                        const sw = Math.sin(tn * 3 + g.seed) * r * .25;
+                        for (const [w, col] of [[3.8, '#111'], [1.8, '#eadfcf']]) { ctx.lineWidth = w; ctx.strokeStyle = col; ctx.beginPath(); ctx.moveTo(-r * 1.1, r * .3); ctx.quadraticCurveTo(-r * 1.6 + sw, r * .6, -r * 1.8 + sw, r * 1.1); ctx.stroke(); }
+                        ctx.lineWidth = 2.2; ctx.strokeStyle = '#111';
+                    }
+                    ctx.fillStyle = '#8c0d14'; ctx.beginPath(); ctx.ellipse(-r * .95, r * .15, r * .45, r * .62, .2, 0, 7); ctx.fill(); ctx.stroke();
+                    ctx.fillStyle = '#d4443a'; ctx.beginPath(); ctx.ellipse(-r * .98, r * .15, r * .22, r * .36, .2, 0, 7); ctx.fill();
+                    ctx.fillStyle = '#f1e3d6'; ctx.beginPath(); ctx.arc(-r * .99, r * .05, r * .12, 0, 7); ctx.fill();
+                    ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.fillStyle = '#fdfdf8'; ctx.fill(); ctx.lineWidth = 2.4; ctx.stroke();
+                    const poly = (pts, col) => { ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(p[0] * r, p[1] * r) : ctx.moveTo(p[0] * r, p[1] * r)); ctx.closePath(); ctx.fillStyle = col; ctx.fill(); ctx.stroke(); };
+                    poly([[.7, .05], [2.2, .1], [2.0, .6], [.7, .55]], '#7a0b11');                       // mouth open in a silent scream
+                    poly([[.7, .6], [2.0, .62], [1.9, .95], [.7, .95]], '#f6b020');                      // lower beak
+                    poly([[.7, -.4], [2.3, -.55], [2.4, .1], [.7, .1]], '#f6b020');                      // upper beak
+                    ctx.beginPath(); ctx.ellipse(r * .35, -r * .3, r * .3, r * .3, 0, 0, 7); ctx.fillStyle = '#eceae0'; ctx.fill(); ctx.lineWidth = 1.6; ctx.stroke();
+                    ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(r * .38 + tw * r * .06, -r * .3, r * .12, 0, 7); ctx.fill();   // glassy eye, twitching
+                    if (tw > .6) { ctx.beginPath(); ctx.moveTo(r * .05, -r * .42); ctx.lineTo(r * .65, -r * .42); ctx.stroke(); }    // eyelid flutter
                 } else {                                                  // top hat
                     ctx.fillStyle = '#111'; ctx.strokeStyle = '#111'; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(-26, 0); ctx.lineTo(26, 0); ctx.stroke();
                     ctx.beginPath(); ctx.moveTo(-15, 0); ctx.lineTo(-13, -38); ctx.lineTo(13, -38); ctx.lineTo(15, 0); ctx.closePath(); ctx.fill();
@@ -13771,12 +13793,14 @@
             const floor = -1.5 * S0, sub = 2, h = dt / sub;
             for (let i = bg.veins.length - 1; i >= 0; i--) {
                 const v = bg.veins[i], Q = v.p, N = Q.length; v.t += dt;
+                if (v.pin && !v.snp && v.t >= v.pinT) { v.snp = 1; for (let k = 0; k < 5; k++) bgDrop(Q[0].x, Q[0].y, (Math.random() - .5) * 200, -(40 + Math.random() * 160), 1 + Math.random() * 1.4); }
                 if (dt > 0) for (let s = 0; s < sub; s++) {
                     for (let j = 0; j < N; j++) {
                         const p = Q[j], vx = (p.x - p.ox) * .985, vy = (p.y - p.oy) * .985;
                         p.ox = p.x; p.oy = p.y; p.x += vx; p.y += vy + 1800 * h * h;
                     }
                     for (let it = 0; it < 5; it++) {
+                        if (v.pin && v.t < v.pinT) { const a = v.pin(); Q[0].x = a[0]; Q[0].y = a[1]; Q[0].ox = a[0]; Q[0].oy = a[1]; }
                         for (let j = 0; j < N - 1; j++) {
                             const a = Q[j], b = Q[j + 1], dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || .0001, k = (d - v.rest) / d * .5;
                             a.x += dx * k; a.y += dy * k; b.x -= dx * k; b.y -= dy * k;
@@ -15703,7 +15727,7 @@
                 if (ok(k.x)) c.push({ kind: 'knife', ref: g, x: k.x, h: k.h, type: 'knife' });
             }
             if (SGG.on && !SGG.air && !SGG.flying && !P.sg && ok(SGG.x)) c.push({ kind: 'sg', ref: SGG, x: SGG.x, h: Math.max(4, -SGG.y / S), type: 'shotgun' });   // x = the grip, not the barrel tip
-            if (DD.init && !DD.g.on) { const n = ddNeck(); if (ok(n.x)) c.push({ kind: 'duck', ref: DD.m, x: n.x, h: n.h, type: 'duck' }); }
+            if (DD.init && !DD.g.on && !DD.m.dead) { const n = ddNeck(); if (ok(n.x)) c.push({ kind: 'duck', ref: DD.m, x: n.x, h: n.h, type: 'duck' }); }
             const dk = c.find(t => t.kind === 'duck'); if (dk) return dk;    // the mother wins over loose items
             let best = null, bd = 1e9;
             for (const t of c) { const d = Math.abs(t.x - P.x); if (d < bd) { bd = d; best = t; } }
@@ -15948,6 +15972,7 @@
         }
 
         function ddAnim(a, dt, S, now) {
+            if (a.dead) return;
             const R = Math.random, walking = Math.abs(a.vx) > 4, sc = S * DD_SIZE * a.s;
             if (!DD.g.on) { a.up = (a.up || 0) * Math.max(0, 1 - dt * 5); a.bn = (a.bn || 0) * Math.max(0, 1 - dt * 8); }
             a.hd += (a.hdT - a.hd) * Math.min(1, dt * 7);
@@ -15974,11 +15999,13 @@
             DD.clock += dt;
             DD.dir += (m.face - DD.dir) * Math.min(1, dt * .9);
             const pre = !g.on && P.mpk > 0 && P.mpkT && P.mpkT.kind === 'duck' && !P.mpkG;   // horseback: she notices you while you reach
-            if (g.on) ddGrabTick(dt);
+            if (m.dead) ddDeadTick(m, dt, now);
+            else if (g.on) ddGrabTick(dt);
             else if (pre) {
                 m.gx = m.x; m.maxV = 0; m.peck = 0; m.face = Math.sign(P.x - m.x) || m.face; m.hdT = 1;
                 m.nkx = (m.nkx || 0) + (.8 - (m.nkx || 0)) * Math.min(1, dt * 6); ddMove(m, dt, S);
             } else { ddMotherAI(m, dt, S); ddMove(m, dt, S); m.nkx = (m.nkx || 0) * Math.max(0, 1 - dt * 5) }
+            if (!m.dead && !g.on && m.cut > 0) m.cut = Math.max(0, m.cut - dt * .08);   // a scratch heals
             DD.tt += dt; if (DD.tt >= .033) { DD.tt = 0; DD.trail.push({ t: DD.clock, x: m.x }) }
             while (DD.trail.length > 2 && DD.trail[0].t < DD.clock - 10) DD.trail.shift();
             for (const d of DD.k) { ddKidAI(d, dt, S, m); ddMove(d, dt, S) }
@@ -16004,7 +16031,7 @@
             const S = CSc(), el = A[0], wr = A[1]; let dx = wr[0] - el[0], dy = wr[1] - el[1]; const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
             return [P.x + (wr[0] + dx * 11) * S, (wr[1] + dy * 11) * S - (P.dh || 0) - (P.mh || 0)];
         }
-        function ddLock() { const g = DD.g; return g.on && g.mode === 'foot' && (g.ph === 'grab' || g.ph === 'release') }
+        function ddLock() { const g = DD.g; return g.on && ((g.mode === 'foot' && (g.ph === 'grab' || g.ph === 'release')) || g.sawW > .05) }
 
         function ddBegin(mode, t0) {
             const g = DD.g, m = DD.m, sc = CSc() * DD_SIZE;
@@ -16012,15 +16039,16 @@
             m.peck = 0; m.st = 'idle'; m.t = 0; m.dip = 0;
             Object.assign(g, {
                 on: true, ph: 'grab', t: t0, rt: 0, rc: 0, mode, aw: 0, air: 0, ox: m.x, oy: 0, gnx: m.x + m.face * DD_NECK[0] * sc,
-                ax: m.x + m.face * DD_NECK[0] * sc, ay: DD_NECK[1] * sc, sw: 0, swv: 0, swung: false, landed: false
+                ax: m.x + m.face * DD_NECK[0] * sc, ay: DD_NECK[1] * sc, sw: 0, swv: 0, swung: false, landed: false, sawW: 0, sawPh: 0
             });
+            m.cut = m.cut || 0;
         }
         function ddHoldBegin() { ddBegin('mount', .3) }       // called by mpkGrab when the fist reaches her neck
 
         function ddPress() {                                  // called first thing in pressPickup()
             const g = DD.g;
             if (g.on) { if (g.ph === 'held') ddBeginRelease(); return true }
-            if (!DD.init || P.mount || puBlocked()) return false;
+            if (!DD.init || DD.m.dead || P.mount || puBlocked()) return false;
             const n = ddNeck(), S = CSc();
             if (Math.abs(n.x - P.x) > DD_GRAB_R * S) return false;
             if (P.skid) endSkid(); P.skidK = 0;
@@ -16102,9 +16130,16 @@
                         for (let i = 0; i < 4; i++) flecks.push({ x: m.x + (Math.random() - .5) * 30, y: -2, vx: (Math.random() - .5) * 90, vy: -(20 + Math.random() * 50), r: 1 + Math.random(), t: 0, life: .3 });
                         const cx = DD.k.reduce((s, d) => s + d.x, 0) / Math.max(1, DD.k.length);
                         m.face = Math.sign(cx - m.x) || m.face;                            // looks straight at her ducklings
+                        if ((m.cut || 0) > .3) {
+                            ddEnd();
+                            Object.assign(m, { dead: 1, headless: 0, dcT: 0, dy: 0, dvy: 0, landed: true, landT: 0, lie: 0, conv: 1, pulse: 0, drp: 0, air: 0 });
+                            m.pool = bgStain(m.x + 18 * sc, 26 * S, true);
+                            return;
+                        }
                     }
                 } else { g.rc += dt; g.oy = 0; g.air = 0; if (g.rc >= .75) { ddEnd(); return } }
             }
+            if (g.ph === 'held') { ddSawTick(dt); if (!g.on) return; }
             // pendulum sway
             const swT = clampN(P.vx / 800, -.45, .45) * (g.ph === 'held' ? 1 : 0) + Math.sin(now * 1.9) * .05;
             g.swv += (-55 * (g.sw - swT) - 5 * g.swv) * dt; g.sw += g.swv * dt;
@@ -16117,7 +16152,8 @@
             const heldNow = g.ph === 'grab' || g.ph === 'held';
             const panic = heldNow ? Math.exp(-Math.max(0, g.t - .4) * .5) : 0;
             const bursts = Math.pow(Math.max(0, Math.sin(now * 1.6 + 1)), .7);
-            const strT = heldNow ? air * Math.min(1, .3 + .7 * Math.max(panic, bursts)) : 0;
+            const sawC = m.cut || 0;
+            const strT = heldNow ? air * Math.min(1, .3 + .7 * Math.max(panic, bursts, (sawC > .28 && sawC < .62) ? 1 : 0)) * (1 - .75 * sm((sawC - .6) / .4)) : 0;
             m.str = (m.str || 0) + (strT - (m.str || 0)) * Math.min(1, dt * 6);
 
             m.air = air;
@@ -16161,6 +16197,188 @@
             }
         }
 
+        // ---------- sawing ----------
+        function ddStump(m) {                         // world position of the neck cut
+            const sc = CSc() * DD_SIZE, F = Math.sign(m.fv) || 1;
+            return [m.x + F * 22.6 * sc, (m.dy || 0) + (-52 + 11 * (m.lie || 0)) * sc];
+        }
+
+        function ddSawTick(dt) {
+            const g = DD.g, m = DD.m, S = CSc(), sc = S * DD_SIZE, F = Math.sign(m.fv) || 1, R = Math.random;
+            const want = g.mode === 'foot' && !!keys.KeyJ && P.kn === 1 && P.kt > .6 && (m.cut || 0) < 1;
+            g.sawW += ((want ? 1 : 0) - g.sawW) * Math.min(1, dt * 10);
+            if (!want) return;
+            g.sawPh += dt * 12;
+            const stroke = Math.sin(g.sawPh), prev = m.cut || 0;
+            m.cut = Math.min(1, prev + dt * (.16 + .26 * Math.abs(stroke)) * (prev > .72 ? .75 : 1));   // slows down on the bone
+            const c = m.cut, wx = g.ax, wy = g.ay - 4 * sc;
+            shake = Math.max(shake, 1 + 2.5 * c);
+
+            if (prev < .02 && c >= .02) { banner.t = .8; banner.text = 'SAWING...'; }
+            if (prev < .3 && c >= .3) { banner.t = .8; banner.text = 'SKIN SPLIT'; spray(wx, wy, 16, 260, F); burst(wx, wy, 8, 200, F); hitstop = Math.max(hitstop, .03); }
+            if (prev < .55 && c >= .55) {
+                banner.t = 1; banner.text = 'ARTERY!';
+                spray(wx, wy, 44, 560, F); spray(wx, wy, 20, 380, -F); burst(wx, wy, 20, 320, F);
+                impacts.push({ x: wx, y: wy, t: 0, life: .25, s: 70, seed: R() * 50 });
+                hitstop = Math.max(hitstop, .06); shake = Math.max(shake, 8);
+            }
+            if (prev < .78 && c >= .78) {
+                banner.t = 1; banner.text = 'BONE!';
+                for (let i = 0; i < 4; i++) boneSplinter(wx, wy, F, 220);
+                spray(wx, wy, 26, 440, F); hitstop = Math.max(hitstop, .07); shake = Math.max(shake, 10);
+            }
+            // welling blood, running faster as the cut deepens
+            g.bd = (g.bd || 0) - dt;
+            if (c > .02 && g.bd <= 0) {
+                g.bd = Math.max(.025, .09 - .07 * c);
+                bgDrop(wx + (R() - .5) * 10, wy, F * (20 + R() * 80) * c, 10 + R() * 60, 1.2 + R() * 1.6 + c);
+            }
+            // heartbeat spray once the artery is open
+            g.sp = (g.sp || 0) - dt;
+            if (c > .55 && g.sp <= 0) {
+                g.sp = .26 + .2 * (1 - c);
+                for (let i = 0; i < 9; i++) bgDrop(wx, wy, F * (160 + R() * 380) + (R() - .5) * 120, -(80 + R() * 380), 1.2 + R() * 1.8);
+                shake = Math.max(shake, 5);
+            }
+            if (c >= 1) ddDecap();
+        }
+
+        function ddDecap() {
+            const g = DD.g, m = DD.m, S = CSc(), sc = S * DD_SIZE, F = Math.sign(m.fv) || 1, R = Math.random;
+            const sx = g.ax, sy = g.ay, oy = g.oy, air = g.air;
+            ddEnd();                                                  // hand is free, the family stays where she was
+            Object.assign(m, { dead: 1, headless: 1, cut: 1, dcT: 0, dy: oy, dvy: -120, landed: false, landT: 0, lie: 0, conv: 1, pulse: 0, drp: 0, air, swayR: 0, nb: 0, nkx: 0, str: 0, gape: 0 });
+            // the head leaves the neck and spins away
+            gibs.push({ k: 4, f: F, x: sx + F * 8 * sc, y: Math.min(-8, sy - 18 * sc), vx: F * (90 + R() * 170) + (R() - .5) * 70, vy: -(360 + R() * 170), rot: 0, vr: F * (9 + R() * 6), s: 7.5 * sc, seed: R() * 99, bn: 0, landed: false, t: 0, bl: 0 });
+            spray(sx, sy, 70, 680, F); spray(sx, sy, 30, 460, -F); spray(sx, sy, 20, 300, 0); burst(sx, sy, 26, 380, F);
+            for (let i = 0; i < 16; i++) bgDrop(sx, sy, F * (60 + R() * 420) + (R() - .5) * 200, -(120 + R() * 520), 1.3 + R() * 2);
+            for (let i = 0; i < 4; i++) boneSplinter(sx, sy, F, 260);
+            impacts.push({ x: sx, y: sy, t: 0, life: .32, s: 110, seed: R() * 50 });
+            // tendon + windpipe strip hanging from the stump, swinging, then snapping off
+            const a = ddStump(m), pin = () => ddStump(DD.m), N = 7, rest = 3.6 * sc;
+            for (const [col, w, pinT] of [['#eadfcf', 2.4 * sc, 2.4], ['#8c0d14', 1.4 * sc, 1.8], ['#b3141c', 1.2 * sc, 3]]) {
+                const vx = F * (20 + R() * 90), vy = -(20 + R() * 60);
+                bg.veins.push({ p: Array.from({ length: N }, (_, j) => ({ x: a[0] + F * j * 1.5, y: a[1] - j, ox: a[0] - vx / 60, oy: a[1] - vy / 60 })), rest, w, col, gut: false, t: 0, bl: 0, pin, pinT });
+            }
+            for (let i = 0; i < 3; i++) {                              // loose torn veins flung free
+                const vx = F * (80 + R() * 260), vy = -(120 + R() * 240);
+                bg.veins.push({ p: Array.from({ length: 5 }, (_, j) => ({ x: sx - F * j * 2, y: sy, ox: sx - F * j * 2 - vx / 60, oy: sy - vy / 60 })), rest: 3 * sc, w: 1.1 * sc, col: ['#a3121a', '#8c0d14', '#6b2a5a'][i], gut: false, t: 0, bl: 0 });
+            }
+            combo.n++; combo.dmg += 60; combo.t = 2; combo.pop = 1.4; birdKills++;
+            hitstop = Math.max(hitstop, .14); shake = Math.max(shake, 15);
+            banner.t = 1.4; banner.text = 'DECAPITATED!';
+        }
+
+        function ddDeadTick(m, dt, now) {
+            const S = CSc(), sc = S * DD_SIZE, F = Math.sign(m.fv) || 1, R = Math.random;
+            m.dcT += dt; m.vx = 0; m.gx = m.x; m.maxV = 0; m.fv += clampN(m.face - m.fv, -dt * 6, dt * 6);
+            if (!m.landed) {                                           // the body drops out of the hand
+                m.dvy += 1500 * dt; m.dy += m.dvy * dt; m.air = Math.max(0, m.air - dt * 1.6);
+                if (m.dy >= 0) {
+                    m.dy = 0; m.landed = true; m.landT = m.dcT;
+                    shake = Math.max(shake, 5); burst(m.x, -3, 10, 220, F);
+                    impacts.push({ x: m.x, y: -6, t: 0, life: .2, s: 70, seed: R() * 50 });
+                    m.pool = bgStain(m.x + F * 18 * sc, 26 * S, true);
+                }
+            } else {
+                m.air = 0; m.lie += (1 - m.lie) * Math.min(1, dt * 5);
+                if (m.pool && m.dcT - m.landT < 14) m.pool.gw = Math.min(150, m.pool.gw + dt * 11);
+            }
+            if (!m.headless) m.dip += (.9 - m.dip) * Math.min(1, dt * 3);       // head droops on a gashed body
+            const t = m.landed ? m.dcT - m.landT : 0;
+            m.conv = m.landed ? Math.max(0, 1 - t / 7) : 1;                     // death throes fade out
+            const tw = Math.pow(Math.max(0, Math.sin(now * 6.2) * Math.sin(now * 2.3 + 1)), 2) * m.conv;
+            m.flap = m.conv * (.3 + .7 * Math.max(0, Math.sin(now * 26))) * (tw > .05 ? 1 : .25);
+            m.tilt = Math.sin(now * 37) * .05 * tw;
+            const life = m.headless ? 8 : 4.5;
+            if (m.dcT < life) {                                                 // heartbeat spurts that slow and weaken
+                m.pulse -= dt;
+                if (m.pulse <= 0) {
+                    const k = 1 - m.dcT / life, a = ddStump(m); m.pulse = .38 + m.dcT * .07;
+                    for (let i = 0; i < (m.headless ? 14 : 7); i++) bgDrop(a[0], a[1], F * 40 + (R() - .5) * 160, -(180 + R() * 480) * k - 50, 1.3 + R() * 1.8);
+                    if (m.headless) shake = Math.max(shake, 1.5 * k);
+                }
+            }
+            m.drp -= dt;
+            if (m.drp <= 0 && m.dcT < 14) { m.drp = .07 + R() * .08; const a = ddStump(m); bgDrop(a[0] + (R() - .5) * 8, a[1], (R() - .5) * 30, 10 + R() * 30, 1.3 + R() * 1.5); }
+            if (m.dcT > 70 && Math.abs(m.x - P.x) > W / 2 + 300) {              // a fresh duck wanders in later
+                Object.assign(m, { dead: 0, headless: 0, cut: 0, lie: 0, dy: 0, air: 0, flap: 0, conv: 0, tilt: 0, landed: false, pool: null, str: 0, gape: 0, dip: 0 });
+                m.st = 'idle'; m.t = 0; m.tt = 2;
+            }
+        }
+
+        // knife arm: wrist back along the blade, pushing and pulling across her throat
+        function ddSawArm(sh, F, S) {
+            const g = DD.g, m = DD.m, w = g.sawW; if (w < .02) return null;
+            const N = ddToChar(g.ax, g.ay), c = m.cut || 0, s = Math.sin(g.sawPh);
+            const jit = c > .78 ? Math.sin(g.sawPh * 3.3) * 2.4 : 0;            // fighting the bone
+            const [a, f] = ikTo(sh, N[0] - F * (56 - s * 11), N[1] + 6 + 2 * c + jit, F);
+            return [a, f, w];
+        }
+
+        function drawDuckGash(a, C1, C2, Fe, now) {
+            const c = a.cut || 0, INK = '#111', t = .56, u = 1 - t;
+            const px = u * u * u * 1130 + 3 * u * u * t * C1[0] + 3 * u * t * t * C2[0] + t * t * t * Fe[0];
+            const py = u * u * u * 486 + 3 * u * u * t * C1[1] + 3 * u * t * t * C2[1] + t * t * t * Fe[1];
+            const len = 120 * Math.min(1, c * 1.05), h = 8 + 20 * Math.min(1, c * 1.4), wob = Math.sin(now * 24) * 2.5 * (a.str || 0);
+            ctx.save(); ctx.translate(px, py); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+            // blood running down the chest, smeared by the thumb
+            const run = Math.min(1, c * 2.2);
+            for (const [dx, w, col] of [[0, 22, '#6a0a12'], [-18, 12, '#a8141c'], [16, 9, '#8c0d14']]) {
+                ctx.strokeStyle = col; ctx.lineWidth = w * (.5 + c); ctx.beginPath(); ctx.moveTo(dx, 6);
+                ctx.quadraticCurveTo(dx + 22, 90 * run, dx + 16, 200 * run + Math.sin(now * 3 + dx) * 6); ctx.stroke();
+            }
+            // jagged lens-shaped wound growing from the front of the throat toward the spine
+            const top = [], bot = [];
+            for (let i = 0; i <= 8; i++) {
+                const f = i / 8, x = -len * f - 4, env = Math.sin(Math.PI * Math.min(1, f * .92 + .06));
+                top.push([x + wob, -h * env * (.55 + .5 * hash(a.seed + i * 3.7))]);
+                bot.push([x + wob, h * env * (.55 + .5 * hash(a.seed + i * 5.3 + 9)) + 2]);
+            }
+            const poly = (k, col) => {
+                ctx.beginPath(); ctx.moveTo(0, 0); top.forEach(p => ctx.lineTo(p[0], p[1] * k)); bot.slice().reverse().forEach(p => ctx.lineTo(p[0], p[1] * k)); ctx.closePath();
+                ctx.fillStyle = col; ctx.fill();
+            };
+            poly(1, '#6a0a12'); ctx.strokeStyle = '#3a0508'; ctx.lineWidth = 4; ctx.stroke();
+            poly(.62, '#d4443a');
+            // trachea with cartilage rings, nicked as the blade goes through
+            if (c > .3 && c < .8) {
+                const x0 = -len * .12, x1 = -len * .55, tr = Math.sin(now * 30) * 1.5 * (a.str || 0);
+                ctx.fillStyle = '#f1e3d6'; ctx.strokeStyle = INK; ctx.lineWidth = 3;
+                ctx.beginPath(); ctx.rect(x1, -9 + tr, x0 - x1, 18); ctx.fill(); ctx.stroke();
+                ctx.lineWidth = 1.6; ctx.strokeStyle = '#a89a8a';
+                for (let x = x1 + 6; x < x0 - 3; x += 11) { ctx.beginPath(); ctx.moveTo(x, -8 + tr); ctx.lineTo(x, 8 + tr); ctx.stroke(); }
+                if (c > .55) { ctx.fillStyle = '#3a0508'; ctx.beginPath(); ctx.ellipse(x0 - 5, tr, 6, 8, 0, 0, 7); ctx.fill(); }
+            }
+            // veins bursting open
+            if (c > .4) {
+                ctx.lineWidth = 3; ctx.strokeStyle = '#3b3a6b';
+                for (let k = 0; k < 3; k++) {
+                    const x = -len * (.3 + k * .18), y = (k - 1) * 8;
+                    ctx.beginPath(); ctx.moveTo(x, y); ctx.quadraticCurveTo(x + 8, y - 10, x + 20, y + (k - 1) * 6); ctx.stroke();
+                    ctx.fillStyle = '#b3141c'; ctx.beginPath(); ctx.arc(x + 20, y + (k - 1) * 6, 4.5, 0, 7); ctx.fill();
+                }
+            }
+            // cervical bone
+            if (c > .5) {
+                ctx.fillStyle = '#efe9da'; ctx.strokeStyle = INK; ctx.lineWidth = 3.4;
+                ctx.beginPath(); ctx.arc(-len * .72, 2, 20, 0, 7); ctx.fill(); ctx.stroke();
+                ctx.fillStyle = '#5a2a2a'; ctx.beginPath(); ctx.arc(-len * .72, 2, 6, 0, 7); ctx.fill();
+            }
+            // arterial spray, pulsing with the heartbeat
+            if (c > .55) {
+                const pulse = Math.max(0, Math.sin(now * 17)), n = 7;
+                ctx.strokeStyle = '#b3141c';
+                for (let i = 0; i < n; i++) {
+                    const an = -.9 + i * .3 + Math.sin(now * 9 + i) * .08, L = (40 + 90 * hash(a.seed + i)) * (.4 + .9 * pulse);
+                    ctx.lineWidth = 7 - i * .4; ctx.globalAlpha = .55 + .4 * pulse;
+                    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(an) * L + 20, Math.sin(an) * L - 10); ctx.stroke();
+                }
+                ctx.globalAlpha = 1;
+            }
+            ctx.restore();
+        }
+
         function drawHeldDuck(gy) {                           // late layer so she is in front of the horse and behind the fist
             const g = DD.g; if (!g.on || !DD.init) return;
             const S = CSc(), sc = S * DD_SIZE, m = DD.m, now = performance.now() / 1000;
@@ -16168,6 +16386,10 @@
             if (Math.abs(sx - W / 2) > W / 2 + 300) return;
             ctx.save(); ctx.globalAlpha = .22 * (1 - .35 * g.air); ctx.fillStyle = '#111'; ctx.beginPath(); ctx.ellipse(sx - F * 2 * sc, gy + 5, 30 * sc * (1 - .25 * g.air), 3 * sc, 0, 0, 7); ctx.fill(); ctx.restore();
             ctx.save(); ctx.translate(sx, gy + 4 + g.oy); ctx.scale(sc * F, sc); ddShape(m, now); ctx.restore();
+            if ((DD.m.cut || 0) > .25 && DD.m.cut < 1) {
+                ctx.save(); ctx.globalAlpha = .75 * (.6 + .4 * Math.sin(now * 14)); ctx.fillStyle = '#111'; ctx.font = 'italic bold 20px Georgia,serif'; ctx.textAlign = 'center';
+                ctx.fillText(DD.m.cut > .55 ? 'gk—gkk…' : 'squeak!', sx, gy + 4 + g.oy - 70 * sc); ctx.restore();
+            }
         }
 
         // ADULT WHITE DOMESTIC DUCK, traced from the reference drawing.
@@ -16184,6 +16406,8 @@
             // ground shadow
             if (!(a.air > .01)) { ctx.save(); ctx.globalAlpha *= .22; ctx.fillStyle = INK; ctx.beginPath(); ctx.ellipse(-1, 1, 30, 3, 0, 0, 7); ctx.fill(); ctx.restore(); }
             const air = a.air || 0;
+            const lie = a.lie || 0, conv = a.dead ? (a.conv || 0) : 0;
+            ctx.translate(0, 11 * lie);
             if (air > .001 || a.swayR) { ctx.translate(26, -50); ctx.rotate(-.72 * air + (a.swayR || 0)); ctx.translate(-26, 50); }   // hangs from the neck
 
             // ---- short orange legs + webbed feet (hang down and kick while held) ----
@@ -16201,6 +16425,11 @@
                     fx = lerp(fx, fxh, air); fy = lerp(fy, fyh, air);
                     footRot = air * (Math.atan2(fyh - hy, fxh - hx) + Math.sin(now * 14 + i) * .3 * str);   // toes follow the leg
                     spread = air * (.2 + .9 * str * Math.abs(Math.sin(now * 12 + i)));                      // toes splay while kicking
+                }
+                if (lie > .001) {                                  // dead: legs stick out and twitch
+                    const tw = Math.sin(now * 26 + i * 2.2) * conv;
+                    fx = lerp(fx, 15 + i * 8 + tw * 4, lie); fy = lerp(fy, -9 + tw * 3, lie);
+                    footRot = lerp(footRot, -.15 + tw * .6, lie);
                 }
                 ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(fx, fy - 1.5 * (1 - air));
                 ctx.strokeStyle = INK; ctx.lineWidth = 5.4; ctx.stroke(); ctx.strokeStyle = LG; ctx.lineWidth = 3.1; ctx.stroke();
@@ -16249,72 +16478,97 @@
             ctx.restore();
 
             // ---- NECK + HEAD ----
-            const pk = a.dip, bn = walking ? Math.sin(a.ph * 2) * 10 : Math.sin(now * 1.3 + a.seed) * 7;
-            const nx_ = a.nkx || 0;
-            const hx = lerp(1060, 1322, pk) + bn + nx_ * 16 + (a.nb || 0) * 70 + Math.sin(now * 15) * 20 * (a.str || 0),
-                  hy = lerp(110, 830, pk) + (walking ? Math.cos(a.ph * 2) * 8 : 0) - nx_ * 50 + Math.abs(a.nb || 0) * 10 + Math.sin(now * 19 + 1) * 14 * (a.str || 0);
-            const hr = .1 + pk * 1.1 + Math.sin(now * 1.1 + a.seed) * .04 + (a.nb || 0) * .5 + Math.sin(now * 13) * .15 * (a.str || 0), cs = Math.cos(hr), sn = Math.sin(hr);
-            const HL = (lx, ly) => [hx + lx * cs - ly * sn, hy + lx * sn + ly * cs];
-            const Be = HL(-88, 62), Fe = HL(22, 72);                                   // where the neck meets the back / throat of the head
-            const Q1 = [lerp(962, 1109, pk), lerp(350, 325, pk)], Q2 = [lerp(940, 1360, pk), lerp(250, 570, pk)];   // back edge of neck
-            const C1 = [lerp(1118, 1105, pk), lerp(400, 640, pk)], C2 = [lerp(1040, 1150, pk), lerp(300, 800, pk)]; // throat edge of neck
+            if (a.headless) {
+                const life = Math.max(0, 1 - (a.dcT || 0) / 8), pulse = Math.max(0, Math.sin(now * 14)) * life, run = Math.min(1, (a.dcT || 0) / 3);
+                // neck stub
+                ctx.beginPath(); ctx.moveTo(938, 446); ctx.quadraticCurveTo(958, 386, 985, 330); ctx.lineTo(1095, 340); ctx.quadraticCurveTo(1122, 410, 1130, 486); ctx.closePath();
+                ctx.fillStyle = WH; ctx.fill(); ctx.strokeStyle = INK; ctx.lineWidth = LW;
+                ctx.beginPath(); ctx.moveTo(938, 446); ctx.quadraticCurveTo(958, 386, 985, 330); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(1095, 340); ctx.quadraticCurveTo(1122, 410, 1130, 486); ctx.stroke();
+                // blood sheeting down the neck and chest
+                ctx.lineCap = 'round';
+                for (const [x0, w, col] of [[1075, 34, '#6a0a12'], [1100, 20, '#a8141c'], [1050, 14, '#8c0d14']]) {
+                    ctx.strokeStyle = col; ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(x0, 345);
+                    ctx.quadraticCurveTo(x0 + 34, 470, x0 + 20, 345 + 340 * run); ctx.stroke();
+                }
+                // torn cut face: muscle, windpipe, spine
+                ctx.beginPath(); ctx.ellipse(1040, 336, 58 + pulse * 6, 22 + pulse * 5, -.1, 0, 7); ctx.fillStyle = '#7a0b11'; ctx.fill(); ctx.strokeStyle = '#3a0508'; ctx.lineWidth = DET * 3; ctx.stroke();
+                ctx.beginPath(); ctx.ellipse(1040, 336, 44, 14 + pulse * 3, -.1, 0, 7); ctx.fillStyle = '#d4443a'; ctx.fill();
+                ctx.beginPath(); ctx.arc(1068, 334, 15, 0, 7); ctx.fillStyle = '#f1e3d6'; ctx.fill(); ctx.strokeStyle = INK; ctx.lineWidth = DET * 4; ctx.stroke();
+                ctx.beginPath(); ctx.arc(1068, 334, 6, 0, 7); ctx.fillStyle = '#3a0508'; ctx.fill();
+                ctx.beginPath(); ctx.arc(1012, 338, 13, 0, 7); ctx.fillStyle = '#efe9da'; ctx.fill(); ctx.stroke();
+                ctx.beginPath(); ctx.arc(1012, 338, 4, 0, 7); ctx.fillStyle = '#5a2a2a'; ctx.fill();
+                ctx.fillStyle = '#a8261f';                                   // ragged flesh flaps
+                for (const [x, y] of [[985, 326], [1030, 318], [1090, 332]]) { ctx.beginPath(); ctx.moveTo(x - 10, y); ctx.lineTo(x, y - 18 - pulse * 6); ctx.lineTo(x + 12, y); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+            } else {
+                const pk = a.dip, bn = walking ? Math.sin(a.ph * 2) * 10 : Math.sin(now * 1.3 + a.seed) * 7;
+                const nx_ = a.nkx || 0;
+                const hx = lerp(1060, 1322, pk) + bn + nx_ * 16 + (a.nb || 0) * 70 + Math.sin(now * 15) * 20 * (a.str || 0),
+                      hy = lerp(110, 830, pk) + (walking ? Math.cos(a.ph * 2) * 8 : 0) - nx_ * 50 + Math.abs(a.nb || 0) * 10 + Math.sin(now * 19 + 1) * 14 * (a.str || 0);
+                const hr = .1 + pk * 1.1 + Math.sin(now * 1.1 + a.seed) * .04 + (a.nb || 0) * .5 + Math.sin(now * 13) * .15 * (a.str || 0), cs = Math.cos(hr), sn = Math.sin(hr);
+                const HL = (lx, ly) => [hx + lx * cs - ly * sn, hy + lx * sn + ly * cs];
+                const Be = HL(-88, 62), Fe = HL(22, 72);                                   // where the neck meets the back / throat of the head
+                const Q1 = [lerp(962, 1109, pk), lerp(350, 325, pk)], Q2 = [lerp(940, 1360, pk), lerp(250, 570, pk)];   // back edge of neck
+                const C1 = [lerp(1118, 1105, pk), lerp(400, 640, pk)], C2 = [lerp(1040, 1150, pk), lerp(300, 800, pk)]; // throat edge of neck
 
-            ctx.beginPath(); ctx.moveTo(938, 446);
-            ctx.bezierCurveTo(Q1[0], Q1[1], Q2[0], Q2[1], Be[0], Be[1]);
-            ctx.lineTo(Fe[0], Fe[1]);
-            ctx.bezierCurveTo(C2[0], C2[1], C1[0], C1[1], 1130, 486);
-            ctx.closePath(); ctx.fillStyle = WH; ctx.fill();
-            ctx.strokeStyle = INK; ctx.lineWidth = LW;
-            ctx.beginPath(); ctx.moveTo(938, 446); ctx.bezierCurveTo(Q1[0], Q1[1], Q2[0], Q2[1], Be[0], Be[1]); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(1130, 486); ctx.bezierCurveTo(C1[0], C1[1], C2[0], C2[1], Fe[0], Fe[1]); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(938, 446);
+                ctx.bezierCurveTo(Q1[0], Q1[1], Q2[0], Q2[1], Be[0], Be[1]);
+                ctx.lineTo(Fe[0], Fe[1]);
+                ctx.bezierCurveTo(C2[0], C2[1], C1[0], C1[1], 1130, 486);
+                ctx.closePath(); ctx.fillStyle = WH; ctx.fill();
+                ctx.strokeStyle = INK; ctx.lineWidth = LW;
+                ctx.beginPath(); ctx.moveTo(938, 446); ctx.bezierCurveTo(Q1[0], Q1[1], Q2[0], Q2[1], Be[0], Be[1]); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(1130, 486); ctx.bezierCurveTo(C1[0], C1[1], C2[0], C2[1], Fe[0], Fe[1]); ctx.stroke();
 
-            // chest / neck feather strokes
-            ctx.lineWidth = DET; ctx.globalAlpha *= .55; ctx.beginPath();
-            for (const [x0, y0, cx, cy, x1, y1] of [[1100, 520, 1090, 550, 1085, 580], [1112, 600, 1100, 640, 1090, 670], [1090, 690, 1080, 720, 1060, 740]]) { ctx.moveTo(x0, y0); ctx.quadraticCurveTo(cx, cy, x1, y1); }
-            ctx.stroke();
-            if (pk < .5) { ctx.globalAlpha *= (1 - pk * 2); ctx.beginPath(); ctx.moveTo(1090, 330); ctx.quadraticCurveTo(1078, 370, 1072, 410); ctx.moveTo(1070, 250); ctx.quadraticCurveTo(1062, 290, 1060, 320); ctx.stroke(); }
-            ctx.globalAlpha = 1;
+                // chest / neck feather strokes
+                ctx.lineWidth = DET; ctx.globalAlpha *= .55; ctx.beginPath();
+                for (const [x0, y0, cx, cy, x1, y1] of [[1100, 520, 1090, 550, 1085, 580], [1112, 600, 1100, 640, 1090, 670], [1090, 690, 1080, 720, 1060, 740]]) { ctx.moveTo(x0, y0); ctx.quadraticCurveTo(cx, cy, x1, y1); }
+                ctx.stroke();
+                if (pk < .5) { ctx.globalAlpha *= (1 - pk * 2); ctx.beginPath(); ctx.moveTo(1090, 330); ctx.quadraticCurveTo(1078, 370, 1072, 410); ctx.moveTo(1070, 250); ctx.quadraticCurveTo(1062, 290, 1060, 320); ctx.stroke(); }
+                ctx.globalAlpha = 1;
+                if ((a.cut || 0) > .01) drawDuckGash(a, C1, C2, Fe, now);
 
-            // HEAD: big round dome, small black eye, long flat bill angled down
-            const hdS = Math.abs(a.hd) < .2 ? .2 * (Math.sign(a.hd) || 1) : a.hd;
-            ctx.save(); ctx.translate(hx, hy); ctx.scale(hdS, 1); ctx.rotate(hr);
-            ctx.beginPath(); ctx.moveTo(-88, 62);
-            ctx.bezierCurveTo(-112, -30, -70, -84, 0, -84); ctx.bezierCurveTo(62, -84, 100, -56, 96, -16);
-            ctx.lineTo(74, 44); ctx.bezierCurveTo(58, 68, 40, 74, 22, 72); ctx.lineTo(-30, 86); ctx.closePath();
-            ctx.fillStyle = WH; ctx.fill();
-            ctx.strokeStyle = INK; ctx.lineWidth = LW;
-            ctx.beginPath(); ctx.moveTo(-88, 62); ctx.bezierCurveTo(-112, -30, -70, -84, 0, -84); ctx.bezierCurveTo(62, -84, 100, -56, 96, -16); ctx.stroke();   // dome
-            ctx.beginPath(); ctx.moveTo(74, 44); ctx.bezierCurveTo(58, 68, 40, 74, 22, 72); ctx.stroke();                                                       // jaw
-            ctx.lineWidth = DET; ctx.globalAlpha *= .5; ctx.beginPath(); ctx.moveTo(15, 30); ctx.quadraticCurveTo(35, 38, 58, 28); ctx.moveTo(-10, 45); ctx.quadraticCurveTo(10, 52, 30, 48); ctx.stroke(); ctx.globalAlpha /= .5;
+                // HEAD: big round dome, small black eye, long flat bill angled down
+                const hdS = Math.abs(a.hd) < .2 ? .2 * (Math.sign(a.hd) || 1) : a.hd;
+                ctx.save(); ctx.translate(hx, hy); ctx.scale(hdS, 1); ctx.rotate(hr);
+                ctx.beginPath(); ctx.moveTo(-88, 62);
+                ctx.bezierCurveTo(-112, -30, -70, -84, 0, -84); ctx.bezierCurveTo(62, -84, 100, -56, 96, -16);
+                ctx.lineTo(74, 44); ctx.bezierCurveTo(58, 68, 40, 74, 22, 72); ctx.lineTo(-30, 86); ctx.closePath();
+                ctx.fillStyle = WH; ctx.fill();
+                ctx.strokeStyle = INK; ctx.lineWidth = LW;
+                ctx.beginPath(); ctx.moveTo(-88, 62); ctx.bezierCurveTo(-112, -30, -70, -84, 0, -84); ctx.bezierCurveTo(62, -84, 100, -56, 96, -16); ctx.stroke();   // dome
+                ctx.beginPath(); ctx.moveTo(74, 44); ctx.bezierCurveTo(58, 68, 40, 74, 22, 72); ctx.stroke();                                                       // jaw
+                ctx.lineWidth = DET; ctx.globalAlpha *= .5; ctx.beginPath(); ctx.moveTo(15, 30); ctx.quadraticCurveTo(35, 38, 58, 28); ctx.moveTo(-10, 45); ctx.quadraticCurveTo(10, 52, 30, 48); ctx.stroke(); ctx.globalAlpha /= .5;
 
-            // bill: separate upper and lower halves so she can gape
-            const gp = a.gape || 0;
-            const rotAbout = (px, py, cx, cy, an) => { const c = Math.cos(an), s = Math.sin(an), dx = px - cx, dy = py - cy; return [cx + dx * c - dy * s, cy + dx * s + dy * c] };
-            if (gp > .03) {                                   // dark mouth interior + tongue
-                const u1 = rotAbout(78, 32, 80, 36, -gp * .14), u2 = rotAbout(246, 52, 80, 36, -gp * .14);
-                const l1 = rotAbout(78, 32, 80, 36, gp * .5), l2 = rotAbout(246, 52, 80, 36, gp * .5);
-                ctx.beginPath(); ctx.moveTo(u1[0], u1[1]); ctx.lineTo(u2[0], u2[1]); ctx.lineTo(l2[0], l2[1]); ctx.lineTo(l1[0], l1[1]); ctx.closePath();
-                ctx.fillStyle = '#b4403f'; ctx.fill();
-                ctx.strokeStyle = '#e98a8a'; ctx.lineWidth = DET * 3; ctx.beginPath();
-                const t0 = rotAbout(100, 40, 80, 36, gp * .3), t1 = rotAbout(200, 52, 80, 36, gp * .3);
-                ctx.moveTo(t0[0], t0[1]); ctx.lineTo(t1[0], t1[1]); ctx.stroke();
+                // bill: separate upper and lower halves so she can gape
+                const gp = a.gape || 0;
+                const rotAbout = (px, py, cx, cy, an) => { const c = Math.cos(an), s = Math.sin(an), dx = px - cx, dy = py - cy; return [cx + dx * c - dy * s, cy + dx * s + dy * c] };
+                if (gp > .03) {                                   // dark mouth interior + tongue
+                    const u1 = rotAbout(78, 32, 80, 36, -gp * .14), u2 = rotAbout(246, 52, 80, 36, -gp * .14);
+                    const l1 = rotAbout(78, 32, 80, 36, gp * .5), l2 = rotAbout(246, 52, 80, 36, gp * .5);
+                    ctx.beginPath(); ctx.moveTo(u1[0], u1[1]); ctx.lineTo(u2[0], u2[1]); ctx.lineTo(l2[0], l2[1]); ctx.lineTo(l1[0], l1[1]); ctx.closePath();
+                    ctx.fillStyle = '#b4403f'; ctx.fill();
+                    ctx.strokeStyle = '#e98a8a'; ctx.lineWidth = DET * 3; ctx.beginPath();
+                    const t0 = rotAbout(100, 40, 80, 36, gp * .3), t1 = rotAbout(200, 52, 80, 36, gp * .3);
+                    ctx.moveTo(t0[0], t0[1]); ctx.lineTo(t1[0], t1[1]); ctx.stroke();
+                }
+                ctx.fillStyle = BK; ctx.strokeStyle = INK; ctx.lineWidth = LW * .8;
+                ctx.save(); ctx.translate(80, 36); ctx.rotate(gp * .5); ctx.translate(-80, -36);     // lower half drops
+                ctx.beginPath(); ctx.moveTo(78, 32); ctx.bezierCurveTo(140, 48, 200, 55, 248, 52);
+                ctx.bezierCurveTo(254, 60, 248, 66, 232, 68); ctx.bezierCurveTo(190, 76, 120, 64, 72, 42); ctx.closePath();
+                ctx.fill(); ctx.stroke(); ctx.restore();
+                ctx.save(); ctx.translate(80, 36); ctx.rotate(-gp * .14); ctx.translate(-80, -36);   // upper half lifts
+                ctx.beginPath(); ctx.moveTo(88, -22); ctx.bezierCurveTo(130, -5, 190, 10, 238, 36);
+                ctx.bezierCurveTo(246, 41, 250, 47, 248, 52); ctx.bezierCurveTo(200, 55, 140, 48, 78, 32); ctx.closePath();
+                ctx.fill(); ctx.stroke();
+                ctx.fillStyle = INK; ctx.beginPath(); ctx.ellipse(136, 12, 12, 7, .35, 0, 7); ctx.fill();   // nostril
+                ctx.restore();
+
+                // eye
+                if (a.bl > 0 || a.dead) { ctx.strokeStyle = INK; ctx.lineWidth = DET * 1.3; ctx.beginPath(); ctx.moveTo(28, -28); ctx.lineTo(62, -30); ctx.stroke() }
+                else { ctx.fillStyle = INK; ctx.beginPath(); ctx.arc(45, -28, 15 + 4 * (a.str || 0), 0, 7); ctx.fill(); ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(51, -34, 5, 0, 7); ctx.fill() }
+                ctx.restore();
             }
-            ctx.fillStyle = BK; ctx.strokeStyle = INK; ctx.lineWidth = LW * .8;
-            ctx.save(); ctx.translate(80, 36); ctx.rotate(gp * .5); ctx.translate(-80, -36);     // lower half drops
-            ctx.beginPath(); ctx.moveTo(78, 32); ctx.bezierCurveTo(140, 48, 200, 55, 248, 52);
-            ctx.bezierCurveTo(254, 60, 248, 66, 232, 68); ctx.bezierCurveTo(190, 76, 120, 64, 72, 42); ctx.closePath();
-            ctx.fill(); ctx.stroke(); ctx.restore();
-            ctx.save(); ctx.translate(80, 36); ctx.rotate(-gp * .14); ctx.translate(-80, -36);   // upper half lifts
-            ctx.beginPath(); ctx.moveTo(88, -22); ctx.bezierCurveTo(130, -5, 190, 10, 238, 36);
-            ctx.bezierCurveTo(246, 41, 250, 47, 248, 52); ctx.bezierCurveTo(200, 55, 140, 48, 78, 32); ctx.closePath();
-            ctx.fill(); ctx.stroke();
-            ctx.fillStyle = INK; ctx.beginPath(); ctx.ellipse(136, 12, 12, 7, .35, 0, 7); ctx.fill();   // nostril
-            ctx.restore();
-
-            // eye
-            if (a.bl > 0) { ctx.strokeStyle = INK; ctx.lineWidth = DET * 1.3; ctx.beginPath(); ctx.moveTo(28, -28); ctx.lineTo(62, -30); ctx.stroke() }
-            else { ctx.fillStyle = INK; ctx.beginPath(); ctx.arc(45, -28, 15 + 4 * (a.str || 0), 0, 7); ctx.fill(); ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(51, -34, 5, 0, 7); ctx.fill() }
-            ctx.restore();
 
             ctx.restore();   // body group
         }
