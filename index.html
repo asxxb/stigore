@@ -342,13 +342,21 @@
         let hasKnife = true;       // you only own one knife now
         const groundKnives = [];
         const TOSS_T = .95;
+        function duckHandBusy() { return typeof DD !== 'undefined' && !!(DD.g && DD.g.on); }
         function pressK() {
             if (P.mSl > 0) return;
-            if (P.mount && P.mount !== 2) return;   // knife can be drawn / put away while riding
+            if (P.mount && P.mount !== 2) return;
             if (P.thw > 0 || P.fin > 0 || P.pk > 0) return;
             if (P.gun || P.gs === 2 || P.sg) { banner.t = .6; banner.text = 'HOLSTER GUN FIRST (G)'; return }
             P.idle = 0; P.fid = 0;
             if (P.tt > 0) return;
+            if (duckHandBusy()) {                       // duck in the right hand: knife goes in the left
+                if (P.kn === 0) {
+                    if (!hasKnife) { banner.t = .6; banner.text = 'NO KNIFE!'; return }
+                    P.kn = 1; P.rv = 0;
+                } else P.kn = 0;                        // no flip / reverse grip with one hand
+                return;
+            }
             if (P.kn === 0) {
                 if (!hasKnife) { banner.t = .6; banner.text = 'NO KNIFE!'; return }
                 P.kn = 1; P.rv = 0
@@ -865,6 +873,7 @@
         const combo = { n: 0, dmg: 0, t: 0, pop: 0 }, banner = { t: 0, text: '' };
         let hitstop = 0, shake = 0;
         function pressAtk() {
+            if (duckHandBusy()) return;
             if (P.mount) { if (P.mount === 2 && pressMSlash()) return; banner.t = .6; banner.text = P.mount === 2 ? 'DRAW KNIFE FIRST (K)' : 'DISMOUNT FIRST (H)'; return }
             if (P.sg) { banner.t = .6; banner.text = 'DROP SHOTGUN FIRST (Z)'; return }
             if (P.kn === 1 && P.kt > .5 && (keys.ArrowDown || keys.KeyS) && !(P.gu > 0) && P.stbk === 0 && P.fs === 0 && !(P.yk > 0) && P.pk === 0 && P.z >= 0 && !P.fin && !P.thw && !P.tt && !P.cs && pressGut()) return;
@@ -3122,6 +3131,7 @@
             const sh = rot(0, -T + 10), swing = (.015 + .9 * R) * P.amp * ARM_SWING, up = z < 0 ? -.9 : 0;
             const sTilt = (P === PL) ? smokeTilt() : [0, 0];
             const mA = (P === PL && P.sm) ? (() => { const h = rot(-F * 7 + F * sTilt[0], -T - 24 + sTilt[1]); return [h[0] + F * 19, h[1] + 8] })() : null;
+            const kA = (P === PL && duckHandBusy()) ? 1 : 0;   // knife arm: left hand while the duck is held
             for (let i = 0; i < 2; i++) {
 
                 const p = P.phase + i * Math.PI;
@@ -3174,7 +3184,7 @@
                 }
                 if (mA) { const o = smokePose(i, sh, F, mA); if (o && o[2] > .001) { ang = ang * (1 - o[2]) + o[0] * o[2]; flex = flex * (1 - o[2]) + o[1] * o[2] } }
                 if (i === 0 && pq > 0) { ang = -.8 + q * 3.6; flex = .2 }
-                if (i === 0 && !pq && P.kt > 0 && P.kt < 1) { ang += .35 * Math.sin(Math.PI * P.kt); flex += .9 * Math.sin(Math.PI * P.kt) }
+                if (i === kA && !pq && P.kt > 0 && P.kt < 1) { ang += .35 * Math.sin(Math.PI * P.kt); flex += .9 * Math.sin(Math.PI * P.kt) }
                 if (i === 0 && P.tt > 0) { const w = tossArm(P.tt / TOSS_T); ang += .5 * w; flex += 1.0 * w }
                 if (i === 0 && P.thw > 0) {
                     const u = P.thw / THR_T; let ta, tf;
@@ -3370,7 +3380,7 @@
                 if (P === PL && P.lb > 0 && P.lnB) { const o = lbArm(i, sh, F); if (o[2] > .001) { ang = ang * (1 - o[2]) + o[0] * o[2]; flex = flex * (1 - o[2]) + o[1] * o[2] } }
                 if (P === PL && swim.on && swim.cl > 0) { const o = climbArm(i, sh, F, S); if (o && o[2] > .001) { ang = ang * (1 - o[2]) + o[0] * o[2]; flex = flex * (1 - o[2]) + o[1] * o[2]; } }
                 wristKick = (i === 0 && P === PL && P.gunK > .02) ? RC_WRIST * P.recoil * P.recoil + (P.rl > 0 ? rlTilt(P.rl / RELOAD_T) : 0) : 0;
-                arm(sh, ang, flex, F, (i === 0 && !P.pk) ? P.kt : 0, Math.max(pq, (cb && !(P === PL && P.stbk > 0)) ? cb.w : 0), (i === 0 && !P.pk) ? P.tt / TOSS_T : 0);
+                arm(sh, ang, flex, F, (i === kA && !P.pk) ? P.kt : 0, Math.max(pq, (cb && !(P === PL && P.stbk > 0)) ? cb.w : 0), (i === kA && !P.pk) ? P.tt / TOSS_T : 0);
                 if (i === 1 && P === PL && P.rl > 0) {
                     const u = P.rl / RELOAD_T;
                     if (u > RL_GRAB - .02 && u < RL_LOADED) {
