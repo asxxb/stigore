@@ -174,7 +174,8 @@
                 <p><kbd>J</kbd> stab · <kbd>▼</kbd>+<kbd>J</kbd> gut cut</p>
                 <p>Reverse grip + <kbd>J</kbd> foot stab</p>
                 <p>Next to a stabbed enemy: hold <kbd>E</kbd> to pull, <kbd>E</kbd>+<kbd>▼</kbd> gut,
-                    <kbd>E</kbd>+<kbd>▲</kbd> split head</p>
+                    <kbd>E</kbd>+<kbd>▲</kbd> split head
+                </p>
                 <p><kbd>E</kbd> near a foot-stabbed enemy yanks the knife out</p>
             </section>
             <section>
@@ -7232,10 +7233,10 @@
             const geo = legs.map((L, i) => {
                 const u = ((h.ph + lerp(L.wo, L.go, rg)) % 1 + 1) % 1;
                 const A = g.A * kk, st = g.st;
-                let x, lift = 0;
+                let x, lift = 0, sw = 0;
                 if (u < st) { x = A * (1 - 2 * u / st); }
-                else { const s = (u - st) / (1 - st), e = s * s * (3 - 2 * s); x = -A + 2 * A * e; lift = Math.sin(Math.PI * s) * (7 + 14 * rg) * kk; }
-                let fx = L.ax + x, fy = -lift;
+                else { const s = (u - st) / (1 - st), e = s * s * (3 - 2 * s); x = -A + 2 * A * e; sw = Math.sin(Math.PI * s) * kk; lift = sw * (7 + 14 * rg) * (L.front ? 1.9 : 1); }
+                let fx = L.ax + x - (L.front ? 9 * sw : 0), fy = -lift;       // front hoof tucks back and up as the knee folds
                 if (rr > 0 && L.front) {                                 // rearing pose (unchanged)
                     fx = lerp(fx, L.ax + 24, rr);
                     fy = lerp(fy, -70 + 5 * Math.sin(now * 10 + L.far * 1.5), rr);
@@ -7246,7 +7247,7 @@
                 if (!h.hDead) fy = Math.min(fy, gz);                                   // a hoof can never pass through the ground
                 const A2 = rotP(L.ax, AT);                               // shoulder / hip follow the body pitch
                 const fold = clamp01((118 - Math.hypot(fx - A2[0], fy - 9 - A2[1])) / 60) * h.jw;   // knees / hocks fold when the leg is short
-                const bend = L.bend + Math.sign(L.bend) * fold * .82;
+                const bend = L.bend + Math.sign(L.bend) * (fold * .82 + sw * (L.front ? .95 : .3)) + (L.front ? .08 : 0);   // knee folds while the leg swings
                 return { L, ax2: A2[0], at2: A2[1], k: hrsLegIK(A2[0], A2[1], fx, fy - 9, bend) };
             });
 
