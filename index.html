@@ -375,11 +375,14 @@
 
             if (treehouseCamera) {
                 // Follow player vertically.
-                const h = P.dh || ((typeof TH_CL !== 'undefined' && TH_CL.on && TH_CL.pose && TH_CL.pose.hipAbs !== undefined) ? Math.max(0, -((TH_CL.pose.hipAbs || -169.15) + 169.15) * CSc()) : 0);
-                targetY = Math.max(0, (h || P.dh) - H * 0.28);
+                const climbH = (typeof TH_CL !== 'undefined' && TH_CL.on && TH_CL.pose && TH_CL.pose.hipAbs !== undefined)
+                    ? Math.max(0, -((TH_CL.pose.hipAbs || -169.15) + 169.15) * CSc())
+                    : 0;
+                const h = Math.max(P.dh || 0, climbH);
+                targetY = Math.max(0, h - H * 0.58);
             }
 
-            targetY = Math.max(targetY, (P.mh || 0) + (P.dh || 0) - H * 0.28);   // follow the player up the mountain
+            targetY = Math.max(targetY, (P.mh || 0) - H * 0.28);   // follow the player up the mountain
             const k = 1 - Math.exp(-7.5 * dt);
             camY += (targetY - camY) * k;
         }
@@ -874,7 +877,11 @@
         const combo = { n: 0, dmg: 0, t: 0, pop: 0 }, banner = { t: 0, text: '' };
         let hitstop = 0, shake = 0;
         function pressAtk() {
-            if (duckHandBusy()) { if (!(P.kn === 1 && DD.g.mode === 'foot')) { banner.t = .7; banner.text = 'DRAW KNIFE (K), THEN HOLD J'; } return }
+            if (duckHandBusy()) {
+                if (DD.g.mode === 'foot' && P.kn === 0) return;          // empty hand: holding J tears her apart (ddTearTick)
+                if (!(P.kn === 1 && DD.g.mode === 'foot')) { banner.t = .7; banner.text = 'DRAW KNIFE (K), THEN HOLD J'; }
+                return;
+            }
             if (P.mount) { if (P.mount === 2 && pressMSlash()) return; banner.t = .6; banner.text = P.mount === 2 ? 'DRAW KNIFE FIRST (K)' : 'DISMOUNT FIRST (H)'; return }
             if (P.sg) { banner.t = .6; banner.text = 'DROP SHOTGUN FIRST (Z)'; return }
             if (P.kn === 1 && P.kt > .5 && (keys.ArrowDown || keys.KeyS) && !(P.gu > 0) && P.stbk === 0 && P.fs === 0 && !(P.yk > 0) && P.pk === 0 && P.z >= 0 && !P.fin && !P.thw && !P.tt && !P.cs && pressGut()) return;
@@ -3263,6 +3270,7 @@
                     if (o && o[2] > .001) { ang += wrapA(o[0] - ang) * o[2]; flex = flex * (1 - o[2]) + o[1] * o[2]; }
                 }
                 if (P === PL && i === 1 && DD.g.on && DD.g.sawW > .02) { const o = ddSawArm(sh, F, S); if (o) { ang += wrapA(o[0] - ang) * o[2]; flex = flex * (1 - o[2]) + o[1] * o[2]; } }
+                if (P === PL && i === 1 && DD.g.on && DD.g.tearW > .02) { const o = ddTearArm(sh, F, S); if (o) { ang += wrapA(o[0] - ang) * o[2]; flex = flex * (1 - o[2]) + o[1] * o[2]; } }
                 if (isGrabbed) {
                     ang = .12; flex = .15;     // arms just hang while he is held
                 } else if (hk > 0) {
@@ -16045,7 +16053,7 @@
             const S = CSc();
             return [(q.x - W / 2) / S, (q.y - (groundY() + 4) + (P.dh || 0) + (P.mh || 0)) / S];
         }
-        DD.g = { on: false, ph: '', t: 0, rt: 0, rc: 0, mode: 'foot', aw: 0, air: 0, ox: 0, oy: 0, oy0: 0, rx: 0, gnx: 0, ax: 0, ay: 0, sw: 0, swv: 0, swung: false, landed: false };
+        DD.g = { tear: 0, tearW: 0, on: false, ph: '', t: 0, rt: 0, rc: 0, mode: 'foot', aw: 0, air: 0, ox: 0, oy: 0, oy0: 0, rx: 0, gnx: 0, ax: 0, ay: 0, sw: 0, swv: 0, swung: false, landed: false };
 
         function ddNeck() {
             const m = DD.m, sc = CSc() * DD_SIZE, F = Math.abs(m.fv) < .15 ? .15 * (Math.sign(m.fv) || 1) : m.fv;
@@ -16057,13 +16065,14 @@
             const S = CSc(), el = A[0], wr = A[1]; let dx = wr[0] - el[0], dy = wr[1] - el[1]; const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
             return [P.x + (wr[0] + dx * 11) * S, (wr[1] + dy * 11) * S - (P.dh || 0) - (P.mh || 0)];
         }
-        function ddLock() { const g = DD.g; return g.on && ((g.mode === 'foot' && (g.ph === 'grab' || g.ph === 'release')) || g.sawW > .05) }
+        function ddLock() { const g = DD.g; return g.on && ((g.mode === 'foot' && (g.ph === 'grab' || g.ph === 'release')) || g.sawW > .05 || g.tearW > .05) }
 
         function ddBegin(mode, t0) {
             const g = DD.g, m = DD.m, sc = CSc() * DD_SIZE;
             if (mode === 'foot') m.face = Math.sign(P.x - m.x) || m.face;       // she notices you and turns
             m.peck = 0; m.st = 'idle'; m.t = 0; m.dip = 0;
             Object.assign(g, {
+                tear: 0, tearW: 0,
                 on: true, ph: 'grab', t: t0, rt: 0, rc: 0, mode, aw: 0, air: 0, ox: m.x, oy: 0, gnx: m.x + m.face * DD_NECK[0] * sc,
                 ax: m.x + m.face * DD_NECK[0] * sc, ay: DD_NECK[1] * sc, sw: 0, swv: 0, swung: false, landed: false, sawW: 0, sawPh: 0
             });
@@ -16088,7 +16097,7 @@
             DD.k.slice().sort((a, b) => Math.abs(a.x - m.x) - Math.abs(b.x - m.x)).forEach((d, i) => d.rk = i);   // nearest duckling goes first
         }
         function ddEnd() {
-            const g = DD.g, m = DD.m; g.on = false; g.ph = '';
+            const g = DD.g, m = DD.m; g.on = false; g.ph = ''; g.tear = 0; g.tearW = 0;
             Object.assign(m, { air: 0, flap: 0, swayR: 0, nb: 0, nkx: 0, tilt: 0, str: 0, gape: 0 });
             if (inPond(m.x, 80)) m.x = POND_X - POND_RX - 140;
             const c = (DD_X0 + DD_X1) / 2, w = (DD_X1 - DD_X0) / 2;
@@ -16104,6 +16113,11 @@
         }
         function ddFootPose(Q) {
             const g = DD.g, S = CSc(), F = Q.face; let comp = 0;
+            if (g.tearW > .02) {
+                const k = g.tear, w = g.tearW;
+                return { w, a0: .08, f0: 0, a1: .08, f1: 0, lean: -.1 * w - .06 * k, hipX: -6 * w, hipY: 10 * w + 6 * k, arch: .03, hx: 0, hy: 2,
+                    l0: [42, 0, 0], l1: [-38, 0, 0], kneeFull: true, st: STEPS[0], sw: 0, ik: 0 };
+            }
             if (g.ph === 'grab') comp = g.t < .4 ? sm(g.t / .3) : 1 - sm((g.t - .4) / .4);
             else if (g.ph === 'release') comp = g.rt < .45 ? sm(g.rt / .35) : 1 - sm((g.rt - .45) / .3);
             if (comp < .002) return null;
@@ -16123,6 +16137,7 @@
             if (g.ph === 'release') { T = ddToChar(g.ax, g.ay); w = 1 - sm((g.rt - .4) / .3) }
             else {
                 const Hh = [sh[0] + F * 58 + Math.sin(now * 2.3) * 2, sh[1] + 40 + Math.sin(now * 3.1) * 2];
+                if (g.tearW > .01) { const k = g.tear, tr = Math.sin(now * 47) * 1.5 * k; Hh[0] = lerp(Hh[0], sh[0] + F * (70 + 8 * k) + tr, g.tearW); Hh[1] = lerp(Hh[1], sh[1] + 12 - 20 * k + tr * .6, g.tearW); }
                 const N = ddToChar(g.gnx, DD_NECK[1] * S * DD_SIZE), u = g.ph === 'held' ? 1 : sm((t - .4) / .3);
                 T = [lerp(N[0], Hh[0], u), lerp(N[1], Hh[1], u)];
                 w = g.mode === 'mount' ? 1 : sm(t / .12);
@@ -16165,7 +16180,8 @@
                     }
                 } else { g.rc += dt; g.oy = 0; g.air = 0; if (g.rc >= .75) { ddEnd(); return } }
             }
-            if (g.ph === 'held') { ddSawTick(dt); if (!g.on) return; }
+            if (g.ph === 'held') { ddSawTick(dt); if (!g.on) return; ddTearTick(dt); if (!g.on) return; }
+            else { g.tear = Math.max(0, g.tear - dt * 4); g.tearW = Math.max(0, g.tearW - dt * 8); }
             // pendulum sway
             const swT = clampN(P.vx / 800, -.45, .45) * (g.ph === 'held' ? 1 : 0) + Math.sin(now * 1.9) * .05;
             g.swv += (-55 * (g.sw - swT) - 5 * g.swv) * dt; g.sw += g.swv * dt;
@@ -16181,6 +16197,7 @@
             const sawC = m.cut || 0;
             const strT = heldNow ? air * Math.min(1, .3 + .7 * Math.max(panic, bursts, (sawC > .28 && sawC < .62) ? 1 : 0)) * (1 - .75 * sm((sawC - .6) / .4)) : 0;
             m.str = (m.str || 0) + (strT - (m.str || 0)) * Math.min(1, dt * 6);
+            m.str = Math.max(m.str, g.tear);                       // she thrashes harder as you pull
 
             m.air = air;
             m.swayR = sg * g.sw * air + Math.sin(now * 8.5) * .14 * m.str * sg;     // body twists as she fights
@@ -16188,6 +16205,7 @@
             m.flap = g.ph === 'release' ? air * .7 : air * (.25 + .75 * m.str);     // wings beat harder while struggling
             const gT = m.str > .12 ? (.3 + .7 * (.5 + .5 * Math.sin(now * 14))) * Math.min(1, m.str * 1.4) : 0;
             m.gape = (m.gape || 0) + (gT - (m.gape || 0)) * Math.min(1, dt * 18);   // beak snapping open and shut
+            { const tk = 1 - g.tearW; m.air *= tk; m.swayR *= tk; m.nb *= tk; }   // stops hanging, gets stretched upright between your hands
             m.dip = 0; m.hdT = 1; m.peck = 0;
         }
 
@@ -16297,6 +16315,14 @@
 
         function ddDeadTick(m, dt, now) {
             const S = CSc(), sc = S * DD_SIZE, F = Math.sign(m.fv) || 1, R = Math.random;
+            if (m.torn) {
+                m.dcT += dt; m.vx = 0;
+                if (m.dcT > 60 && Math.abs(m.x - P.x) > W / 2 + 300) {
+                    Object.assign(m, { dead: 0, torn: 0, headless: 0, cut: 0, lie: 0, dy: 0, air: 0, flap: 0, conv: 0, tilt: 0, landed: false, pool: null, str: 0, gape: 0, dip: 0 });
+                    m.st = 'idle'; m.t = 0; m.tt = 2;
+                }
+                return;
+            }
             m.dcT += dt; m.vx = 0; m.gx = m.x; m.maxV = 0; m.fv += clampN(m.face - m.fv, -dt * 6, dt * 6);
             if (!m.landed) {                                           // the body drops out of the hand
                 m.dvy += 1500 * dt; m.dy += m.dvy * dt; m.air = Math.max(0, m.air - dt * 1.6);
@@ -16413,17 +16439,36 @@
             ctx.restore();
         }
 
-        function drawHeldDuck(gy) {                           // late layer so she is in front of the horse and behind the fist
+        function drawHeldDuck(gy) {
             const g = DD.g; if (!g.on || !DD.init) return;
             const S = CSc(), sc = S * DD_SIZE, m = DD.m, now = performance.now() / 1000;
             const F = Math.abs(m.fv) < .15 ? .15 * (Math.sign(m.fv) || 1) : m.fv, sx = m.x - P.x + W / 2;
             if (Math.abs(sx - W / 2) > W / 2 + 300) return;
             DD.B = ctx.getTransform();
-            ctx.save(); ctx.globalAlpha = .22 * (1 - .35 * g.air); ctx.fillStyle = '#111'; ctx.beginPath(); ctx.ellipse(sx - F * 2 * sc, gy + 5, 30 * sc * (1 - .25 * g.air), 3 * sc, 0, 0, 7); ctx.fill(); ctx.restore();
-            ctx.save(); ctx.translate(sx, gy + 4 + g.oy); ctx.scale(sc * F, sc); ddShape(m, now); ctx.restore();
+            ctx.save(); ctx.globalAlpha = .22 * (1 - .35 * g.air) * (1 - g.tearW); ctx.fillStyle = '#111'; ctx.beginPath(); ctx.ellipse(sx - F * 2 * sc, gy + 5, 30 * sc * (1 - .25 * g.air), 3 * sc, 0, 0, 7); ctx.fill(); ctx.restore();
+
+            // normal hanging transform, blended into "stretched between both hands" while tearing
+            const M = { a: sc * F, b: 0, c: 0, d: sc, e: sx, f: gy + 4 + g.oy };
+            if (g.tearW > .02) {
+                const T = ddTearMat(gy, sc, Math.sign(F) || 1, g.tear);
+                if (T) for (const k of ['a', 'b', 'c', 'd', 'e', 'f']) M[k] += (T[k] - M[k]) * g.tearW;
+            }
+            ctx.save(); ctx.transform(M.a, M.b, M.c, M.d, M.e, M.f); ddShape(m, now);
+            if (g.tearW > .02) ddTearOverlay(g, now);
+            ctx.restore();
+
             if ((DD.m.cut || 0) > .25 && DD.m.cut < 1) {
                 ctx.save(); ctx.globalAlpha = .75 * (.6 + .4 * Math.sin(now * 14)); ctx.fillStyle = '#111'; ctx.font = 'italic bold 20px Georgia,serif'; ctx.textAlign = 'center';
                 ctx.fillText(DD.m.cut > .55 ? 'gk—gkk…' : 'squeak!', sx, gy + 4 + g.oy - 70 * sc); ctx.restore();
+            }
+            if (g.tearW > .3 && g.tear > .3) {
+                const h0 = ddHandAt(0, gy);
+                if (h0) {
+                    ctx.save(); ctx.globalAlpha = .85 * g.tearW; ctx.fillStyle = '#111'; ctx.textAlign = 'center';
+                    ctx.font = 'italic bold ' + Math.round(16 + 12 * g.tear) + 'px Georgia,serif';
+                    ctx.translate(h0[0] + F * 30 + Math.sin(now * 50) * 2 * g.tear, h0[1] - 50 - Math.cos(now * 43) * 2 * g.tear);
+                    ctx.fillText(g.tear > .85 ? 'RRRR…' : g.tear > .55 ? 'creeeeak…' : 'strrretch…', 0, 0); ctx.restore();
+                }
             }
         }
 
@@ -16439,7 +16484,7 @@
             ctx.lineJoin = 'round'; ctx.lineCap = 'round';
 
             // ground shadow
-            if (!(a.air > .01)) { ctx.save(); ctx.globalAlpha *= .22; ctx.fillStyle = INK; ctx.beginPath(); ctx.ellipse(-1, 1, 30, 3, 0, 0, 7); ctx.fill(); ctx.restore(); }
+            if (!(a.air > .01) && !(DD.g.on && a === DD.m) && !a.noShadow) { ctx.save(); ctx.globalAlpha *= .22; ctx.fillStyle = INK; ctx.beginPath(); ctx.ellipse(-1, 1, 30, 3, 0, 0, 7); ctx.fill(); ctx.restore(); }
             const air = a.air || 0;
             const lie = a.lie || 0, conv = a.dead ? (a.conv || 0) : 0;
             ctx.translate(0, 11 * lie);
@@ -16683,10 +16728,240 @@
             ctx.restore();   // body group
         }
 
+        // ================= DUCK TEAR (hold J, knife away, while holding her) =================
+        const DT_A = [26, -50], DT_B = [0, -4];                              // neck grip / feet grip (duck units)
+        const DT_VL = Math.hypot(DT_B[0] - DT_A[0], DT_B[1] - DT_A[1]);
+        const DT_P1 = [(DT_B[0] - DT_A[0]) / DT_VL, (DT_B[1] - DT_A[1]) / DT_VL], DT_P2 = [-DT_P1[1], DT_P1[0]];   // pull axis
+        const DT_C = [-3, -27];                                              // where the body splits: back half above, belly half below
+        const DT_N = [-.0995, .995], DT_L = [-.995, -.0995];                 // N = from back half toward belly half, L = along the cut
+        const [DT_UC, DT_HW] = (() => {                                      // where the cut line crosses the torso (ellipse)
+            const cx = -4, cy = -28, rx = 36, ry = 16, dx = DT_C[0] - cx, dy = DT_C[1] - cy;
+            const A = (DT_L[0] / rx) ** 2 + (DT_L[1] / ry) ** 2, B = 2 * (dx * DT_L[0] / rx ** 2 + dy * DT_L[1] / ry ** 2), Cc = (dx / rx) ** 2 + (dy / ry) ** 2 - 1;
+            return [-B / (2 * A), Math.sqrt(Math.max(0, B * B - 4 * A * Cc)) / (2 * A)];
+        })();
+        const DT_REST = { top: { y: -2, rot: .1 }, bot: { y: -18, rot: -.08 } };   // resting pose of each half (x duck scale). TUNE HERE
+        const dHalves = [], dLinks = [];
+
+        function ddHandAt(i, gy) {                                           // fist position, screen space
+            const A = P.armPts && P.armPts[i]; if (!A) return null;
+            const S = CSc(), el = A[0], wr = A[1]; let dx = wr[0] - el[0], dy = wr[1] - el[1]; const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
+            return [W / 2 + (wr[0] + dx * 11) * S, gy + 4 - (P.dh || 0) - (P.mh || 0) + (wr[1] + dy * 11) * S];
+        }
+        // matrix that maps the duck so the neck sits in hand 0 and the feet in hand 1 (stretches between them)
+        function ddTearMat(gy, sc, F, k) {
+            const h0 = ddHandAt(0, gy), h1 = ddHandAt(1, gy); if (!h0 || !h1) return null;
+            const sx_ = h1[0] - h0[0], sy_ = h1[1] - h0[1], sl = Math.hypot(sx_, sy_) || 1;
+            const f1 = [sx_ / sl, sy_ / sl], f2 = [-f1[1] * F, f1[0] * F];
+            const a = clampN(sl / DT_VL, sc * .85, sc * 2.2), b = sc * (1 - .22 * k);
+            const m11 = a * DT_P1[0] * f1[0] + b * DT_P2[0] * f2[0], m12 = a * DT_P1[1] * f1[0] + b * DT_P2[1] * f2[0];
+            const m21 = a * DT_P1[0] * f1[1] + b * DT_P2[1] * f2[1], m22 = a * DT_P1[1] * f1[1] + b * DT_P2[1] * f2[1];
+            return { a: m11, b: m21, c: m12, d: m22, e: h0[0] - (m11 * DT_A[0] + m12 * DT_A[1]), f: h0[1] - (m21 * DT_A[0] + m22 * DT_A[1]), h0, h1 };
+        }
+        function ddTearCut() {                                               // world position of the cut while pulling
+            const gy = groundY(), sc = CSc() * DD_SIZE, T = ddTearMat(gy, sc, Math.sign(DD.m.fv) || 1, DD.g.tear); if (!T) return null;
+            return [P.x + (T.a * DT_C[0] + T.c * DT_C[1] + T.e) - W / 2, (T.b * DT_C[0] + T.d * DT_C[1] + T.f) - (gy + 4)];
+        }
+        function ddTearArm(sh, F, S) {                                       // free hand grips the feet and drags down
+            const g = DD.g, k = g.tear, now = performance.now() / 1000, tr = Math.sin(now * 47) * 1.4 * k;
+            const [a, f] = ikTo(sh, sh[0] + F * 30 + tr, sh[1] + 84 + 22 * k + tr * .6, F);
+            return [a, f, g.tearW];
+        }
+
+        // skin thinning to a pale band, stress lines, then cracks
+        function ddTearOverlay(g, now) {
+            const k = g.tear; if (k < .1) return;
+            ctx.save(); ctx.translate(DT_C[0], DT_C[1]); ctx.transform(DT_L[0], DT_L[1], DT_N[0], DT_N[1], 0, 0); ctx.lineCap = 'round';
+            const hw = DT_HW * .92, th = 2 + 10 * k;
+            ctx.globalAlpha = clamp01((k - .1) * 1.5) * .55; ctx.fillStyle = '#f4c4c2';
+            ctx.beginPath(); ctx.ellipse(DT_UC, 0, hw, th, 0, 0, 7); ctx.fill();
+            ctx.globalAlpha = clamp01((k - .25) * 1.4); ctx.strokeStyle = 'rgba(120,40,50,.7)'; ctx.lineWidth = .6;
+            for (let i = -5; i <= 5; i++) { const u = DT_UC + i * hw * .18; ctx.beginPath(); ctx.moveTo(u, -th * .8); ctx.lineTo(u + Math.sin(i * 2.3) * 1.5, th * .8); ctx.stroke(); }
+            if (k > .7) {
+                const Lc = hw * Math.min(1, (k - .7) / .3), n = 10; ctx.globalAlpha = 1; ctx.strokeStyle = '#7a0b11'; ctx.lineWidth = 1.2; ctx.beginPath();
+                for (let j = 0; j <= n; j++) { const u = DT_UC - Lc + 2 * Lc * j / n, w = (j % 2 ? 1 : -1) * (.6 + hash(j * 3.1) * 1.6); j ? ctx.lineTo(u, w) : ctx.moveTo(u, w); }
+                ctx.stroke();
+            }
+            ctx.restore();
+        }
+
+        function ddTearTick(dt) {
+            const g = DD.g, m = DD.m, R = Math.random;
+            const want = g.mode === 'foot' && !!keys.KeyJ && P.kn === 0 && P.kt < .05 && (m.cut || 0) < .02 && P.z >= 0 && !P.mount && !swim.on;
+            const prev = g.tear;
+            g.tearW += ((want ? 1 : 0) - g.tearW) * Math.min(1, dt * 8);
+            if (want && g.tearW > .75) g.tear = Math.min(1, g.tear + dt * (.38 + .7 * g.tear));   // about 1.5 s to the rip, accelerating
+            else if (!want) g.tear = Math.max(0, g.tear - dt * 1.6);                              // let go: she relaxes
+            const k = g.tear;
+            if (k > 0) shake = Math.max(shake, 1 + 5 * k * g.tearW);
+            if (prev < .08 && k >= .08) { banner.t = .8; banner.text = 'PULLING...'; }
+            if (prev < .35 && k >= .35) { banner.t = .8; banner.text = 'SKIN STRETCHES'; }
+            if (prev < .7 && k >= .7) { banner.t = .9; banner.text = 'CREEEAK...'; }
+            if (k > .75) {
+                g.bd2 = (g.bd2 || 0) - dt;
+                if (g.bd2 <= 0) { g.bd2 = .06; const c = ddTearCut(); if (c) bgDrop(c[0] + (R() - .5) * 50, c[1], (R() - .5) * 30, 10 + R() * 40, 1.1 + R() * 1.5); }
+            }
+            if (k >= 1) ddTear();
+        }
+
+        function ddTear() {
+            const g = DD.g, m = DD.m, S = CSc(), sc = S * DD_SIZE, R = Math.random, F = Math.sign(m.fv) || 1, gy = groundY();
+            g.tear = 1;
+            const T = ddTearMat(gy, sc, F, 1), c = ddTearCut();
+            if (!T || !c) { g.tear = .95; return; }
+            const base = Object.assign({}, m, { dead: 1, headless: 0, cut: 0, air: 0, dip: 0, tilt: 0, str: 0, gape: 0, flap: 0, swayR: 0, nb: 0, nkx: 0, vx: 0, bl: 0, noShadow: 1, lie: 0, conv: 0 });
+            const mk = side => {
+                const top = side < 0, h = {
+                    side, F, snap: Object.assign({}, base), M: { a: T.a, b: T.b, c: T.c, d: T.d }, x: c[0], y: c[1], rot: 0, t: 0, bn: 0, bl: 0, landed: false, tl: 0, seed: R() * 99,
+                    vx: top ? F * (130 + R() * 120) : -F * (70 + R() * 90), vy: top ? -(430 + R() * 180) : -(150 + R() * 100),
+                    vr: top ? F * (2 + R() * 2.5) : -F * (1.5 + R() * 2), restY: top ? DT_REST.top.y : DT_REST.bot.y, restRot: (top ? DT_REST.top.rot : DT_REST.bot.rot) * F, pool: null
+                };
+                dHalves.push(h); return h;
+            };
+            const hT = mk(-1), hB = mk(1), wx = c[0], wy = c[1];
+
+            // sinew / vein strands stretching between the halves, snapping one by one
+            const cols = ['#b3141c', '#8c0d14', '#eadfcf', '#6b2a5a'];
+            for (let i = 0; i < 7; i++) {
+                const gut = i === 1 || i === 5;
+                dLinks.push({ a: hT, b: hB, u: DT_UC + (i - 3) * DT_HW * .27, alive: true, gut, w: gut ? 2.6 * S : (.7 + R() * .9) * S, col: gut ? '#e9786c' : cols[i % 4], max: (70 + R() * 90) * S });
+            }
+            // intestines hang from the halves, then drop and coil on the ground
+            for (let i = 0; i < 3; i++) {
+                const half = i === 1 ? hT : hB, u = DT_UC + (i - 1) * DT_HW * .45, N = 24, rest = 5.2 * S, vx = (R() - .5) * 160, vy = -(40 + R() * 120);
+                bg.veins.push({ p: Array.from({ length: N }, () => ({ x: wx, y: wy, ox: wx - vx / 60, oy: wy - vy / 60 })), rest, w: 3.2 * S, col: '#e9786c', gut: true, t: 0, bl: 0, pin: () => ddHalfEnd(half, u), pinT: 1 + R() * .8 });
+            }
+            // gore: organs (heart, liver, gizzard...), rib and spine splinters, upward blood, feathers
+            birdGore(wx, wy, F, 1.6); birdGore(wx, wy, -F, 1.3);
+            spray(wx, wy, 70, 760, 0); spray(wx, wy, 34, 520, F); spray(wx, wy, 30, 520, -F); burst(wx, wy, 40, 460, F);
+            for (let i = 0; i < 44; i++) bgDrop(wx + (R() - .5) * 60, wy, (R() - .5) * 520, -(260 + R() * 720), 1.2 + R() * 2.2);
+            for (let i = 0; i < 12; i++) boneSplinter(wx + (R() - .5) * 50, wy, R() < .5 ? F : -F, 380);
+            puffFeathers(wx, wy, 30, F); puffFeathers(wx, wy, 12, -F);
+            for (let i = 0; i < 6; i++) bgStain(wx + (R() - .5) * 180, 7 * S + R() * 8, i < 2);
+            impacts.push({ x: wx, y: wy, t: 0, life: .35, s: 150, seed: R() * 50 });
+            hitstop = Math.max(hitstop, .14); shake = Math.max(shake, 16);
+            combo.n++; combo.dmg += 60; combo.t = 2; combo.pop = 1.4; birdKills++;
+            banner.t = 1.4; banner.text = 'RRRRIIIP!';
+
+            ddEnd();                                                          // hands are free, she is gone
+            Object.assign(m, { dead: 1, torn: 1, headless: 0, cut: 0, dcT: 0, dy: 0, landed: true, lie: 0, air: 0, conv: 0 });
+            P.vx = -P.face * 180;                                             // you stagger back
+        }
+
+        function ddHalfEnd(h, u) {                                            // world point on a half's cut face (u along the cut)
+            const lx = DT_L[0] * u, ly = DT_L[1] * u, px = h.M.a * lx + h.M.c * ly, py = h.M.b * lx + h.M.d * ly, c = Math.cos(h.rot), s = Math.sin(h.rot);
+            return [h.x + px * c - py * s, h.y + px * s + py * c];
+        }
+
+        function ddHalvesTick(dt) {
+            if (!dHalves.length) return;
+            const S = CSc(), sc = S * DD_SIZE, R = Math.random, now = performance.now() / 1000;
+            for (let i = dHalves.length - 1; i >= 0; i--) {
+                const h = dHalves[i]; h.t += dt;
+                if (!h.landed) {
+                    h.vy += 1500 * dt; h.x += h.vx * dt; h.y += h.vy * dt; h.rot += h.vr * dt;
+                    h.bl -= dt;
+                    if (h.bl <= 0 && h.t < 2.5) { h.bl = .03; const e = ddHalfEnd(h, DT_UC + (R() - .5) * DT_HW * 1.6); bgDrop(e[0], e[1], h.vx * .08 + (R() - .5) * 50, 10 + R() * 50, 1.2 + R() * 1.8); }
+                    const rest = h.restY * sc;
+                    if (h.y >= rest) {
+                        h.y = rest;
+                        if (h.vy > 300 && !h.bn) { h.bn = 1; h.vy *= -.25; h.vx *= .55; h.vr *= .5; burst(h.x, -3, 8, 220, Math.sign(h.vx) || 1); shake = Math.max(shake, 4); }
+                        else {
+                            h.landed = true; h.tl = h.t; h.vy = 0; h.vr = 0; h.rot = wrapA(h.rot);
+                            burst(h.x, -3, 10, 260, Math.sign(h.vx) || 1); shake = Math.max(shake, 5);
+                            h.pool = bgStain(h.x, 26 * S, true);
+                        }
+                    }
+                } else {
+                    h.x += h.vx * dt; h.vx *= Math.exp(-7 * dt);
+                    h.rot += wrapA(h.restRot - h.rot) * Math.min(1, dt * 6);
+                    const k = Math.min(1, dt * 4);                                       // stretched shape relaxes back to normal size
+                    h.M.a += (sc * h.F - h.M.a) * k; h.M.b -= h.M.b * k; h.M.c -= h.M.c * k; h.M.d += (sc - h.M.d) * k;
+                    const lt = h.t - h.tl, tw = Math.max(0, 1 - lt / 5);                    // dying twitches fade out
+                    h.snap.flap = tw * Math.max(0, Math.sin(now * 24 + h.seed * 3)) * (h.side < 0 ? 1 : .15);
+                    h.twr = Math.sin(now * 30 + h.seed) * .05 * tw;
+                    if (h.pool && lt < 12) h.pool.gw = Math.min(130, h.pool.gw + dt * 10);
+                    if (lt < 5 && R() < dt * 10) { const e = ddHalfEnd(h, DT_UC + (R() - .5) * DT_HW * 1.6); bgDrop(e[0], e[1], (R() - .5) * 30, 10 + R() * 30, 1.2 + R() * 1.5); }
+                }
+                if (h.t > 45) dHalves.splice(i, 1);
+            }
+            for (let i = dLinks.length - 1; i >= 0; i--) {
+                const L = dLinks[i];
+                if (!dHalves.includes(L.a) || !dHalves.includes(L.b)) { dLinks.splice(i, 1); continue; }
+                if (!L.alive) continue;
+                const A = ddHalfEnd(L.a, L.u), B = ddHalfEnd(L.b, L.u);
+                if (Math.hypot(B[0] - A[0], B[1] - A[1]) > L.max) {                       // the strand snaps
+                    L.alive = false;
+                    for (const p of [A, B]) for (let k = 0; k < 4; k++) bgDrop(p[0], p[1], (R() - .5) * 260, -(40 + R() * 200), 1 + R() * 1.4);
+                }
+            }
+        }
+
+        function ddCutFace(h, now) {                                          // exposed flesh, bone, ribs and organs on a half's cut edge
+            const s = h.side, hw = DT_HW * .94, sd = h.seed, N = 12, u0 = DT_UC - hw, du = 2 * hw / N, jag = i => (i % 2 ? 3.6 : 1.4) + hash(sd + i * 3.1) * 2.4;
+            ctx.save(); ctx.translate(DT_C[0], DT_C[1]); ctx.transform(DT_L[0], DT_L[1], DT_N[0], DT_N[1], 0, 0); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+            ctx.beginPath();
+            for (let i = 0; i <= N; i++) { const u = u0 + du * i, w = -s * jag(i); i ? ctx.lineTo(u, w) : ctx.moveTo(u, w); }
+            ctx.lineTo(u0 + 2 * hw, s * 6.5); ctx.lineTo(u0, s * 6.5); ctx.closePath();
+            ctx.fillStyle = '#7a0b11'; ctx.fill(); ctx.strokeStyle = '#3a0508'; ctx.lineWidth = 1.2; ctx.stroke();
+            ctx.beginPath();                                                      // wet muscle
+            for (let i = 1; i < N; i++) { const u = u0 + du * i, w = -s * (jag(i) - 1.3); i > 1 ? ctx.lineTo(u, w) : ctx.moveTo(u, w); }
+            ctx.lineTo(u0 + 2 * hw - du, s * 3.5); ctx.lineTo(u0 + du, s * 3.5); ctx.closePath(); ctx.fillStyle = '#d4443a'; ctx.fill();
+            ctx.strokeStyle = 'rgba(255,200,190,.6)'; ctx.lineWidth = .7; ctx.beginPath(); ctx.moveTo(u0 + du * 2, s * 1.5); ctx.lineTo(u0 + du * 7, s * 1.9); ctx.stroke();
+            if (s < 0) {                                                          // back half: snapped spine + stubs of ribs
+        for (let i = 0; i < 9; i++) {
+            const u = u0 + hw * .25 + i * (hw * 1.5 / 8);
+            ctx.beginPath(); ctx.ellipse(u, s * 2.2, 2.3, 2.9, 0, 0, 7); ctx.fillStyle = '#efe9da'; ctx.fill(); ctx.strokeStyle = '#111'; ctx.lineWidth = .9; ctx.stroke();
+            ctx.beginPath(); ctx.arc(u, s * 2.2, .8, 0, 7); ctx.fillStyle = '#5a2a2a'; ctx.fill();
+        }
+        ctx.fillStyle = '#e98c92'; ctx.strokeStyle = '#a84a52'; ctx.lineWidth = .8;                                  // a lung strip
+        ctx.beginPath(); ctx.ellipse(u0 + hw * 1.3, s * 1.2, 7, 2, 0, 0, 7); ctx.fill(); ctx.stroke();
+    } else {                                                              // belly half: ribs torn open like a zipper
+        for (let i = 0; i < 6; i++) {
+            const u = u0 + hw * .25 + i * (hw * 1.5 / 5), Lr = 8 + hash(sd + i * 5.3) * 6, ln = (hash(sd + i * 2.7) - .5) * 5;
+            for (const [lw, col] of [[3.6, '#111'], [2, '#efe9da']]) {
+                ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.beginPath(); ctx.moveTo(u, s * 4); ctx.quadraticCurveTo(u + ln * .4, -s * Lr * .5, u + ln, -s * Lr); ctx.stroke();
+            }
+        }
+        ctx.lineWidth = 1; ctx.strokeStyle = '#3a0508';
+        ctx.fillStyle = '#6e1a22'; ctx.beginPath(); ctx.ellipse(u0 + hw * .5, -s * 1.5, 7, 3.4, .1, 0, 7); ctx.fill(); ctx.stroke();    // liver
+        ctx.fillStyle = '#a8141c'; ctx.beginPath(); ctx.arc(u0 + hw * .95, -s * 2.2, 3.4, 0, 7); ctx.fill(); ctx.stroke();               // heart
+        ctx.fillStyle = '#8a4a4a'; ctx.beginPath(); ctx.ellipse(u0 + hw * 1.45, -s * 1.8, 4.2, 3.2, 0, 0, 7); ctx.fill(); ctx.stroke();  // gizzard
+    }
+    ctx.restore();
+}
+
+function drawDuckHalves(gy) {
+    if (!dHalves.length) return;
+    const now = performance.now() / 1000;
+    for (const h of dHalves) {
+        const sx = h.x - P.x + W / 2; if (sx < -300 || sx > W + 300) continue;
+        ctx.save(); ctx.globalAlpha = Math.min(1, (45 - h.t) / 6);
+        ctx.beginPath(); ctx.rect(sx - 500, gy - 3000, 1000, 3006); ctx.clip();                       // sinks into the ground like corpses
+        ctx.translate(sx, gy + 4 + h.y); ctx.rotate(h.rot + (h.twr || 0));
+        ctx.transform(h.M.a, h.M.b, h.M.c, h.M.d, 0, 0); ctx.translate(-DT_C[0], -DT_C[1]);
+        ctx.save();                                                       // keep only this half of the duck
+        const Rr = 140, s = h.side, p0 = [DT_C[0] - DT_L[0] * Rr, DT_C[1] - DT_L[1] * Rr], p1 = [DT_C[0] + DT_L[0] * Rr, DT_C[1] + DT_L[1] * Rr];
+        ctx.beginPath(); ctx.moveTo(p0[0], p0[1]); ctx.lineTo(p1[0], p1[1]);
+        ctx.lineTo(p1[0] + s * DT_N[0] * Rr, p1[1] + s * DT_N[1] * Rr); ctx.lineTo(p0[0] + s * DT_N[0] * Rr, p0[1] + s * DT_N[1] * Rr); ctx.closePath(); ctx.clip();
+        ddShape(h.snap, now);
+        ctx.restore();
+        ddCutFace(h, now);
+        ctx.restore();
+    }
+    ctx.save(); ctx.lineCap = 'round';
+    for (const L of dLinks) {                                             // strands stretching between the halves
+        if (!L.alive) continue;
+        const A = ddHalfEnd(L.a, L.u), B = ddHalfEnd(L.b, L.u), d = Math.hypot(B[0] - A[0], B[1] - A[1]), w = L.w * (1 - .6 * Math.min(1, d / L.max));
+        const ax = A[0] - P.x + W / 2, ay = gy + 4 + A[1], bx = B[0] - P.x + W / 2, by = gy + 4 + B[1], mx = (ax + bx) / 2, my = (ay + by) / 2 + Math.max(0, 10 - d * .4);
+        for (const [lw, col] of [[w + 1.8, '#3a0508'], [w, L.col]]) { ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.beginPath(); ctx.moveTo(ax, ay); ctx.quadraticCurveTo(mx, my, bx, by); ctx.stroke(); }
+    }
+    ctx.restore();
+}
+
         function drawDomesticDucks(gy) {
             if (!DD.init) return;
             const S = CSc(), now = performance.now() / 1000;
-            const list = [DD.m].concat(DD.k).filter(a => Math.abs(a.x - P.x) < W / 2 + 200 && !(a === DD.m && DD.g.on));
+            const list = [DD.m].concat(DD.k).filter(a => Math.abs(a.x - P.x) < W / 2 + 200 && !(a === DD.m && DD.g.on) && !a.torn);
             list.sort((p, q) => (p.mother ? 1 : 0) - (q.mother ? 1 : 0));
             for (const a of list) {
                 const sc = S * DD_SIZE * a.s, F = Math.abs(a.fv) < .15 ? .15 * (Math.sign(a.fv) || 1) : a.fv;
@@ -16702,7 +16977,7 @@
             let dt = dt0;
             if (hitstop > 0) { hitstop -= dt0; dt = 0 }
 
-            update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); sgTick(dt); sgGroundTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); waterFXTick(dt); brainTick(dt); hzTick(dt); gibTick(dt); boneTick(dt); weatherTick(dt); horseTick(dt); mpkTick(dt); birdTick(dt); fowlTick(dt); frogTick(dt); duckTick(dt); ddTick(dt); crocTick(dt); bgTick(dt); corpseTick(dt); dayTick(dt0); fireflyTick(dt0); stExtrasTick(dt0);
+            update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); sgTick(dt); sgGroundTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); waterFXTick(dt); brainTick(dt); hzTick(dt); gibTick(dt); boneTick(dt); weatherTick(dt); horseTick(dt); mpkTick(dt); birdTick(dt); fowlTick(dt); frogTick(dt); duckTick(dt); ddTick(dt); ddHalvesTick(dt); crocTick(dt); bgTick(dt); corpseTick(dt); dayTick(dt0); fireflyTick(dt0); stExtrasTick(dt0);
             const hStop = MT_HORSE_STOP_X();
             const hGap = HRS.x - hStop;
             if (hGap < 350 && HRS.vx < 0) HRS.vx *= Math.max(0, 1 - dt * 6 * (1 - hGap / 350));
@@ -16770,6 +17045,7 @@
             drawFowl(gy);
             drawDuckFam(gy);
             drawDomesticDucks(gy);
+            drawDuckHalves(gy);
             drawFrogs(gy);
             drawCroc(gy); drawCrocGore(gy);
             drawBGoreAir(gy);
