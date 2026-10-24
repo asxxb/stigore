@@ -336,7 +336,7 @@
         P.fin = 0; P.finE = null; P.finDone = 0;
         const THR_T = .32;              // throw animation length
         const knives = [];
-        const THROW_RANGE = 650;   // max distance (px) a thrown knife can fly before it drops
+        const THROW_RANGE = 1400;   // max distance (px) a thrown knife can fly before it drops
         const PICKUP_R = 70;       // how close you need to be to grab a knife (scaled)
         let hasKnife = true;       // you only own one knife now
         const groundKnives = [];
@@ -4892,7 +4892,7 @@
             for (const e of ENEMIES) {
                 if (e.dead > 0 || e.dying > 0) continue;
                 const dx = (e.x - P.x) * F, d = Math.abs(e.x - P.x);
-                if (dx < -20 || d > W / 2 + 100) continue;
+                if (dx < -20 || d > THROW_RANGE) continue;
                 if (d < bd) { bd = d; best = e }
             }
             return best;
@@ -4915,7 +4915,7 @@
             const S = CSc(), F = P.face, A = P.armPts && P.armPts[0];
             const w = A ? A[1] : [F * 60, -T];
             const x0 = P.x + w[0] * S;
-            knives.push({ x: x0, x0, y: w[1] * S, F, th: 0, v: 1600, age: 0, tgt: pickTarget(F), st: null });
+            knives.push({ x: x0, x0, y: w[1] * S, F, th: 0, v: 2400, age: 0, tgt: pickTarget(F), st: null });
             hasKnife = false;
             P.kn = 0; P.kt = 0; P.tt = 0; P.rv = 0;
         }
