@@ -38,6 +38,7 @@
             color: #222;
             pointer-events: none;
         }
+
         #hudBtn {
             pointer-events: auto;
             font: italic 14px Georgia, serif;
@@ -49,7 +50,11 @@
             cursor: pointer;
             opacity: .75;
         }
-        #hudBtn:hover { opacity: 1; }
+
+        #hudBtn:hover {
+            opacity: 1;
+        }
+
         #hudPanel {
             display: none;
             pointer-events: auto;
@@ -65,14 +70,22 @@
             grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
             gap: 10px 22px;
         }
-        #hud.open #hudPanel { display: grid; }
+
+        #hud.open #hudPanel {
+            display: grid;
+        }
+
         #hudPanel h4 {
             margin: 0 0 3px;
             font: italic bold 14px Georgia, serif;
             letter-spacing: .06em;
             border-bottom: 1.5px solid #111;
         }
-        #hudPanel p { margin: 2px 0; }
+
+        #hudPanel p {
+            margin: 2px 0;
+        }
+
         #hudPanel kbd {
             display: inline-block;
             min-width: 16px;
@@ -137,45 +150,56 @@
     <div id="hud">
         <button id="hudBtn" type="button">Controls <kbd style="font-size:11px">Tab</kbd></button>
         <div id="hudPanel">
-            <section><h4>MOVE</h4>
+            <section>
+                <h4>MOVE</h4>
                 <p><kbd>A</kbd><kbd>D</kbd> walk · <kbd>Shift</kbd> run</p>
                 <p><kbd>Space</kbd> jump · <kbd>X</kbd> super jump</p>
                 <p><kbd>Shift</kbd>+<kbd>Space</kbd> while running: parkour tumble</p>
+                <p>Mountain: just walk up the slope; steep parts switch to hands-and-feet</p>
             </section>
-            <section><h4>CLIMB</h4>
+            <section>
+                <h4>CLIMB</h4>
                 <p><kbd>E</kbd> at the stairs</p>
                 <p><kbd>W</kbd> up / <kbd>S</kbd> down the rope ladder</p>
                 <p><kbd>Space</kbd> let go</p>
             </section>
-            <section><h4>MELEE</h4>
+            <section>
+                <h4>MELEE</h4>
                 <p><kbd>J</kbd> punch combo · <kbd>M</kbd> front kick</p>
                 <p><kbd>K</kbd> knife out / flip grip / put away</p>
                 <p><kbd>L</kbd> throw knife</p>
             </section>
-            <section><h4>KNIFE</h4>
+            <section>
+                <h4>KNIFE</h4>
                 <p><kbd>J</kbd> stab · <kbd>▼</kbd>+<kbd>J</kbd> gut cut</p>
                 <p>Reverse grip + <kbd>J</kbd> foot stab</p>
-                <p>Next to a stabbed enemy: hold <kbd>E</kbd> to pull, <kbd>E</kbd>+<kbd>▼</kbd> gut, <kbd>E</kbd>+<kbd>▲</kbd> split head</p>
+                <p>Next to a stabbed enemy: hold <kbd>E</kbd> to pull, <kbd>E</kbd>+<kbd>▼</kbd> gut,
+                    <kbd>E</kbd>+<kbd>▲</kbd> split head</p>
                 <p><kbd>E</kbd> near a foot-stabbed enemy yanks the knife out</p>
             </section>
-            <section><h4>REVOLVER</h4>
+            <section>
+                <h4>REVOLVER</h4>
                 <p><kbd>G</kbd> draw / spin-holster · <kbd>F</kbd> fire</p>
                 <p><kbd>R</kbd> reload · <kbd>W</kbd><kbd>S</kbd> aim</p>
             </section>
-            <section><h4>SHOTGUN</h4>
+            <section>
+                <h4>SHOTGUN</h4>
                 <p><kbd>Z</kbd> pick up (stomp) / drop</p>
                 <p><kbd>F</kbd> one barrel · <kbd>B</kbd> both</p>
                 <p><kbd>R</kbd> reload · <kbd>W</kbd><kbd>S</kbd> aim</p>
             </section>
-            <section><h4>HORSE</h4>
+            <section>
+                <h4>HORSE</h4>
                 <p><kbd>H</kbd> mount / dismount</p>
                 <p><kbd>A</kbd><kbd>D</kbd> ride · <kbd>Shift</kbd> gallop · <kbd>Space</kbd> jump</p>
             </section>
-            <section><h4>SWIM</h4>
+            <section>
+                <h4>SWIM</h4>
                 <p><kbd>A</kbd><kbd>D</kbd> swim · <kbd>S</kbd> dive</p>
                 <p><kbd>W</kbd>/<kbd>Space</kbd> surface · push into a bank to climb out</p>
             </section>
-            <section><h4>ITEMS &amp; OTHER</h4>
+            <section>
+                <h4>ITEMS &amp; OTHER</h4>
                 <p><kbd>T</kbd> pick up · <kbd>C</kbd> cigarette (again = flick)</p>
                 <p><kbd>O</kbd> lantern · <kbd>V</kbd> man / woman · <kbd>N</kbd> night / day</p>
             </section>
@@ -342,6 +366,7 @@
                 targetY = Math.max(0, (h || P.dh) - H * 0.28);
             }
 
+            targetY = Math.max(targetY, (P.mh || 0) + (P.dh || 0) - H * 0.28);   // follow the player up the mountain
             const k = 1 - Math.exp(-7.5 * dt);
             camY += (targetY - camY) * k;
         }
@@ -489,6 +514,7 @@
         function stretchEnv(u) { return u < .25 ? sm(u / .25) : u < .75 ? 1 : 1 - sm((u - .75) / .25) }
 
         function update(dt) {
+            mtTick(dt);
             if (P.stc > 0 || P.pk > 0 || P.mount || swim.on || (typeof thClimbActive === 'function' && thClimbActive())) ldCancel();
             if (P.stc > 0) { stairTick(dt); return; }
             if (P.pu > 0) { puTick(dt); return; }
@@ -507,9 +533,9 @@
             }
             const dir = (P.fin > 0 || P.sm === 1 || P.ln > 0 || P.lb > 0 || P.fs > 0 || P.yk > 0 || P.gu > 0 || P.sgp > 0 || P.mount || P.ldLock || P.sqSl > 0) ? 0 : (keys.ArrowRight || keys.KeyD ? 1 : 0) - (keys.ArrowLeft || keys.KeyA ? 1 : 0);
             const run = keys.ShiftLeft || keys.ShiftRight;
-            const max = run ? 520 : 190;
+            const max0 = run ? 520 : 190, max = mtLimitSpeed(max0, dir, run);
             const grounded = P.z >= 0;
-            const acc = grounded ? 900 : 300;
+            const acc = (grounded ? 900 : 300) * Math.min(1, max / max0);
 
             // ---- skid turn: reversing at a run ----
             const vs = Math.sign(P.vx);
@@ -1795,6 +1821,7 @@
             if (Q === PL && !Q.cs && !Q.mount) {
                 if (Q.ld > 0 && Q.ldC) return ldPose(Q);
                 if (Q.z < 0) return airPose(Q);
+                const mp = mtPose(Q); if (mp) return mp;       // walking / climbing the mountain
             }
             if (!Q.cs || Q.cs < 1 || Q.cs > STEPS.length) {
                 if (Q === PL && PL.z >= 0 && PL.clast >= 1 && PL.clast <= 4 && PL.cgr > 0) {   // fists stay up while the combo window is open
@@ -2174,7 +2201,7 @@
             const m = Math.min(1, lift / 20), pitch = m * .85 * (Math.atan2(uy, ux * F) - Math.PI / 2);
             ctx.save(); ctx.translate(fx + (ax + ux * 12 - fx) * m, fy + (ay + uy * 12 - fy) * m); ctx.scale(F * ((CUR.kneelK || 0) > .5 ? -1 : 1), 1);
             const pvx = 0; ctx.translate(pvx, 0);
-            ctx.rotate(pitch - F * ((CUR.gutDead || CUR.hsDead || CUR.crawl) ? (CUR.rot || 0) : 0));
+            ctx.rotate(pitch - F * ((CUR.gutDead || CUR.hsDead || CUR.crawl) ? (CUR.rot || 0) : 0) - (CUR === PL ? (PL.mtTilt || 0) * PL.mtW * (1 - m) : 0));
             ctx.translate(-pvx, 0);
             ctx.fillStyle = '#111'; ctx.beginPath(); ctx.moveTo(-9, 0); ctx.quadraticCurveTo(-11, -12, -3, -15);
             ctx.quadraticCurveTo(8, -13, 18, -1); ctx.lineTo(18, 0); ctx.lineTo(-9, 0); ctx.closePath(); ctx.fill();
@@ -8852,7 +8879,7 @@
 
         function lanternPos() {                        // screen position of the lantern body, for the night light
             const p = P.lnPos; if (!p) return null;
-            return [W / 2 + p[0] * CSc(), groundY() + 4 + p[1] * CSc() - (P.dh || 0)];
+            return [W / 2 + p[0] * CSc(), groundY() + 4 + p[1] * CSc() - (P.dh || 0) - (P.mh || 0)];
         }
         function lnReady() {
             return P.z >= 0 && !P.mount && !P.gun && P.gs !== 2 && !P.sg && P.kn === 0 && P.kt < .05 &&
@@ -10524,7 +10551,98 @@
             return -(MT_H * Math.pow(1 - u * u, 1.35) + 90 * Math.exp(-Math.pow((x - (MT_X - 1300)) / 260, 2)) * (1 - u));   // round peak + soft knoll
         }
         function mtGround(wx) { return -mtY((wx - TH_WX) / TH_SC) * TH_SC; }   // height above ground in px at world x (for the player)
-        const MT_STOP_X = () => TH_WX + (MT_X - 120) * TH_SC;   // function, so it follows TH_WX / MT_X if you change them
+        const MT_STOP_X = () => TH_WX + (MT_X - MT_WL + 40) * TH_SC;            // far (left) foot: you can walk over the summit, dead end down here
+        const MT_HORSE_STOP_X = () => TH_WX + (MT_X + MT_WR - 20) * TH_SC;      // the horse can't climb: it stops at the right-hand foot
+
+        // ================= MOUNTAIN CLIMBING =================
+        const MT_STEEP = .75;          // forward slope where the animation switches to hands-and-feet (~37 degrees)
+        const MT_D = .58, MT_U0 = .04; // share of the gait cycle a foot stays planted / phase where both feet are down
+        P.mh = 0; P.msl = 0; P.msF = 0; P.mtW = 0; P.mtPh = MT_U0;
+        function mtSlopeAt(wx) { return (mtGround(wx + 8) - mtGround(wx - 8)) / 16 }
+
+        function mtLimitSpeed(max, dir, run) {                // steeper = slower; no sprinting on a real slope
+            const m = P.msl; if (!m) return max;
+            const mv = dir || Math.sign(P.vx) || 0, rise = mv * m, a = clamp01((Math.abs(m) - .04) / 1.0);
+            max *= rise > 0 ? 1 - .55 * a : 1 - .35 * a;
+            if (rise > MT_STEEP) max = Math.min(max, run ? 120 : 90);   // four-point scramble
+            else if (rise > .35) max = Math.min(max, 190);
+            else if (rise < -.35) max = Math.min(max, 300);
+            return max;
+        }
+
+        function mtTick(dt) {
+            const S = CSc();
+            P.mh = mtGround(P.x); P.msl = mtSlopeAt(P.x); P.msF = P.msl * P.face;
+            const busy = P.mount || swim.on || TH_CL.on || P.dh > 0 || P.stc > 0 || P.pu > 0;
+            const tgt = busy ? 0 : clamp01((Math.abs(P.msl) - .06) / .14);
+            P.mtW += (tgt - P.mtW) * Math.min(1, dt * 7);
+            if (!tgt && P.mtW < .004) P.mtW = 0;
+            if (P.z >= 0 && P.mtW > .01) {   // gait follows distance walked; parks on a "both feet down" frame when you stop
+                const a = clamp01(Math.abs(P.msF)), L = P.msF > 0 ? lerp(46, 28, a) : lerp(46, 34, a);
+                if (Math.abs(P.vx) > 6) P.mtPh += Math.abs(P.vx) * dt / S / (2 * L);
+                else { const tp = Math.round((P.mtPh - MT_U0) * 2) / 2 + MT_U0; P.mtPh += (tp - P.mtPh) * Math.min(1, dt * 7) }
+            }
+        }
+
+        function mtPose(Q) {
+            const w = Q.mtW; if (!(w > .01)) return null;
+            const S = CSc(), F = Q.face, now = performance.now() / 1000;
+            const m = Q.msF, up = m > 0, a = Math.abs(m), st = clamp01(a / 1.0);
+            const cl = up ? sm((m - .08) / .45) : 0;                      // climbing weight
+            const dn = up ? 0 : sm((a - .08) / .45);                      // going-down weight
+            const fp = up ? sm((m - MT_STEEP) / .25) : 0;                 // four-point weight (both hands pulling)
+            const u = ((Q.mtPh % 1) + 1) % 1, mv = clamp01(Math.abs(Q.vx) / 60);
+            const Ls = up ? lerp(46, 28, st) : lerp(46, 34, st);          // step length: shorter on steep ground
+            const xf = up ? 20 + 12 * st : 26, xb = xf - 2 * Ls * MT_D;   // foot placed ahead of the hips, pushed off behind them
+            const ground = x => -(mtGround(Q.x + F * x * S) - Q.mh) / S;  // surface height at a forward offset from the hips
+
+            // hips: low and leaning in; dip as a foot lands, rise after each push
+            const crouch = cl * (10 + 38 * st) + fp * 6 + dn * (8 + 22 * st);
+            const bobA = (3 + 5 * st) * (1 - .4 * fp);
+            const bob = bobA * (.5 - .5 * Math.cos(4 * Math.PI * (u - MT_U0))) * mv;
+            const hy = -(169 - crouch) - bob + Math.sin(now * 1.7) * 1.1;
+            const lean = cl * (.10 + .38 * st + .12 * fp) - dn * (.04 + .10 * st) + cl * .03 * Math.sin(4 * Math.PI * (u - MT_U0)) * mv;
+
+            // feet: plant -> push (heel up) -> lift -> place higher up the slope
+            const arc = 14 + 16 * st;
+            const leg = i => {
+                const ui = (((u + i * .5) % 1) + 1) % 1; let x, lift = 0, y;
+                if (ui < MT_D) {
+                    const s = ui / MT_D; x = xf - (xf - xb) * s;
+                    const push = sm((s - .72) / .28) * (4 + 4 * st);
+                    y = ground(x) - push; lift = push * 2;
+                } else {
+                    const s = (ui - MT_D) / (1 - MT_D), e = sm(s); x = xb + (xf - xb) * e;
+                    const h = arc * Math.sin(Math.PI * s); y = ground(x) - h - 4 * (1 - s); lift = Math.min(20, 8 + h * 1.4);
+                }
+                const lim = 150, dyMax = Math.sqrt(Math.max(0, lim * lim - x * x)), dy = y - 12 - hy;
+                if (dy > dyMax) { y = hy + dyMax + 12; lift = Math.max(lift, 14) } else if (dy < -dyMax) { y = hy - dyMax + 12; lift = Math.max(lift, 14) }
+                return [x, y + lift, lift];
+            };
+
+            // arms: out of phase with the legs; hands reach forward/up, grip the slope, pull the body past
+            const sh = [87 * Math.sin(F * lean), hy - 87 * Math.cos(F * lean)];
+            const hw = up ? sm((m - .40) / .30) : 0, xg = 78 + 56 * st + 16 * fp, travel = 2 * Ls * .45, DH = .45;
+            const arm = i => {
+                const ui = (((u + i * .5) % 1) + 1) % 1, uh = (ui + .42) % 1;
+                const free = [.08 + (.38 + .25 * st) * Math.cos(2 * Math.PI * uh) + dn * .35, .3 + .3 * (1 + Math.cos(2 * Math.PI * uh)) / 2 * (1 - mv * .3)];
+                let ang = free[0], flex = free[1];
+                if (hw > .01) {
+                    let x, y;
+                    if (uh < DH) { x = xg - travel * (uh / DH); y = ground(x) - 3 }
+                    else { const s = (uh - DH) / (1 - DH); x = lerp(xg - travel, xg + 8, sm(s)); y = ground(x) - 3 - (16 + 10 * st) * Math.sin(Math.PI * s) }
+                    const [ia, ifl] = ikTo(sh, F * x, y, F);
+                    ang = lerp(ang, ia, hw); flex = lerp(flex, ifl, hw);
+                }
+                return [ang, flex];
+            };
+            const A0 = arm(0), A1 = arm(1);
+            Q.mtTilt = Math.atan(m);
+            return {
+                w, a0: A0[0], f0: A0[1], a1: A1[0], f1: A1[1], lean, hipX: 0, hipY: 0, arch: .03 + .05 * st, hx: 2 + 6 * cl * st, hy: -5 * cl * st,
+                hipAbs: hy, l0: leg(0), l1: leg(1), st: STEPS[0], sw: 0, ik: 0, kneeFull: true, noArms: armsBusy()
+            };
+        }
 
         function drawMountain(gy) {
             const S = TH_SC, ox = W / 2 + TH_WX - P.x, gl = gy + 1;
@@ -15007,11 +15125,12 @@
             if (hitstop > 0) { hitstop -= dt0; dt = 0 }
 
             update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); sgTick(dt); sgGroundTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); waterFXTick(dt); brainTick(dt); hzTick(dt); gibTick(dt); boneTick(dt); weatherTick(dt); horseTick(dt); birdTick(dt); fowlTick(dt); frogTick(dt); duckTick(dt); crocTick(dt); bgTick(dt); dayTick(dt0); fireflyTick(dt0); stExtrasTick(dt0);
-            const stopX = MT_STOP_X();
-            const gap = HRS.x - stopX;                                  // distance left before the dead end
-            if (gap < 350 && HRS.vx < 0) HRS.vx *= Math.max(0, 1 - dt * 6 * (1 - gap / 350));   // eases to stop
-            if (P.x < stopX) { P.x = stopX; if (P.vx < 0) P.vx = 0; }
-            if (HRS.x < stopX) { HRS.x = stopX; if (HRS.vx < 0) HRS.vx = 0; }
+            const hStop = MT_HORSE_STOP_X();
+            const hGap = HRS.x - hStop;
+            if (hGap < 350 && HRS.vx < 0) HRS.vx *= Math.max(0, 1 - dt * 6 * (1 - hGap / 350));
+            if (HRS.x < hStop) { HRS.x = hStop; if (HRS.vx < 0) HRS.vx = 0; }
+            const pStop = P.mount ? hStop : MT_STOP_X();
+            if (P.x < pStop) { P.x = pStop; if (P.vx < 0) P.vx = 0; }
             deckTick();
             updateCamera(dt);
             shake = Math.max(0, shake - dt0 * 60);
@@ -15057,7 +15176,7 @@
             drawBGoreAir(gy);
             drawHorse(gy);
             beginSwimDraw(gy);
-            drawChar(W / 2, gy - P.dh, P);
+            drawChar(W / 2, gy - P.dh - P.mh, P);
             endSwimDraw();
             drawSqTrail(gy);
             drawBreath(gy);
