@@ -1041,7 +1041,7 @@
         }
         function respawnFresh(n) {
             const side = Math.random() < .5 ? -1 : 1, x = P.x + side * (W / 2 + 150 + Math.random() * 250);
-            Object.assign(n, { decap: 0, tfall: 0, kneelT: 0, pool: null, pulse: 0, stomachStabbed: false, stbStoP: null, stoDrag: 0, stabTh0: undefined, legHurt: 0, legGone: 0, crawl: 0, crawlDead: 0, crawlT: 0, crT: 0, cwK: 0, crDeadT: 0, lmK: 0, lgT: 0, lveins: null, stumpL: null, legW: null, lhDrip: 0, trailD: 0, hpK: 0, hCrack: 0, hCrackT: 0, headHits: 0, hsPart: 0, hcDrip: 0, dbl: 0, dbK: 0, hsDead: 0, hsT: 0, veins: null, int: null, gut: 0, headThud: 0, gutDead: false, gutK: 0, gutPop: 0, gutCut: 0, fkSnk: 0, fk: null, fkT: 0, fkK: 0, fkPend: false, stab: 0, kneelK: 0, fst: 0, fallT: 0, fallK: 0, thud: 0, x, home: x, goal: x, vx: 0, z: 0, vz: 0, hp: n.maxhp, hurt: 0, down: 0, rot: 0, dying: 0, dead: 0, bar: 0, tumble: 0, wait: 1.5, face: -side, fid: 0, fidK: 0, headCut: 0, headK: 0, cord: null, brainOut: 0 });
+            Object.assign(n, { sk2: null, decap: 0, tfall: 0, kneelT: 0, pool: null, pulse: 0, stomachStabbed: false, stbStoP: null, stoDrag: 0, stabTh0: undefined, legHurt: 0, legGone: 0, crawl: 0, crawlDead: 0, crawlT: 0, crT: 0, cwK: 0, crDeadT: 0, lmK: 0, lgT: 0, lveins: null, stumpL: null, legW: null, lhDrip: 0, trailD: 0, hpK: 0, hCrack: 0, hCrackT: 0, headHits: 0, hsPart: 0, hcDrip: 0, dbl: 0, dbK: 0, hsDead: 0, hsT: 0, veins: null, int: null, gut: 0, headThud: 0, gutDead: false, gutK: 0, gutPop: 0, gutCut: 0, fkSnk: 0, fk: null, fkT: 0, fkK: 0, fkPend: false, stab: 0, kneelK: 0, fst: 0, fallT: 0, fallK: 0, thud: 0, x, home: x, goal: x, vx: 0, z: 0, vz: 0, hp: n.maxhp, hurt: 0, down: 0, rot: 0, dying: 0, dead: 0, bar: 0, tumble: 0, wait: 1.5, face: -side, fid: 0, fidK: 0, headCut: 0, headK: 0, cord: null, brainOut: 0 });
         }
         function killBurst(n) {
             const S = CSc();
@@ -1074,7 +1074,7 @@
             }
             if (!c.pool) c.pool = bgStain(n.x + (plain ? dir : (n.face || 1)) * 60 * S, 30 * S, true);
             CORPSES.push(c);
-            while (CORPSES.length > 14) CORPSES.shift();
+            while (CORPSES.length > 14) releaseBodyKnife(CORPSES.shift(), false);
         }
         function respawn(n) { leaveBody(n, false); respawnFresh(n); }   // used by the special deaths (gut, headshot, crawl, decap...)
 
@@ -1090,11 +1090,23 @@
                         bgDrop(c.x + ((c.corpse ? c.kdir : c.face) || 1) * R() * 140 * S, -6 * S, (R() - .5) * 20, 10, .9 + R() * 1.1);
                     }
                 }
-                if (c.rotT >= ROT_LIFE) CORPSES.splice(i, 1);
+                if (c.rotT >= ROT_LIFE) { releaseBodyKnife(c, false); CORPSES.splice(i, 1); }
             }
         }
         function corpsesIn() { if (CORPSES.length) ENEMIES.unshift(...CORPSES); }       // so the existing gore drawers (guts, veins...) draw them too
         function corpsesOut() { if (CORPSES.length) ENEMIES.splice(0, CORPSES.length); }
+
+        function releaseBodyKnife(c, toHand) {
+            if (!c.sk2) return false;
+            const hw = headWorld(c), k = c.sk2; c.sk2 = null;
+            if (toHand) {
+                hasKnife = true;
+                burst(hw[0], hw[1], 14, 260, -k.F); spray(hw[0], hw[1], 20, 360, -k.F);
+                impacts.push({ x: hw[0], y: hw[1], t: 0, life: .2, s: 60, seed: Math.random() * 50 });
+                banner.t = .8; banner.text = 'KNIFE RECOVERED';
+            } else dropKnife(hw[0], Math.min(-6, hw[1]), k.F, 0);
+            return true;
+        }
 
         function drawBody(n, sx, gy) {
             const S = CSc(), p = clamp01(n.rotT / ROT_LIFE), sink = 36 * S * sm((p - .84) / .16);
@@ -3462,6 +3474,18 @@
                 if (P.hCrack > 0) drawHeadCrack(hd, F, P, now);
                 if (P.corpse) { ctx.strokeStyle = P.dark ? PAPER : '#111'; ctx.lineWidth = 2.2; const ex_ = hd[0] + F * 11, ey_ = hd[1] - 3; ctx.beginPath(); ctx.moveTo(ex_ - 4, ey_ - 4); ctx.lineTo(ex_ + 4, ey_ + 4); ctx.moveTo(ex_ + 4, ey_ - 4); ctx.lineTo(ex_ - 4, ey_ + 4); ctx.stroke(); }
             }
+            if (P.sk2 && KN.complete && KN.naturalWidth) {       // knife stuck in a dead body: drawn inside the body's own rotation
+                const k_ = P.sk2, ux_ = k_.F * Math.cos(k_.th), uy_ = Math.sin(k_.th), nw_ = KN.naturalWidth, nh_ = KN.naturalHeight;
+                const anc = k_.body ? rot(0, -38) : hd, dep = k_.body ? STAB_DEPTH_BODY : STAB_DEPTH;
+                ctx.save();
+                ctx.beginPath(); ctx.rect(-3000, -3000, 6000, 6000);                       // everything except the head / belly,
+                if (k_.body) { ctx.moveTo(anc[0] + 34, anc[1]); ctx.ellipse(anc[0], anc[1], 34, 28, 0, 0, 7); }
+                else { ctx.moveTo(hd[0] + 24, hd[1]); ctx.arc(hd[0], hd[1], 24, 0, 7); }   // so the blade stays buried inside
+                ctx.clip('evenodd');
+                ctx.translate(anc[0] - ux_ * dep, anc[1] - uy_ * dep); ctx.scale(k_.F, 1);
+                ctx.rotate(k_.th + KNIFE_SPRITE_TILT); const ksc = KNIFE_LEN / nw_; ctx.scale(ksc, ksc);
+                ctx.drawImage(KN, -nw_ * KCOMX, -nh_ * KCOMY); ctx.restore();
+            }
             if (P === PL && P.sm) drawSmokeProps(F, hd, S, now);
             if (P === PL) drawLanternProps(F, S, now);
             if (cb && cb.sw > .02) { if (cb.st.line !== undefined) punchLines(P.fistInfo[cb.st.line], cb.sw); else swoosh(sh[0], sh[1], F, cb.st, cb.sw) }
@@ -5067,6 +5091,10 @@
             for (let i = knives.length - 1; i >= 0; i--) {
                 const k = knives[i]; k.age += dt;
                 if (k.st) {
+                    if (k.st.dying > 0 && !k.st.decap) {        // he is dying: the knife becomes part of the body
+                        k.st.sk2 = { th: k.th, F: k.F, body: !!k.stomachStab };
+                        knives.splice(i, 1); continue;
+                    }
                     // if (k.st.dead > 0) { knives.splice(i, 1); continue }
                     if (k.st.dead > 0) { dropKnife(k.st.x, -60 * S, k.F, 0); knives.splice(i, 1); continue }
                     const e = k.st;
@@ -15324,6 +15352,11 @@
             if (P.mount === 2) { pressMountedPickup(); return; }
             if (puBlocked()) return;
             const S = CSc();
+            if (!hasKnife) {                                   // knife stuck in a corpse: pull it out
+                let bc = null, bdd = 1e9;
+                for (const c of CORPSES) if (c.sk2) { const d = Math.abs(headWorld(c)[0] - P.x); if (d < PU_R * S && d < bdd) { bdd = d; bc = c } }
+                if (bc) { releaseBodyKnife(bc, true); return }
+            }
             let it = puNearest(), itd = it ? Math.abs(it.x - P.x) : 1e9;
             let kg = null, kd = 1e9;
             if (!hasKnife) for (const g of groundKnives) {
