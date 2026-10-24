@@ -193,6 +193,7 @@
                 <h4>HORSE</h4>
                 <p><kbd>H</kbd> mount / dismount</p>
                 <p><kbd>A</kbd><kbd>D</kbd> ride · <kbd>Shift</kbd> gallop · <kbd>Space</kbd> jump</p>
+                <p><kbd>K</kbd> knife out · <kbd>J</kbd> slash enemies while riding</p>
             </section>
             <section>
                 <h4>SWIM</h4>
@@ -341,6 +342,7 @@
         const groundKnives = [];
         const TOSS_T = .95;
         function pressK() {
+            if (P.mSl > 0) return;
             if (P.mount && P.mount !== 2) return;   // knife can be drawn / put away while riding
             if (P.thw > 0 || P.fin > 0 || P.pk > 0) return;
             if (P.gun || P.gs === 2 || P.sg) { banner.t = .6; banner.text = 'HOLSTER GUN FIRST (G)'; return }
@@ -605,6 +607,7 @@
             stabTick(dt);
             ldTick(dt);
             sqSlashTick(dt);
+            mSlTick(dt);
             const target = Math.min(1, sp / 200) * (run && sp > 220 ? 1.25 : 1);
             P.amp += (target - P.amp) * Math.min(1, dt * 10);
             const tl = Math.max(-1, Math.min(1, P.vx / 420)) * 0.4;
@@ -861,7 +864,7 @@
         const combo = { n: 0, dmg: 0, t: 0, pop: 0 }, banner = { t: 0, text: '' };
         let hitstop = 0, shake = 0;
         function pressAtk() {
-            if (P.mount) { banner.t = .6; banner.text = 'DISMOUNT FIRST (H)'; return }
+            if (P.mount) { if (P.mount === 2 && pressMSlash()) return; banner.t = .6; banner.text = P.mount === 2 ? 'DRAW KNIFE FIRST (K)' : 'DISMOUNT FIRST (H)'; return }
             if (P.sg) { banner.t = .6; banner.text = 'DROP SHOTGUN FIRST (Z)'; return }
             if (P.kn === 1 && P.kt > .5 && (keys.ArrowDown || keys.KeyS) && !(P.gu > 0) && P.stbk === 0 && P.fs === 0 && !(P.yk > 0) && P.pk === 0 && P.z >= 0 && !P.fin && !P.thw && !P.tt && !P.cs && pressGut()) return;
             if (P.kn === 2 && P.kt > .5 && P.fs === 0 && P.stbk === 0 && P.z >= 0 && !P.fin && !P.thw && !P.tt && !P.cs && pressFootStab()) return;
@@ -1813,6 +1816,7 @@
             if (Q === PL && swim.on) { const sp = swimPose(); if (sp) return sp }
             if (Q === PL && TH_CL.on && TH_CL.pose) return TH_CL.pose;
             if (Q === PL && Q.pu > 0) return puPose(Q);
+            if (Q === PL && Q.mSl > 0 && Q.mount === 2) return mSlPose(Q);
             if (Q === PL && Q.stc > 0) return Q.stcM >= 2 ? Q.stcPose : null;
             if (Q === PL && Q.stbk > 0) return stabPose(Q);
             if (Q === PL && Q.sqSl > 0 && Q.sqRows) return sqPose(Q);
@@ -2354,6 +2358,7 @@
                         if (P.fs > 0) rr += wrapA(1.3 - rr) * fsW();
                         if (P.gu > 0) rr += wrapA(Math.PI / 2 + KNIFE_SPRITE_TILT - rr) * guW();   // blade pointing straight down
                         if (P.sqSl > 0 && CUR === PL) rr += wrapA(P.sqBl - rr) * P.sqW;   // blade angle comes from the slash keyframes
+                        if (P.mSl > 0 && CUR === PL) rr += wrapA(P.mSlBl - rr) * P.mSlW;
                         ctx.rotate(rr);
                     } ctx.scale(sc, sc);
                     ctx.drawImage(KN, -nw * KGX, -nh * KGY); ctx.restore();
@@ -3025,6 +3030,11 @@
                         }
                     }
                 }
+                if (P === PL && P.mSl > 0 && i === 0 && P.mSlA) {         // sword arm; arm 1 stays on the reins (mount IK)
+                    const w = P.mSlW;
+                    ang += wrapA(P.mSlA[0] - ang) * w;                    // shortest-path blend, so it returns cleanly to the riding pose
+                    flex = flex * (1 - w) + P.mSlA[1] * w;
+                }
                 if (isGrabbed) {
                     ang = .12; flex = .15;     // arms just hang while he is held
                 } else if (hk > 0) {
@@ -3173,6 +3183,7 @@
                 (P.fistInfo || (P.fistInfo = []))[i] = { x: lastArm[1][0], y: lastArm[1][1], a: Math.atan2(lastArm[1][1] - lastArm[0][1], (lastArm[1][0] - lastArm[0][0]) * F), F };
             }
             if (P === PL && P.sqSl > 0) sqTrailPush(F, S);
+            if (P === PL && P.mSl > 0) mSlTrailPush(F, S);
             if (P === PL && P.gunK < .05 && P.sgK < .05 && (mk > .9 || (mpa && MP.dis && MP.t < 1.15) || (mpa && !MP.dis && MP.t > 2.9))) drawReins(F);
             if (P === PL && P.puHeld) drawHeldItem(F, S, now);
             const grabHdOffX = isGrabbed ? F * 4 - F * hk * 10 + Math.sin(now * 23) * 1.5 : 0;
@@ -6871,6 +6882,7 @@
 
         function pressHorse() {
             if (P.mount === 2) {
+                if (P.mSl > 0) return;
                 if (HRS.z < -4 || !HJ_GROUND[HRS.jp]) return;
                 if (Math.abs(HRS.vx) > 300) { banner.t = .8; banner.text = 'SLOW DOWN TO DISMOUNT'; return }   // fast = no instant dismount
                 P.mount = 3; P.mountT = 0; P.mk = 0; mpStart(true); return;
@@ -8574,7 +8586,7 @@
 
 
         function drawReins(F) {
-            const A = P.armPts && P.armPts[(MPA() && MP.dis) ? 1 : 0]; if (!A || !HRS.muz) return;
+            const A = P.armPts && P.armPts[((MPA() && MP.dis) || P.mSl > 0) ? 1 : 0]; if (!A || !HRS.muz) return;
             const w = A[1];
             const mx = HRS.muzS * HORSE_W, my = HRS.muz[1] * HORSE_H + HRS.z / CSc();
             ctx.save(); ctx.strokeStyle = '#111'; ctx.lineWidth = 1.8; ctx.lineCap = 'round';
@@ -9752,6 +9764,99 @@
                 if (r && r.dx * P.face > -20 * CSc()) thSqSlice(P.face, r.c);
             }
             if (P.sqSl >= SQ_END) { P.sqSl = 0; P.sqHit = 0; P.sqRows = null; }
+        }
+
+        // ================= MOUNTED SLASH =================
+        // Phases: PREPARE 0-.16 | WIND-UP .16-.30 | STRIKE .30-.40 | CONTACT .40-.47 | FOLLOW-THROUGH .47-.62 | RECOVERY .62-.85
+        const MS_END = .85, MS_HIT0 = .36, MS_HIT1 = .50, MS_REC0 = .62;
+        // [a0 shoulder, f0 elbow, blade angle, torso lean, hipX, headX, headY]
+        // angles are unwrapped on purpose: the arm goes back, UP and OVER, then forward-down
+        const MS_K = [
+            { t: 0,   v: [1.3,  .5,  2.2,  0,    0,  0,  0] },
+            { t: .16, v: [-.8,  .45, 2.7,  .13,  2,  3,  1], e: 'io'  },   // 1 prepare: lean forward, arm back, blade diagonal-back
+            { t: .30, v: [-2.8, .5,  4.1, -.14, -4, -2,  0], e: 'io'  },   // 2 wind-up: torso rotates back, sword above/behind shoulder
+            { t: .40, v: [-4.8, .12, 6.2,  .30,  8,  7,  3], e: 'in'  },   // 3 strike: fast diagonal arc, arm almost straight
+            { t: .47, v: [-5.1, .05, 6.9,  .33,  9,  8,  3], e: 'lin' },   // 4 contact (very short)
+            { t: .62, v: [-5.7, .6,  7.6,  .20,  6,  5,  2], e: 'out' },   // 5 follow-through: blade past NPC, elbow bends
+            { t: .85, v: [-4.9, .7,  7.2,  0,    0,  0,  0], e: 'io'  }    // 6 recovery: low/ready, then fades into riding
+        ];
+        const msEase = (k, u) => k === 'in' ? u * u : k === 'out' ? 1 - (1 - u) * (1 - u) : k === 'lin' ? u : sm(u);
+        function mSlRow(t) {
+            const K = MS_K; if (t <= 0) return K[0].v;
+            for (let i = 1; i < K.length; i++) if (t <= K[i].t) {
+                const a = K[i - 1], b = K[i], e = msEase(b.e, (t - a.t) / (b.t - a.t));
+                return a.v.map((x, j) => x + (b.v[j] - x) * e);
+            }
+            return K[K.length - 1].v;
+        }
+        P.mSl = 0; P.mSlQ = 0; P.mSlId = 0; P.mSlW = 0; P.mSlBl = 0; P.mSlA = null;
+        const mTrail = [];
+
+        function pressMSlash() {
+            if (P.mount !== 2) return false;
+            if (P.mSl > 0) { if (P.mSl > MS_REC0) P.mSlQ = .25; return true }      // buffer a follow-up swing
+            if (P.kn === 0 || P.kt < .5 || P.gun || P.gs === 2 || P.sg || P.sm > 0 || P.tt > 0 || P.thw > 0) return false;
+            P.mSl = .0001; P.mSlId++; P.mSlQ = 0; P.idle = 0; P.fid = 0; mTrail.length = 0;
+            return true;
+        }
+
+        function mSlPose(Q) {
+            const t = Q.mSl, r = mSlRow(t);
+            const w = sm(t / .1) * (1 - sm((t - MS_REC0) / (MS_END - MS_REC0)));   // blends back into the riding pose
+            Q.mSlW = w; Q.mSlBl = r[2]; Q.mSlA = [r[0], r[1]];
+            return {
+                w, a0: 0, f0: 0, a1: 0, f1: 0, lean: r[3], hipX: r[4], hipY: 0, arch: .03 + .05 * clamp01(Math.abs(r[3])),
+                hx: r[5], hy: r[6], l0: [26, 0, 0], l1: [-28, 0, 0], st: STEPS[0], sw: 0, ik: 0, noArms: true   // arms handled in drawChar
+            };
+        }
+
+        function mSlHit(e, F, S) {
+            const dmg = 26 + Math.round(Math.min(14, Math.abs(HRS.vx) / 60));      // faster ride = harder hit
+            e.hp -= dmg; e.bar = 2.5; e.kdir = F; e.face = -F; e.hurt = Math.max(e.hurt, .6);
+            e.vx = F * (240 + Math.abs(HRS.vx) * .35); e.wait = 1; e.fid = 0;      // reels backward
+            if (Math.abs(HRS.vx) > 500) { if (e.z >= 0) e.z = -1; e.vz = -260; e.tumble = 1 }
+            combo.n++; combo.dmg += dmg; combo.t = 1.8; combo.pop = 1.3;
+            const cy = e.hdp ? e.hdp[1] * S + 45 * S : -190 * S, cx = e.x - F * 8 * S;
+            burst(cx, cy, 16, 320, F); spray(cx, cy, 26, 440, F); spray(cx, cy, 10, 260, -F);
+            impacts.push({ x: cx, y: cy, t: 0, life: .2, s: 80, seed: Math.random() * 50 });
+            hitstop = Math.max(hitstop, .06); shake = Math.max(shake, 6);          // the short "contact" freeze, horse is NOT touched
+            if (e.hp <= 0) { e.hp = 0; e.dying = .5; if (P.grabbed === e) P.grabbed = null; banner.t = 1.1; banner.text = 'RIDE-BY KILL!' }
+            else { banner.t = .8; banner.text = 'MOUNTED SLASH!' }
+        }
+
+        function mSlTick(dt) {
+            for (let i = mTrail.length - 1; i >= 0; i--) { mTrail[i].t += dt; if (mTrail[i].t > .18) mTrail.splice(i, 1) }
+            if (!(P.mSl > 0)) return;
+            if (P.mount !== 2) { P.mSl = 0; P.mSlA = null; P.mSlW = 0; return }
+            P.mSl += dt; P.idle = 0; P.fid = 0; P.mSlQ = Math.max(0, P.mSlQ - dt);
+            if (P.mSl >= MS_HIT0 && P.mSl <= MS_HIT1) {
+                const S = CSc(), F = P.face, reach = (200 + Math.abs(HRS.vx) * .1) * S;   // reach grows with speed
+                for (const e of ENEMIES) {
+                    if (e.dead > 0 || e.dying > 0 || e.mSlId === P.mSlId) continue;
+                    const dx = (e.x - P.x) * F;
+                    if (dx < -40 * S || dx > reach) continue;
+                    e.mSlId = P.mSlId; mSlHit(e, F, S);
+                }
+            }
+            if (P.mSl >= MS_END) { P.mSl = 0; P.mSlA = null; P.mSlW = 0; if (P.mSlQ > 0) { P.mSlQ = 0; pressMSlash() } }
+        }
+
+        function mSlTrailPush(F, S) {                    // called from drawChar; stored relative to the rider so the arc stays readable at gallop
+            const A = P.armPts && P.armPts[0];
+            if (!A || !(P.mSl > .24 && P.mSl < .62)) return;
+            const wr = A[1], L = KNIFE_LEN * .95, b = P.mSlBl;
+            mTrail.push({ x: (wr[0] + F * Math.cos(b) * L) * S, y: (wr[1] + Math.sin(b) * L) * S, t: 0 });
+            if (mTrail.length > 40) mTrail.shift();
+        }
+        function drawMSlTrail(gy) {
+            if (mTrail.length < 2) return;
+            ctx.save(); ctx.strokeStyle = '#111'; ctx.lineCap = 'round';
+            for (let i = 1; i < mTrail.length; i++) {
+                const a = mTrail[i - 1], b = mTrail[i], k = 1 - b.t / .18; if (k <= 0) continue;
+                ctx.globalAlpha = .85 * k; ctx.lineWidth = 1.5 + 7 * k * (i / mTrail.length);
+                ctx.beginPath(); ctx.moveTo(W / 2 + a.x, gy + 4 + a.y); ctx.lineTo(W / 2 + b.x, gy + 4 + b.y); ctx.stroke();
+            }
+            ctx.restore();
         }
 
         function thSqSlice(F, c) {
@@ -15179,6 +15284,7 @@
             drawChar(W / 2, gy - P.dh - P.mh, P);
             endSwimDraw();
             drawSqTrail(gy);
+            drawMSlTrail(gy);
             drawBreath(gy);
             drawStairHint(gy);
             drawLadderHint(gy);
