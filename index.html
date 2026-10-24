@@ -6190,7 +6190,7 @@
                     if (h && h.d < bd) { bd = h.d; best = { e, h } }
                 }
                 if (best) { if (!legShot(b, best.e, best.h, S)) gunHit(b, best.e, best.h, S); bullets.splice(i, 1); continue }
-                if (birdsHit(px, py, b.x, b.y, b.F, 20) || fowlHit(px, py, b.x, b.y, b.F, 20) || bflyHit(px, py, b.x, b.y, b.F, 20) || clothHit(px, py, b.x, b.y, b.F) || thSqHit(px, py, b.x, b.y, b.F, 20)) { bullets.splice(i, 1); continue }
+                if (headGoreHit(px, py, b.x, b.y, b.F, false) || birdsHit(px, py, b.x, b.y, b.F, 20) || fowlHit(px, py, b.x, b.y, b.F, 20) || bflyHit(px, py, b.x, b.y, b.F, 20) || clothHit(px, py, b.x, b.y, b.F) || thSqHit(px, py, b.x, b.y, b.F, 20)) { bullets.splice(i, 1); continue }
                 if (frogHit(b, px, py, false)) { bullets.splice(i, 1); continue }
                 if (duckHit(b, px, py, false)) { bullets.splice(i, 1); continue }
                 if (crocHit(b, px, py)) { bullets.splice(i, 1); continue }
@@ -6526,7 +6526,7 @@
                     if (h && h.d < bd) { bd = h.d; best = { e, h } }
                 }
                 if (best) { pelletHit(p, best.e, best.h); pellets.splice(i, 1); continue }
-                if (birdsHit(px, py, p.x, p.y, p.F, 22) || fowlHit(px, py, p.x, p.y, p.F, 22) || bflyHit(px, py, p.x, p.y, p.F, 22) || clothHit(px, py, p.x, p.y, p.F, p.id) || thSqHit(px, py, p.x, p.y, p.F, 22)) { pellets.splice(i, 1); continue }
+                if (headGoreHit(px, py, p.x, p.y, p.F, true, p.id) || birdsHit(px, py, p.x, p.y, p.F, 22) || fowlHit(px, py, p.x, p.y, p.F, 22) || bflyHit(px, py, p.x, p.y, p.F, 22) || clothHit(px, py, p.x, p.y, p.F, p.id) || thSqHit(px, py, p.x, p.y, p.F, 22)) { pellets.splice(i, 1); continue }
                 if (frogHit(p, px, py, true)) { pellets.splice(i, 1); continue }
                 if (duckHit(p, px, py, true)) { pellets.splice(i, 1); continue }
                 if (crocHit(p, px, py)) { pellets.splice(i, 1); continue }
@@ -7081,6 +7081,65 @@
                     }
                 } else { g.t += dt; if (g.t > 16) gibs.splice(i, 1) }
             }
+        }
+
+        // ===== SHOOTING HEADS THAT ARE ALREADY ON THE GROUND =====
+        function headSplat(x, y, F, sg, first) {
+            const S = CSc(), R = Math.random;
+            const n = sg ? (first ? 1 : .35) : 1;                       // later pellets of the same blast add only a little
+            spray(x, y, Math.round(34 * n), 560, F); spray(x, y, Math.round(16 * n), 380, -F); spray(x, y, Math.round(10 * n), 240, 0);
+            burst(x, y, Math.round(18 * n), 340, F);
+            for (let i = 0; i < Math.round(22 * n); i++)
+                bgDrop(x + (R() - .5) * 10, y, F * (40 + R() * 420) + (R() - .5) * 220, -(80 + R() * 420), 1 + R() * 2.2);
+            if (first || !sg) {
+                for (let i = 0; i < 6 && brainBits.length < 140; i++) brainBits.push({
+                    x: x + (R() - .5) * 16 * S, y: Math.min(-6, y) - R() * 6 * S,
+                    vx: F * (60 + R() * 380) + (R() - .5) * 240, vy: -(120 + R() * 340),
+                    r: (3 + R() * 5) * S, rot: R() * 6, vr: (R() - .5) * 16,
+                    k: R() < .45 ? 0 : R() < .6 ? 1 : 2, landed: false, bounced: 0, t: 0
+                });
+                for (let i = 0; i < 3; i++) boneSplinter(x, y, F, 300);
+                bgStain(x + F * 10 * S, (10 + R() * 8) * S, true);
+                impacts.push({ x, y, t: 0, life: .22, s: sg ? 110 : 80, seed: R() * 50 });
+                hitstop = Math.max(hitstop, sg ? .06 : .035); shake = Math.max(shake, sg ? 6 : 3.5);
+            }
+        }
+
+        // segment (previous -> current projectile position) vs. every head still lying around
+        function headGoreHit(x0, y0, x1, y1, F, sg, id) {
+            const S = CSc(), dx = x1 - x0, dy = y1 - y0, l2 = dx * dx + dy * dy || 1;
+            const test = (cx, cy, r) => {
+                let t = ((cx - x0) * dx + (cy - y0) * dy) / l2; t = Math.max(0, Math.min(1, t));
+                const px = x0 + dx * t, py = y0 + dy * t;
+                return ((px - cx) ** 2 + (py - cy) ** 2 < r * r) ? [px, py] : null;
+            };
+            // 1) severed heads (beheading) lying on / flying over the ground
+            for (const g of gibs) {
+                if (g.k !== 3) continue;
+                const h = test(g.x, g.y, g.s * 1.1 + 6);
+                if (!h) continue;
+                const first = !(sg && g.lastBlast === id); if (sg) g.lastBlast = id;
+                headSplat(h[0], h[1], F, sg, first);
+                if (first) {                                           // knock the head: it hops and rolls away
+                    g.landed = false; g.bn = 0; g.t = 0;
+                    g.vx = F * (sg ? 420 : 220); g.vy = -(sg ? 380 : 220); g.vr = F * (6 + Math.random() * 8);
+                }
+                if (first) { banner.t = .7; banner.text = 'HEAD SPLATTER!'; combo.n++; combo.t = 1.8; combo.pop = 1.3 }
+                return true;
+            }
+            // 2) intact heads of dead bodies
+            for (const c of CORPSES) {
+                if (c.hsDead || c.decap || c.headCut || !c.hdp) continue;
+                const hw = headWorld(c);
+                const drop = c.corpse ? 14 * S * Math.min(1, Math.abs(c.rot || 0) / (Math.PI / 2)) : 0;
+                const h = test(hw[0], hw[1] + drop, 24 * S + 6);
+                if (!h) continue;
+                const first = !(sg && c.lastBlast === id); if (sg) c.lastBlast = id;
+                headSplat(h[0], h[1], F, sg, first);
+                if (first) { banner.t = .7; banner.text = 'HEAD SPLATTER!'; combo.n++; combo.t = 1.8; combo.pop = 1.3 }
+                return true;
+            }
+            return false;
         }
 
         function drawGibs(gy) {
