@@ -1047,12 +1047,12 @@
         [
             [-11200, { hat: true }],
             [-10600, { female: true, dark: false, range: 250 }],
-            [-9400,  { dark: true }],
-            [-9150,  { female: true, hat: true, range: 200 }],   // two people close together = small group
-            [-7900,  { hat: true, range: 500 }],
-            [-6800,  { female: true }],
-            [-5600,  { dark: true, range: 300 }],
-            [-5000,  { hat: true, range: 250 }]                  // near the liquor shop
+            [-9400, { dark: true }],
+            [-9150, { female: true, hat: true, range: 200 }],   // two people close together = small group
+            [-7900, { hat: true, range: 500 }],
+            [-6800, { female: true }],
+            [-5600, { dark: true, range: 300 }],
+            [-5000, { hat: true, range: 250 }]                  // near the liquor shop
         ].forEach(([x, o]) => addPerson(x, o));
 
         function burst(x, y, n, pow, dirv) {
@@ -1063,7 +1063,7 @@
         }
         function respawnFresh(n) {
             const side = Math.random() < .5 ? -1 : 1,
-                  x = n.spawnX !== undefined ? n.spawnX : P.x + side * (W / 2 + 150 + Math.random() * 250);
+                x = n.spawnX !== undefined ? n.spawnX : P.x + side * (W / 2 + 150 + Math.random() * 250);
             Object.assign(n, { sk2: null, decap: 0, tfall: 0, kneelT: 0, pool: null, pulse: 0, stomachStabbed: false, stbStoP: null, stoDrag: 0, stabTh0: undefined, legHurt: 0, legGone: 0, crawl: 0, crawlDead: 0, crawlT: 0, crT: 0, cwK: 0, crDeadT: 0, lmK: 0, lgT: 0, lveins: null, stumpL: null, legW: null, lhDrip: 0, trailD: 0, hpK: 0, hCrack: 0, hCrackT: 0, headHits: 0, hsPart: 0, hcDrip: 0, dbl: 0, dbK: 0, hsDead: 0, hsT: 0, veins: null, int: null, gut: 0, headThud: 0, gutDead: false, gutK: 0, gutPop: 0, gutCut: 0, fkSnk: 0, fk: null, fkT: 0, fkK: 0, fkPend: false, stab: 0, kneelK: 0, fst: 0, fallT: 0, fallK: 0, thud: 0, x, home: x, goal: x, vx: 0, z: 0, vz: 0, hp: n.maxhp, hurt: 0, down: 0, rot: 0, dying: 0, dead: 0, bar: 0, tumble: 0, wait: 1.5, face: -side, fid: 0, fidK: 0, headCut: 0, headK: 0, cord: null, brainOut: 0 });
             if (n.spawnX !== undefined && Math.abs(n.spawnX - P.x) < W / 2 + 300) n.dead = 2;   // wait until the player isn't looking
         }
@@ -15845,6 +15845,320 @@
             ctx.fillText('pack: ' + ks.map(k => ITEM_DEFS[k].label.toLowerCase() + ' ×' + INV[k]).join(' · '), 24, H - 24); ctx.restore();
         }
 
+        // ================= DOMESTIC DUCKS (white, upright, near the stilt house) =================
+        const DD_X0 = STH_WX + 470 * STH_SC;      // west end of their yard (world x). Edit to move them.
+        const DD_X1 = STH_WX + 650 * STH_SC;      // east end of their yard
+        const DD_N = 4;                           // number of ducklings
+        const DD_SIZE = 1.5;                      // overall size multiplier
+        const DD = { init: false, m: null, k: [], trail: [], tt: 0, clock: 0, dir: 1 };
+
+        function ddMk(mother, i, x) {
+            const R = Math.random;
+            return {
+                mother, i, x, vx: 0, face: R() < .5 ? -1 : 1, fv: 1, s: mother ? 1 : .46, ph: R() * 6, seed: R() * 100,
+                gx: x, maxV: 0, goal: x, st: 'idle', t: 0, tt: 1 + R() * 2, peck: 0, dip: 0, dipPrev: 0,
+                hd: 1, hdT: 1, hdTt: 1 + R() * 2, wing: 0, wingK: 0, wingT: 4 + R() * 6, tail: 0, tw: 0, tailT: 3 + R() * 4,
+                tilt: 0, bl: 0, blT: 2 + R() * 3, faceT: 2 + R() * 3, pkT: 3 + R() * 5,
+                delay: .35 + i * .3 + R() * .1, gap: 26 + i * 16 + R() * 10, gw: .3 + R() * .5, gph: R() * 6, spd: .85 + R() * .3
+            };
+        }
+        function ddInit() {
+            DD.init = true;
+            const x0 = (DD_X0 + DD_X1) / 2;
+            DD.m = ddMk(true, 0, x0);
+            for (let i = 0; i < DD_N; i++) DD.k.push(ddMk(false, i, x0 - 40 - i * 30));
+        }
+        function ddTrailAt(t) {
+            const T = DD.trail, n = T.length; if (!n) return null;
+            if (t <= T[0].t) return T[0].x;
+            for (let i = n - 1; i > 0; i--) if (T[i - 1].t <= t) {
+                const a = T[i - 1], b = T[i], u = clamp01((t - a.t) / Math.max(1e-4, b.t - a.t));
+                return a.x + (b.x - a.x) * u;
+            }
+            return T[n - 1].x;
+        }
+
+        function ddMotherAI(m, dt, S) {
+            const R = Math.random, sc = S * DD_SIZE;
+            m.t += dt; if (m.peck > 0) m.peck -= dt;
+            if (m.st === 'walk') {
+                m.gx = m.goal; m.maxV = 50 * sc; m.hdT = 1;
+                if (Math.abs(m.x - m.goal) < 6 || m.t > 20) { m.st = 'idle'; m.t = 0; m.tt = 1 + R() * 3 }
+                return;
+            }
+            m.gx = m.x; m.maxV = 0;
+            if (m.st === 'look') { const u = m.t / m.tt; m.hdT = u < .18 ? 1 : (Math.sin((u - .18) * 9.5) > 0 ? 1 : -1) }
+            else { m.hdTt -= dt; if (m.hdTt <= 0) { m.hdTt = 1.2 + R() * 3; m.hdT = R() < .8 ? 1 : -1 } }
+            if (m.t < m.tt) return;
+            m.t = 0; const r = R();
+            if (r < .4) {
+                const g = DD_X0 + R() * (DD_X1 - DD_X0);
+                if (Math.abs(g - m.x) > 80) { m.goal = g; m.st = 'walk'; m.face = Math.sign(g - m.x) } else { m.st = 'idle'; m.tt = 1 + R() * 2 }
+            }
+            else if (r < .62) { m.st = 'look'; m.tt = 2 + R() * 2 }
+            else if (r < .88) { m.st = 'peck'; m.tt = 2 + R() * 1.5; m.peck = m.tt }
+            else { m.st = 'idle'; m.tt = 1.2 + R() * 1.5; if (!m.wingK) m.wingK = .0001 }
+        }
+
+        function ddKidAI(d, dt, S, m) {
+            const R = Math.random, sc = S * DD_SIZE;
+            const sx = ddTrailAt(DD.clock - d.delay);
+            let tx = (sx === null ? m.x : sx) - (Math.sign(DD.dir) || 1) * (d.gap * sc + Math.sin(DD.clock * d.gw + d.gph) * 13);
+            tx = clampN(tx, DD_X0 - 60, DD_X1 + 60);
+            d.gx = tx; const dist = Math.abs(tx - d.x);
+            d.maxV = 56 * sc * d.spd * (dist > 120 * sc ? 1.7 : 1);
+            if (d.peck > 0) d.peck -= dt;
+            if (dist < 8 && Math.abs(d.vx) < 8) {
+                d.faceT -= dt;
+                if (d.faceT <= 0) { d.faceT = 2 + R() * 4; d.face = (R() < .72 ? 1 : -1) * (Math.sign(DD.dir) || 1) }
+                d.hdTt -= dt; if (d.hdTt <= 0) { d.hdTt = 1.2 + R() * 3; d.hdT = R() < .7 ? 1 : -1 }
+                d.pkT -= dt; if (d.pkT <= 0) { d.pkT = 3 + R() * 6; d.peck = 1.2 + R() * 1.2 }
+            } else d.hdT = 1;
+        }
+
+        function ddMove(a, dt, S) {
+            const want = a.gx - a.x; let v = clampN(want * 2.4, -a.maxV, a.maxV); if (Math.abs(want) < 3) v = 0;
+            a.vx += (v - a.vx) * Math.min(1, dt * 5);
+            a.x = clampN(a.x + a.vx * dt, DD_X0 - 80, DD_X1 + 80);
+            if (Math.abs(a.vx) > 7) a.face = Math.sign(a.vx);
+            a.fv += clampN(a.face - a.fv, -dt * 6, dt * 6);
+            a.ph += Math.abs(a.vx) * dt / (28 * S * DD_SIZE * a.s) * 6.283;
+        }
+
+        function ddAnim(a, dt, S, now) {
+            const R = Math.random, walking = Math.abs(a.vx) > 4, sc = S * DD_SIZE * a.s;
+            a.hd += (a.hdT - a.hd) * Math.min(1, dt * 7);
+            const dw = (a.peck > 0 && Math.sin(a.peck * 9) > 0) ? 1 : 0;
+            a.dipPrev = a.dip; a.dip += (dw - a.dip) * Math.min(1, dt * 9);
+            if (a.dipPrev < .85 && a.dip >= .85) {                       // beak taps the dirt
+                const F = Math.sign(a.fv) || 1;
+                for (let i = 0; i < 2; i++) flecks.push({ x: a.x + F * 34 * sc, y: -2, vx: F * (20 + R() * 40), vy: -(30 + R() * 50), r: 1 + R(), t: 0, life: .3 });
+            }
+            a.wingT -= dt; if (a.wingT <= 0 && !a.wingK) { a.wingK = .0001; a.wingT = 5 + R() * 9 }
+            if (a.wingK) { a.wingK += dt / .9; a.wing = Math.sin(Math.PI * Math.min(1, a.wingK)); if (a.wingK >= 1) { a.wingK = 0; a.wing = 0 } }
+            a.tailT -= dt; if (a.tailT <= 0) { a.tw = 1; a.tailT = 3 + R() * 6 }
+            a.tw = Math.max(0, a.tw - dt * 2.2);
+            a.tail = Math.sin(now * 2.3 + a.seed) * .05 + Math.sin(now * 19 + a.seed) * .22 * a.tw;
+            const tt = walking ? Math.sin(a.ph) * (a.mother ? .06 : .09) : 0;     // waddle
+            a.tilt += (tt - a.tilt) * Math.min(1, dt * 10);
+            a.blT -= dt; if (a.blT <= 0) { a.bl = .12; a.blT = 1.5 + R() * 4 } if (a.bl > 0) a.bl -= dt;
+        }
+
+        function ddTick(dt) {
+            if (!(dt > 0)) return;
+            if (!DD.init) ddInit();
+            const S = CSc(), now = performance.now() / 1000, m = DD.m;
+            DD.clock += dt;
+            DD.dir += (m.face - DD.dir) * Math.min(1, dt * .9);
+            ddMotherAI(m, dt, S); ddMove(m, dt, S);
+            DD.tt += dt; if (DD.tt >= .033) { DD.tt = 0; DD.trail.push({ t: DD.clock, x: m.x }) }
+            while (DD.trail.length > 2 && DD.trail[0].t < DD.clock - 10) DD.trail.shift();
+            for (const d of DD.k) { ddKidAI(d, dt, S, m); ddMove(d, dt, S) }
+            for (const a of [m].concat(DD.k)) ddAnim(a, dt, S, now);
+        }
+
+        // ADULT WHITE DOMESTIC DUCK, traced from the reference drawing.
+        // All body art is drawn in the reference image's pixel coordinates, then scaled by K.
+        function ddMotherShape(a, now) {
+            const INK = '#111', WH = '#fdfdf8', WH2 = '#f3f1e8', BK = '#f6b020', LG = '#e08a2c', FT = '#f28a22';
+            const K = .08;                              // SIZE: raise for a bigger mother, lower for smaller
+            const OX = 757, OY = 985;                   // point between the feet on the ground
+            const LW = 2.1 / K, DET = .85 / K;          // outline / detail line widths
+            const walking = Math.abs(a.vx) > 4;
+            const bob = walking ? Math.abs(Math.sin(a.ph)) * 1.6 : Math.sin(now * 1.6 + a.seed) * .4;
+            ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+
+            // ground shadow
+            ctx.save(); ctx.globalAlpha *= .22; ctx.fillStyle = INK; ctx.beginPath(); ctx.ellipse(-1, 1, 30, 3, 0, 0, 7); ctx.fill(); ctx.restore();
+
+            // ---- short orange legs + webbed feet ----
+            for (let i = 0; i < 2; i++) {
+                const p = a.ph + i * Math.PI, hx = i ? -7.5 : 7.8;
+                const st = walking ? Math.sin(p) : 0, lift = walking ? Math.max(0, Math.cos(p)) * 5 : 0;
+                const fx = hx + st * 5.5, fy = -lift;
+                ctx.beginPath(); ctx.moveTo(hx, -13 - bob); ctx.lineTo(fx, fy - 1.5);
+                ctx.strokeStyle = INK; ctx.lineWidth = 5.4; ctx.stroke(); ctx.strokeStyle = LG; ctx.lineWidth = 3.1; ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(fx - 3, fy - 3.2); ctx.quadraticCurveTo(fx + 6, fy - 4.4, fx + 15, fy - 1.2);
+                ctx.quadraticCurveTo(fx + 16.5, fy + .3, fx + 13, fy + .4); ctx.lineTo(fx - 3, fy + .1); ctx.closePath();
+                ctx.fillStyle = FT; ctx.fill(); ctx.strokeStyle = INK; ctx.lineWidth = 1.6; ctx.stroke();
+                ctx.lineWidth = .8; ctx.beginPath(); ctx.moveTo(fx + 1, fy - 2.4); ctx.lineTo(fx + 13, fy - .8); ctx.moveTo(fx + 1, fy - 1); ctx.lineTo(fx + 9, fy - .1); ctx.stroke();
+            }
+
+            // ---- everything from here is drawn in reference-image coordinates ----
+            ctx.save(); ctx.translate(0, -bob); ctx.translate(0, -25); ctx.rotate(a.tilt); ctx.translate(0, 25);
+            ctx.scale(K, K); ctx.translate(-OX, -OY);
+
+            const tw = a.tail, T = (x, y) => [x, y + tw * Math.max(0, 520 - x) * .7];   // tail wag moves only the rear feathers
+
+            // BODY + zigzag tail feathers (stroke is left open so no line shows where the neck joins)
+            ctx.beginPath(); ctx.moveTo(930, 440);
+            ctx.bezierCurveTo(820, 435, 640, 470, ...T(470, 540));
+            for (const [x, y] of [[355, 530], [410, 558], [315, 550], [372, 582], [276, 567], [336, 598], [302, 624], [356, 642], [338, 670], [392, 692]]) ctx.lineTo(...T(x, y));
+            ctx.bezierCurveTo(440, 770, 540, 835, 650, 852);
+            ctx.bezierCurveTo(780, 872, 970, 862, 1060, 765);
+            ctx.bezierCurveTo(1118, 700, 1145, 590, 1128, 490);
+            ctx.fillStyle = WH; ctx.fill(); ctx.strokeStyle = INK; ctx.lineWidth = LW; ctx.stroke();
+
+            // belly feather strokes
+            ctx.strokeStyle = INK; ctx.lineWidth = DET; ctx.globalAlpha *= .55;
+            ctx.beginPath();
+            for (const [x0, y0, cx, cy, x1, y1] of [[620, 800, 700, 780, 780, 790], [760, 830, 860, 810, 940, 800], [540, 760, 600, 740, 680, 745], [900, 740, 980, 720, 1040, 690], [480, 700, 530, 690, 590, 700], [1000, 620, 1040, 600, 1070, 560]]) { ctx.moveTo(x0, y0); ctx.quadraticCurveTo(cx, cy, x1, y1); }
+            ctx.stroke(); ctx.globalAlpha /= .55;
+
+            // BIG FOLDED WING (teardrop, tip pointing back, feather layers)
+            ctx.save(); ctx.translate(905, 505); ctx.rotate(a.wing * .45); ctx.translate(-905, -505);
+            ctx.beginPath(); ctx.moveTo(392, 598);
+            ctx.bezierCurveTo(470, 672, 640, 722, 790, 678); ctx.bezierCurveTo(890, 648, 955, 588, 946, 520);
+            ctx.bezierCurveTo(944, 495, 925, 480, 900, 474); ctx.bezierCurveTo(740, 455, 560, 500, 430, 562); ctx.closePath();
+            ctx.fillStyle = WH2; ctx.fill();
+            ctx.beginPath(); ctx.moveTo(392, 598);
+            ctx.bezierCurveTo(470, 672, 640, 722, 790, 678); ctx.bezierCurveTo(890, 648, 955, 588, 946, 520); ctx.bezierCurveTo(944, 500, 932, 488, 915, 480);
+            ctx.strokeStyle = INK; ctx.lineWidth = LW * .9; ctx.stroke();
+            ctx.lineWidth = DET; ctx.globalAlpha *= .7; ctx.beginPath();
+            for (const [x0, y0, cx, cy, x1, y1] of [[905, 560, 800, 585, 690, 600], [880, 610, 760, 640, 640, 650], [800, 520, 700, 540, 600, 570], [700, 630, 600, 650, 520, 640], [560, 590, 500, 600, 450, 590], [850, 500, 760, 515, 680, 520]]) { ctx.moveTo(x0, y0); ctx.quadraticCurveTo(cx, cy, x1, y1); }
+            ctx.stroke(); ctx.globalAlpha /= .7;
+            ctx.restore();
+
+            // ---- NECK + HEAD ----
+            const pk = a.dip, bn = walking ? Math.sin(a.ph * 2) * 10 : Math.sin(now * 1.3 + a.seed) * 7;
+            const hx = lerp(1060, 1322, pk) + bn, hy = lerp(110, 830, pk) + (walking ? Math.cos(a.ph * 2) * 8 : 0);
+            const hr = .1 + pk * 1.1 + Math.sin(now * 1.1 + a.seed) * .04, cs = Math.cos(hr), sn = Math.sin(hr);
+            const HL = (lx, ly) => [hx + lx * cs - ly * sn, hy + lx * sn + ly * cs];
+            const Be = HL(-88, 62), Fe = HL(22, 72);                                   // where the neck meets the back / throat of the head
+            const Q1 = [lerp(962, 1109, pk), lerp(350, 325, pk)], Q2 = [lerp(940, 1360, pk), lerp(250, 570, pk)];   // back edge of neck
+            const C1 = [lerp(1118, 1105, pk), lerp(400, 640, pk)], C2 = [lerp(1040, 1150, pk), lerp(300, 800, pk)]; // throat edge of neck
+
+            ctx.beginPath(); ctx.moveTo(938, 446);
+            ctx.bezierCurveTo(Q1[0], Q1[1], Q2[0], Q2[1], Be[0], Be[1]);
+            ctx.lineTo(Fe[0], Fe[1]);
+            ctx.bezierCurveTo(C2[0], C2[1], C1[0], C1[1], 1130, 486);
+            ctx.closePath(); ctx.fillStyle = WH; ctx.fill();
+            ctx.strokeStyle = INK; ctx.lineWidth = LW;
+            ctx.beginPath(); ctx.moveTo(938, 446); ctx.bezierCurveTo(Q1[0], Q1[1], Q2[0], Q2[1], Be[0], Be[1]); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(1130, 486); ctx.bezierCurveTo(C1[0], C1[1], C2[0], C2[1], Fe[0], Fe[1]); ctx.stroke();
+
+            // chest / neck feather strokes
+            ctx.lineWidth = DET; ctx.globalAlpha *= .55; ctx.beginPath();
+            for (const [x0, y0, cx, cy, x1, y1] of [[1100, 520, 1090, 550, 1085, 580], [1112, 600, 1100, 640, 1090, 670], [1090, 690, 1080, 720, 1060, 740]]) { ctx.moveTo(x0, y0); ctx.quadraticCurveTo(cx, cy, x1, y1); }
+            ctx.stroke();
+            if (pk < .5) { ctx.globalAlpha *= (1 - pk * 2); ctx.beginPath(); ctx.moveTo(1090, 330); ctx.quadraticCurveTo(1078, 370, 1072, 410); ctx.moveTo(1070, 250); ctx.quadraticCurveTo(1062, 290, 1060, 320); ctx.stroke(); }
+            ctx.globalAlpha = 1;
+
+            // HEAD: big round dome, small black eye, long flat bill angled down
+            const hdS = Math.abs(a.hd) < .2 ? .2 * (Math.sign(a.hd) || 1) : a.hd;
+            ctx.save(); ctx.translate(hx, hy); ctx.scale(hdS, 1); ctx.rotate(hr);
+            ctx.beginPath(); ctx.moveTo(-88, 62);
+            ctx.bezierCurveTo(-112, -30, -70, -84, 0, -84); ctx.bezierCurveTo(62, -84, 100, -56, 96, -16);
+            ctx.lineTo(74, 44); ctx.bezierCurveTo(58, 68, 40, 74, 22, 72); ctx.lineTo(-30, 86); ctx.closePath();
+            ctx.fillStyle = WH; ctx.fill();
+            ctx.strokeStyle = INK; ctx.lineWidth = LW;
+            ctx.beginPath(); ctx.moveTo(-88, 62); ctx.bezierCurveTo(-112, -30, -70, -84, 0, -84); ctx.bezierCurveTo(62, -84, 100, -56, 96, -16); ctx.stroke();   // dome
+            ctx.beginPath(); ctx.moveTo(74, 44); ctx.bezierCurveTo(58, 68, 40, 74, 22, 72); ctx.stroke();                                                       // jaw
+            ctx.lineWidth = DET; ctx.globalAlpha *= .5; ctx.beginPath(); ctx.moveTo(15, 30); ctx.quadraticCurveTo(35, 38, 58, 28); ctx.moveTo(-10, 45); ctx.quadraticCurveTo(10, 52, 30, 48); ctx.stroke(); ctx.globalAlpha /= .5;
+
+            // bill
+            ctx.beginPath(); ctx.moveTo(88, -22);
+            ctx.bezierCurveTo(130, -5, 190, 10, 238, 36); ctx.bezierCurveTo(255, 45, 252, 62, 232, 68);
+            ctx.bezierCurveTo(190, 76, 120, 64, 72, 42); ctx.closePath();
+            ctx.fillStyle = BK; ctx.fill(); ctx.strokeStyle = INK; ctx.lineWidth = LW * .8; ctx.stroke();
+            ctx.lineWidth = DET; ctx.beginPath(); ctx.moveTo(78, 32); ctx.bezierCurveTo(140, 48, 200, 55, 240, 54); ctx.stroke();   // mouth line
+            ctx.fillStyle = INK; ctx.beginPath(); ctx.ellipse(136, 12, 12, 7, .35, 0, 7); ctx.fill();                                 // nostril
+
+            // eye
+            if (a.bl > 0) { ctx.strokeStyle = INK; ctx.lineWidth = DET * 1.3; ctx.beginPath(); ctx.moveTo(28, -28); ctx.lineTo(62, -30); ctx.stroke() }
+            else { ctx.fillStyle = INK; ctx.beginPath(); ctx.arc(45, -28, 15, 0, 7); ctx.fill(); ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(51, -34, 5, 0, 7); ctx.fill() }
+            ctx.restore();
+
+            ctx.restore();   // body group
+        }
+
+        // local space: +x forward, y up is negative, feet on y = 0
+        function ddShape(a, now) {
+            if (a.mother) { ddMotherShape(a, now); return; }
+            const kid = !a.mother, INK = '#111';
+            const WH = kid ? '#fbf4dc' : '#fdfdf8', WH2 = kid ? '#f1e6c4' : '#ecebe2';   // body / wing shade
+            const BK = kid ? '#ffd426' : '#f4ad1f';                                    // beak: kid brighter yellow, mother golden-orange
+            const LG = kid ? '#f4a95c' : '#dc8630', FT = kid ? '#f6a74c' : '#f0832a';  // legs / feet
+            const lw = kid ? 2.7 : 2.3, walking = Math.abs(a.vx) > 4;
+            const bob = walking ? Math.abs(Math.sin(a.ph)) * (kid ? 2.6 : 2.2) : Math.sin(now * 1.6 + a.seed) * .4;
+            ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+
+            // ground shadow
+            ctx.save(); ctx.globalAlpha *= .22; ctx.fillStyle = INK; ctx.beginPath(); ctx.ellipse(0, 1, 22, 2.6, 0, 0, 7); ctx.fill(); ctx.restore();
+
+            // legs (behind the body)
+            for (let i = 0; i < 2; i++) {
+                const p = a.ph + i * Math.PI, hx = i ? -5 : 5;
+                const st = walking ? Math.sin(p) : 0, lift = walking ? Math.max(0, Math.cos(p)) * 7 : 0;
+                const fx = hx + st * 7, fy = -lift;
+                ctx.beginPath(); ctx.moveTo(hx, -20 - bob); ctx.lineTo(fx, fy - 1);
+                ctx.strokeStyle = INK; ctx.lineWidth = 5.6; ctx.stroke(); ctx.strokeStyle = LG; ctx.lineWidth = 3; ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(fx - 2, fy - 3.5); ctx.lineTo(fx + 11, fy - .6); ctx.lineTo(fx + 9, fy); ctx.lineTo(fx - 2, fy); ctx.closePath();
+                ctx.fillStyle = FT; ctx.fill(); ctx.strokeStyle = INK; ctx.lineWidth = 1.5; ctx.stroke();
+                ctx.lineWidth = .9; ctx.beginPath(); ctx.moveTo(fx + 2, fy - 2.4); ctx.lineTo(fx + 9, fy - .6); ctx.stroke();       // toe line
+            }
+
+            ctx.save(); ctx.translate(0, -bob); ctx.translate(0, -25); ctx.rotate(a.tilt); ctx.translate(0, 25);
+
+            // body: upright chest, high shoulders, tail low behind
+            ctx.save(); ctx.translate(-27, -31); ctx.rotate(a.tail); ctx.translate(27, 31);
+            ctx.beginPath(); ctx.moveTo(-27, -31);
+            ctx.bezierCurveTo(-22, -42, -10, -47, 3, -46);
+            ctx.bezierCurveTo(11, -46, 17, -44, 20, -38);
+            ctx.bezierCurveTo(28, -30, 24, -17, 11, -13);
+            ctx.bezierCurveTo(0, -10, -12, -12, -18, -19);
+            ctx.bezierCurveTo(-22, -23, -25, -27, -27, -31);
+            ctx.closePath(); ctx.fillStyle = WH; ctx.fill(); ctx.strokeStyle = INK; ctx.lineWidth = lw; ctx.stroke();
+            ctx.restore();
+
+            // folded wing with ink feather lines
+            ctx.save(); ctx.translate(9, -37); ctx.rotate(a.wing * .6); ctx.translate(-9, 37);
+            ctx.beginPath(); ctx.moveTo(9, -37); ctx.bezierCurveTo(0, -44, -14, -40, -23, -30);
+            ctx.bezierCurveTo(-15, -26, -2, -23, 7, -29); ctx.bezierCurveTo(11, -31, 11, -35, 9, -37); ctx.closePath();
+            ctx.fillStyle = WH2; ctx.fill(); ctx.strokeStyle = INK; ctx.lineWidth = lw * .8; ctx.stroke();
+            ctx.lineWidth = .9; ctx.globalAlpha *= .85; ctx.beginPath();
+            ctx.moveTo(5, -35); ctx.lineTo(-15, -33); ctx.moveTo(4, -31.5); ctx.lineTo(-17, -30);
+            if (!kid) { ctx.moveTo(5, -28.5); ctx.lineTo(-12, -27.5); ctx.moveTo(1, -40); ctx.lineTo(-12, -37.5) }
+            ctx.stroke(); ctx.restore();
+
+            // neck + head
+            const b = [11, -41], pk = a.dip, bn = walking ? Math.sin(a.ph * 2) * 1.4 : Math.sin(now * 1.3 + a.seed) * .8;
+            const hI = kid ? [18, -62] : [16, -76], cI = kid ? [14, -52] : [8, -58], hP = [34, -12], cP = [26, -50];
+            const hx = lerp(hI[0], hP[0], pk) + bn, hy = lerp(hI[1], hP[1], pk) + (walking ? Math.cos(a.ph * 2) * .8 : 0);
+            const cx = lerp(cI[0], cP[0], pk), cy = lerp(cI[1], cP[1], pk), nw = kid ? 6.4 : 6.6;
+            ctx.beginPath(); ctx.moveTo(b[0], b[1]); ctx.quadraticCurveTo(cx, cy, hx, hy);
+            ctx.strokeStyle = INK; ctx.lineWidth = nw + 3; ctx.stroke(); ctx.strokeStyle = WH; ctx.lineWidth = nw; ctx.stroke();
+
+            const hr = kid ? 7.6 : 6.4, hdS = Math.abs(a.hd) < .2 ? .2 * (Math.sign(a.hd) || 1) : a.hd;
+            ctx.save(); ctx.translate(hx, hy); ctx.scale(hdS, 1); ctx.rotate(pk * 1.25 + Math.sin(now * 1.1 + a.seed) * .05);
+            ctx.beginPath(); ctx.arc(0, 0, hr, 0, 7); ctx.fillStyle = WH; ctx.fill(); ctx.strokeStyle = INK; ctx.lineWidth = lw; ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(hr * .5, -2.4);                                                 // beak
+            ctx.bezierCurveTo(hr + 5, -2.8, hr + (kid ? 8 : 11), -1.6, hr + (kid ? 8.5 : 12), .4);
+            ctx.bezierCurveTo(hr + (kid ? 7 : 10), 3, hr + 4, 3.6, hr * .5, 3);
+            ctx.closePath(); ctx.fillStyle = BK; ctx.fill(); ctx.strokeStyle = INK; ctx.lineWidth = lw * .75; ctx.stroke();
+            ctx.lineWidth = .8; ctx.beginPath(); ctx.moveTo(hr * .7, .6); ctx.lineTo(hr + (kid ? 7 : 10), .5); ctx.stroke();   // mouth
+            ctx.fillStyle = INK; ctx.beginPath(); ctx.arc(hr + 1.8, -1.2, .55, 0, 7); ctx.fill();                              // nostril
+            if (a.bl > 0) { ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(hr * .15, -hr * .25); ctx.lineTo(hr * .62, -hr * .27); ctx.stroke() }
+            else {
+                ctx.fillStyle = INK; ctx.beginPath(); ctx.arc(hr * .4, -hr * .25, kid ? 1.5 : 1.3, 0, 7); ctx.fill();         // black eye
+                ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(hr * .4 + .5, -hr * .25 - .5, .45, 0, 7); ctx.fill();
+            }
+            ctx.restore();
+            ctx.restore();   // body group
+        }
+
+        function drawDomesticDucks(gy) {
+            if (!DD.init) return;
+            const S = CSc(), now = performance.now() / 1000;
+            const list = [DD.m].concat(DD.k).filter(a => Math.abs(a.x - P.x) < W / 2 + 200);
+            list.sort((p, q) => (p.mother ? 1 : 0) - (q.mother ? 1 : 0));          // ducklings first, mother in front
+            for (const a of list) {
+                const sc = S * DD_SIZE * a.s, F = Math.abs(a.fv) < .15 ? .15 * (Math.sign(a.fv) || 1) : a.fv;
+                const sx = a.x - P.x + W / 2, lane = a.mother ? 0 : (a.i % 2 ? -2 * sc : 0);
+                ctx.save(); ctx.translate(sx, gy + 4 + lane); ctx.scale(sc * F, sc); ddShape(a, now); ctx.restore();
+            }
+        }
+
         function frame(now) {
 
 
@@ -15852,7 +16166,7 @@
             let dt = dt0;
             if (hitstop > 0) { hitstop -= dt0; dt = 0 }
 
-            update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); sgTick(dt); sgGroundTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); waterFXTick(dt); brainTick(dt); hzTick(dt); gibTick(dt); boneTick(dt); weatherTick(dt); horseTick(dt); mpkTick(dt); birdTick(dt); fowlTick(dt); frogTick(dt); duckTick(dt); crocTick(dt); bgTick(dt); corpseTick(dt); dayTick(dt0); fireflyTick(dt0); stExtrasTick(dt0);
+            update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); sgTick(dt); sgGroundTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); waterFXTick(dt); brainTick(dt); hzTick(dt); gibTick(dt); boneTick(dt); weatherTick(dt); horseTick(dt); mpkTick(dt); birdTick(dt); fowlTick(dt); frogTick(dt); duckTick(dt); ddTick(dt); crocTick(dt); bgTick(dt); corpseTick(dt); dayTick(dt0); fireflyTick(dt0); stExtrasTick(dt0);
             const hStop = MT_HORSE_STOP_X();
             const hGap = HRS.x - hStop;
             if (hGap < 350 && HRS.vx < 0) HRS.vx *= Math.max(0, 1 - dt * 6 * (1 - hGap / 350));
@@ -15919,6 +16233,7 @@
             drawBirds(gy);
             drawFowl(gy);
             drawDuckFam(gy);
+            drawDomesticDucks(gy);
             drawFrogs(gy);
             drawCroc(gy); drawCrocGore(gy);
             drawBGoreAir(gy);
