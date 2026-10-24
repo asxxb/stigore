@@ -33,10 +33,57 @@
             position: fixed;
             left: 14px;
             top: calc(env(safe-area-inset-top, 0px) + 10px);
-            font: 15px/1.4 Georgia, serif;
+            z-index: 5;
+            font: 13px/1.35 Georgia, serif;
             color: #222;
-            opacity: .7;
-            pointer-events: none
+            pointer-events: none;
+        }
+        #hudBtn {
+            pointer-events: auto;
+            font: italic 14px Georgia, serif;
+            color: #111;
+            background: rgba(230, 228, 224, .75);
+            border: 2px solid #111;
+            border-radius: 6px;
+            padding: 4px 10px;
+            cursor: pointer;
+            opacity: .75;
+        }
+        #hudBtn:hover { opacity: 1; }
+        #hudPanel {
+            display: none;
+            pointer-events: auto;
+            margin-top: 8px;
+            width: min(92vw, 660px);
+            max-height: 78vh;
+            overflow: auto;
+            padding: 12px 14px;
+            background: rgba(230, 228, 224, .94);
+            border: 2px solid #111;
+            border-radius: 8px;
+            box-shadow: 3px 3px 0 rgba(0, 0, 0, .25);
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 10px 22px;
+        }
+        #hud.open #hudPanel { display: grid; }
+        #hudPanel h4 {
+            margin: 0 0 3px;
+            font: italic bold 14px Georgia, serif;
+            letter-spacing: .06em;
+            border-bottom: 1.5px solid #111;
+        }
+        #hudPanel p { margin: 2px 0; }
+        #hudPanel kbd {
+            display: inline-block;
+            min-width: 16px;
+            text-align: center;
+            padding: 0 5px;
+            margin: 0 1px;
+            font: bold 12px Georgia, serif;
+            background: rgba(255, 255, 255, .55);
+            border: 1.5px solid #111;
+            border-radius: 4px;
+            box-shadow: 0 1.5px 0 #111;
         }
 
         .btns {
@@ -88,17 +135,51 @@
 <body>
     <canvas id="c"></canvas>
     <div id="hud">
-        <b>MOVE</b> A / D or ← → walk · Shift run · Space jump · Shift+Space (running) parkour tumble · X super jump<br>
-        <b>CLIMB</b> E at stairs · W / ▲ up the rope ladder · S / ▼ down · Space let go<br>
-        <b>MELEE</b> J punch combo · M front kick · K knife out / flip to reverse grip / put away · L throw knife<br>
-        <b>KNIFE</b> J stab · ▼+J gut cut · reverse grip + J foot stab · E (next to a stabbed enemy) finisher: hold E to
-        pull, E+▼ gut, E+▲ split head · E near a foot-stabbed enemy yanks the knife out<br>
-        <b>REVOLVER</b> G draw / spin-holster · F fire · R reload · W / S aim up / down<br>
-        <b>SHOTGUN</b> Z pick up (stomp) / drop · F fire one barrel · B fire both · R reload · W / S aim<br>
-        <b>HORSE</b> H mount / dismount · A / D ride · Shift gallop · Space jump<br>
-        <b>SWIM</b> A / D swim · S / ▼ dive · W / Space surface · push into a bank to climb out<br>
-        <b>ITEMS</b> T pick up · C cigarette (press again to flick it) · O lantern (light / blow out)<br>
-        <b>OTHER</b> V man / woman · N night / day
+        <button id="hudBtn" type="button">Controls <kbd style="font-size:11px">Tab</kbd></button>
+        <div id="hudPanel">
+            <section><h4>MOVE</h4>
+                <p><kbd>A</kbd><kbd>D</kbd> walk · <kbd>Shift</kbd> run</p>
+                <p><kbd>Space</kbd> jump · <kbd>X</kbd> super jump</p>
+                <p><kbd>Shift</kbd>+<kbd>Space</kbd> while running: parkour tumble</p>
+            </section>
+            <section><h4>CLIMB</h4>
+                <p><kbd>E</kbd> at the stairs</p>
+                <p><kbd>W</kbd> up / <kbd>S</kbd> down the rope ladder</p>
+                <p><kbd>Space</kbd> let go</p>
+            </section>
+            <section><h4>MELEE</h4>
+                <p><kbd>J</kbd> punch combo · <kbd>M</kbd> front kick</p>
+                <p><kbd>K</kbd> knife out / flip grip / put away</p>
+                <p><kbd>L</kbd> throw knife</p>
+            </section>
+            <section><h4>KNIFE</h4>
+                <p><kbd>J</kbd> stab · <kbd>▼</kbd>+<kbd>J</kbd> gut cut</p>
+                <p>Reverse grip + <kbd>J</kbd> foot stab</p>
+                <p>Next to a stabbed enemy: hold <kbd>E</kbd> to pull, <kbd>E</kbd>+<kbd>▼</kbd> gut, <kbd>E</kbd>+<kbd>▲</kbd> split head</p>
+                <p><kbd>E</kbd> near a foot-stabbed enemy yanks the knife out</p>
+            </section>
+            <section><h4>REVOLVER</h4>
+                <p><kbd>G</kbd> draw / spin-holster · <kbd>F</kbd> fire</p>
+                <p><kbd>R</kbd> reload · <kbd>W</kbd><kbd>S</kbd> aim</p>
+            </section>
+            <section><h4>SHOTGUN</h4>
+                <p><kbd>Z</kbd> pick up (stomp) / drop</p>
+                <p><kbd>F</kbd> one barrel · <kbd>B</kbd> both</p>
+                <p><kbd>R</kbd> reload · <kbd>W</kbd><kbd>S</kbd> aim</p>
+            </section>
+            <section><h4>HORSE</h4>
+                <p><kbd>H</kbd> mount / dismount</p>
+                <p><kbd>A</kbd><kbd>D</kbd> ride · <kbd>Shift</kbd> gallop · <kbd>Space</kbd> jump</p>
+            </section>
+            <section><h4>SWIM</h4>
+                <p><kbd>A</kbd><kbd>D</kbd> swim · <kbd>S</kbd> dive</p>
+                <p><kbd>W</kbd>/<kbd>Space</kbd> surface · push into a bank to climb out</p>
+            </section>
+            <section><h4>ITEMS &amp; OTHER</h4>
+                <p><kbd>T</kbd> pick up · <kbd>C</kbd> cigarette (again = flick)</p>
+                <p><kbd>O</kbd> lantern · <kbd>V</kbd> man / woman · <kbd>N</kbd> night / day</p>
+            </section>
+        </div>
     </div>
     <div class="btns">
         <div><span class="b" id="bl">◀</span><span class="b" id="br">▶</span></div>
@@ -156,6 +237,13 @@
 
 
         makePaper(); resize(); addEventListener('resize', resize);
+
+        const hudEl = document.getElementById('hud');
+        const toggleHud = () => hudEl.classList.toggle('open');
+        document.getElementById('hudBtn').addEventListener('click', toggleHud);
+        addEventListener('keydown', e => { if (e.code === 'Tab') { e.preventDefault(); toggleHud(); } });
+        hudEl.classList.add('open');
+        setTimeout(() => hudEl.classList.remove('open'), 10000);   // starts open, hides itself
 
         const keys = {};
         addEventListener('keydown', e => {
