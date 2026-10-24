@@ -535,7 +535,7 @@
                 fidgetTick(P, true, dt);
                 return;
             }
-            const dir = (P.fin > 0 || P.sm === 1 || P.ln > 0 || P.lb > 0 || P.fs > 0 || P.yk > 0 || P.gu > 0 || P.sgp > 0 || P.mount || P.ldLock || P.sqSl > 0) ? 0 : (keys.ArrowRight || keys.KeyD ? 1 : 0) - (keys.ArrowLeft || keys.KeyA ? 1 : 0);
+            const dir = (P.fin > 0 || P.sm === 1 || P.ln > 0 || P.lb > 0 || P.fs > 0 || P.yk > 0 || P.gu > 0 || P.sgp > 0 || P.mount || P.ldLock || P.sqSl > 0 || ddLock()) ? 0 : (keys.ArrowRight || keys.KeyD ? 1 : 0) - (keys.ArrowLeft || keys.KeyA ? 1 : 0);
             const run = keys.ShiftLeft || keys.ShiftRight;
             const max0 = run ? 520 : 190, max = mtLimitSpeed(max0, dir, run);
             const grounded = P.z >= 0;
@@ -1967,6 +1967,7 @@
             if (Q === PL && swim.on) { const sp = swimPose(); if (sp) return sp }
             if (Q === PL && TH_CL.on && TH_CL.pose) return TH_CL.pose;
             if (Q === PL && Q.pu > 0) return puPose(Q);
+            if (Q === PL && DD.g.on && DD.g.mode === 'foot') { const dp = ddFootPose(Q); if (dp) return dp; }
             if (Q === PL && Q.mSl > 0 && Q.mount === 2) return mSlPose(Q);
             if (Q === PL && Q.mpk > 0 && Q.mount === 2) return mpkPose(Q);
             if (Q === PL && Q.stc > 0) return Q.stcM >= 2 ? Q.stcPose : null;
@@ -3230,6 +3231,10 @@
                 }
                 if (P === PL && P.mpk > 0 && i === 0) {
                     const o = mpkArm(sh, F, S);
+                    if (o && o[2] > .001) { ang += wrapA(o[0] - ang) * o[2]; flex = flex * (1 - o[2]) + o[1] * o[2]; }
+                }
+                if (P === PL && i === 0 && DD.g.on) {
+                    const o = ddArm(sh, F, S);
                     if (o && o[2] > .001) { ang += wrapA(o[0] - ang) * o[2]; flex = flex * (1 - o[2]) + o[1] * o[2]; }
                 }
                 if (isGrabbed) {
@@ -8966,7 +8971,7 @@
 
 
         function drawReins(F) {
-            const A = P.armPts && P.armPts[((MPA() && MP.dis) || P.mSl > 0 || P.mpk > 0) ? 1 : 0]; if (!A || !HRS.muz) return;
+            const A = P.armPts && P.armPts[((MPA() && MP.dis) || P.mSl > 0 || P.mpk > 0 || DD.g.on) ? 1 : 0]; if (!A || !HRS.muz) return;
             const w = A[1];
             const mx = HRS.muzS * HORSE_W, my = HRS.muz[1] * HORSE_H + HRS.z / CSc();
             ctx.save(); ctx.strokeStyle = '#111'; ctx.lineWidth = 1.8; ctx.lineCap = 'round';
@@ -15466,6 +15471,7 @@
         }
         function pressPickup() {
             if (P.mpk > 0) return;
+            if (ddPress()) return;
             if (P.mount === 2) { pressMountedPickup(); return; }
             if (puBlocked()) return;
             const S = CSc();
@@ -15687,6 +15693,8 @@
                 if (ok(k.x)) c.push({ kind: 'knife', ref: g, x: k.x, h: k.h, type: 'knife' });
             }
             if (SGG.on && !SGG.air && !SGG.flying && !P.sg && ok(SGG.x)) c.push({ kind: 'sg', ref: SGG, x: SGG.x, h: Math.max(4, -SGG.y / S), type: 'shotgun' });   // x = the grip, not the barrel tip
+            if (DD.init && !DD.g.on) { const n = ddNeck(); if (ok(n.x)) c.push({ kind: 'duck', ref: DD.m, x: n.x, h: n.h, type: 'duck' }); }
+            const dk = c.find(t => t.kind === 'duck'); if (dk) return dk;    // the mother wins over loose items
             let best = null, bd = 1e9;
             for (const t of c) { const d = Math.abs(t.x - P.x); if (d < bd) { bd = d; best = t; } }
             return best;
@@ -15738,6 +15746,7 @@
             let held;
             if (t.kind === 'item') { const i = groundItems.indexOf(t.ref); if (i >= 0) groundItems.splice(i, 1); held = t.ref; }
             else if (t.kind === 'knife') { const i = groundKnives.indexOf(t.ref); if (i >= 0) groundKnives.splice(i, 1); held = { type: 'knife', seed: Math.random() * 99 }; }
+            else if (t.kind === 'duck') { held = null; ddHoldBegin(); }
             else { SGG.on = 0; held = { type: 'shotgun', seed: 1 }; }
             P.puHeld = held;
             burst(t.x, -3, 6, 130, P.face); shake = Math.max(shake, 2.5);
@@ -15755,9 +15764,10 @@
 
             if (!P.mpkG) {
                 // the item must still be there
-                const alive = t0.kind === 'item' ? groundItems.indexOf(t0.ref) >= 0 : t0.kind === 'knife' ? groundKnives.indexOf(t0.ref) >= 0 : (SGG.on && !SGG.air && !SGG.flying);
+                const alive = t0.kind === 'item' ? groundItems.indexOf(t0.ref) >= 0 : t0.kind === 'knife' ? groundKnives.indexOf(t0.ref) >= 0 : t0.kind === 'duck' ? DD.init : (SGG.on && !SGG.air && !SGG.flying);
                 if (!alive) P.mpkMiss = 1;
                 if (t0.kind === 'sg') t0.x = SGG.x;
+                if (t0.kind === 'duck') t0.x = ddNeck().x;
                 const d = (t0.x - P.x) / S * sw;                      // distance to the item on the lean side (negative = already behind us)
                 P.mpkLs += (mpkSolve(Math.max(0, d), t0.h, hipY) - P.mpkLs) * Math.min(1, dt * 10);
                 if (!P.mpkMiss) {
@@ -15846,8 +15856,8 @@
         }
 
         // ================= DOMESTIC DUCKS (white, upright, near the stilt house) =================
-        const DD_X0 = STH_WX + 470 * STH_SC;      // west end of their yard (world x). Edit to move them.
-        const DD_X1 = STH_WX + 650 * STH_SC;      // east end of their yard
+        let DD_X0 = STH_WX + 470 * STH_SC;      // west end of their yard (world x). Edit to move them.
+        let DD_X1 = STH_WX + 650 * STH_SC;      // east end of their yard
         const DD_N = 4;                           // number of ducklings
         const DD_SIZE = 1.5;                      // overall size multiplier
         const DD = { init: false, m: null, k: [], trail: [], tt: 0, clock: 0, dir: 1 };
@@ -15902,6 +15912,7 @@
 
         function ddKidAI(d, dt, S, m) {
             const R = Math.random, sc = S * DD_SIZE;
+            if (DD.g.on) { ddKidReact(d, dt, S, m); return; }
             const sx = ddTrailAt(DD.clock - d.delay);
             let tx = (sx === null ? m.x : sx) - (Math.sign(DD.dir) || 1) * (d.gap * sc + Math.sin(DD.clock * d.gw + d.gph) * 13);
             tx = clampN(tx, DD_X0 - 60, DD_X1 + 60);
@@ -15919,7 +15930,7 @@
         function ddMove(a, dt, S) {
             const want = a.gx - a.x; let v = clampN(want * 2.4, -a.maxV, a.maxV); if (Math.abs(want) < 3) v = 0;
             a.vx += (v - a.vx) * Math.min(1, dt * 5);
-            a.x = clampN(a.x + a.vx * dt, DD_X0 - 80, DD_X1 + 80);
+            a.x += a.vx * dt;
             if (Math.abs(a.vx) > 7) a.face = Math.sign(a.vx);
             a.fv += clampN(a.face - a.fv, -dt * 6, dt * 6);
             a.ph += Math.abs(a.vx) * dt / (28 * S * DD_SIZE * a.s) * 6.283;
@@ -15927,6 +15938,7 @@
 
         function ddAnim(a, dt, S, now) {
             const R = Math.random, walking = Math.abs(a.vx) > 4, sc = S * DD_SIZE * a.s;
+            if (!DD.g.on) { a.up = (a.up || 0) * Math.max(0, 1 - dt * 5); a.bn = (a.bn || 0) * Math.max(0, 1 - dt * 8); }
             a.hd += (a.hdT - a.hd) * Math.min(1, dt * 7);
             const dw = (a.peck > 0 && Math.sin(a.peck * 9) > 0) ? 1 : 0;
             a.dipPrev = a.dip; a.dip += (dw - a.dip) * Math.min(1, dt * 9);
@@ -15947,14 +15959,183 @@
         function ddTick(dt) {
             if (!(dt > 0)) return;
             if (!DD.init) ddInit();
-            const S = CSc(), now = performance.now() / 1000, m = DD.m;
+            const S = CSc(), now = performance.now() / 1000, m = DD.m, g = DD.g;
             DD.clock += dt;
             DD.dir += (m.face - DD.dir) * Math.min(1, dt * .9);
-            ddMotherAI(m, dt, S); ddMove(m, dt, S);
+            const pre = !g.on && P.mpk > 0 && P.mpkT && P.mpkT.kind === 'duck' && !P.mpkG;   // horseback: she notices you while you reach
+            if (g.on) ddGrabTick(dt);
+            else if (pre) {
+                m.gx = m.x; m.maxV = 0; m.peck = 0; m.face = Math.sign(P.x - m.x) || m.face; m.hdT = 1;
+                m.nkx = (m.nkx || 0) + (.8 - (m.nkx || 0)) * Math.min(1, dt * 6); ddMove(m, dt, S);
+            } else { ddMotherAI(m, dt, S); ddMove(m, dt, S); m.nkx = (m.nkx || 0) * Math.max(0, 1 - dt * 5) }
             DD.tt += dt; if (DD.tt >= .033) { DD.tt = 0; DD.trail.push({ t: DD.clock, x: m.x }) }
             while (DD.trail.length > 2 && DD.trail[0].t < DD.clock - 10) DD.trail.shift();
             for (const d of DD.k) { ddKidAI(d, dt, S, m); ddMove(d, dt, S) }
             for (const a of [m].concat(DD.k)) ddAnim(a, dt, S, now);
+            if (g.on && g.ph === 'recover') {                 // shakes her feathers
+                const k = Math.max(0, 1 - g.rc / .55);
+                m.tilt = Math.sin(now * 40) * .09 * k; m.flap = .6 * k; m.tail = Math.sin(now * 30) * .3 * k;
+            }
+        }
+
+        // ================= DUCK GRAB (T on the mother duck) =================
+        const DD_NECK = [26, -50];          // grab point on her neck (duck units, feet = 0,0)
+        const DD_GRAB_R = 150;              // on-foot reach (character units)
+        DD.g = { on: false, ph: '', t: 0, rt: 0, rc: 0, mode: 'foot', aw: 0, air: 0, ox: 0, oy: 0, oy0: 0, rx: 0, gnx: 0, ax: 0, ay: 0, sw: 0, swv: 0, swung: false, landed: false };
+
+        function ddNeck() {
+            const m = DD.m, sc = CSc() * DD_SIZE, F = Math.abs(m.fv) < .15 ? .15 * (Math.sign(m.fv) || 1) : m.fv;
+            return { x: m.x + F * DD_NECK[0] * sc, h: -DD_NECK[1] * DD_SIZE, sc, F };
+        }
+        function ddToChar(wx, wy) { const S = CSc(); return [(wx - P.x) / S, (wy + (P.dh || 0) + (P.mh || 0)) / S] }
+        function ddHand() {                                   // where the fist is closed, in duck-draw space
+            const A = P.armPts && P.armPts[0]; if (!A) return null;
+            const S = CSc(), el = A[0], wr = A[1]; let dx = wr[0] - el[0], dy = wr[1] - el[1]; const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
+            return [P.x + (wr[0] + dx * 11) * S, (wr[1] + dy * 11) * S - (P.dh || 0) - (P.mh || 0)];
+        }
+        function ddLock() { const g = DD.g; return g.on && g.mode === 'foot' && (g.ph === 'grab' || g.ph === 'release') }
+
+        function ddBegin(mode, t0) {
+            const g = DD.g, m = DD.m, sc = CSc() * DD_SIZE;
+            if (mode === 'foot') m.face = Math.sign(P.x - m.x) || m.face;       // she notices you and turns
+            m.peck = 0; m.st = 'idle'; m.t = 0; m.dip = 0;
+            Object.assign(g, {
+                on: true, ph: 'grab', t: t0, rt: 0, rc: 0, mode, aw: 0, air: 0, ox: m.x, oy: 0, gnx: m.x + m.face * DD_NECK[0] * sc,
+                ax: m.x + m.face * DD_NECK[0] * sc, ay: DD_NECK[1] * sc, sw: 0, swv: 0, swung: false, landed: false
+            });
+        }
+        function ddHoldBegin() { ddBegin('mount', .3) }       // called by mpkGrab when the fist reaches her neck
+
+        function ddPress() {                                  // called first thing in pressPickup()
+            const g = DD.g;
+            if (g.on) { if (g.ph === 'held') ddBeginRelease(); return true }
+            if (!DD.init || P.mount || puBlocked()) return false;
+            const n = ddNeck(), S = CSc();
+            if (Math.abs(n.x - P.x) > DD_GRAB_R * S) return false;
+            if (P.skid) endSkid(); P.skidK = 0;
+            P.face = n.x >= P.x ? 1 : -1; P.idle = 0; P.fid = 0; P.abuf = 0; P.jbuf = 0; P.grabbed = null; P.clast = 0;
+            ddBegin('foot', 0);
+            return true;
+        }
+        function ddBeginRelease() {
+            const g = DD.g, m = DD.m; if (!g.on || g.ph === 'release' || g.ph === 'recover') return;
+            g.ph = 'release'; g.rt = 0; g.oy0 = g.oy; g.rx = m.x; g.landed = false;
+            DD.k.slice().sort((a, b) => Math.abs(a.x - m.x) - Math.abs(b.x - m.x)).forEach((d, i) => d.rk = i);   // nearest duckling goes first
+        }
+        function ddEnd() {
+            const g = DD.g, m = DD.m; g.on = false; g.ph = '';
+            Object.assign(m, { air: 0, flap: 0, swayR: 0, nb: 0, nkx: 0, tilt: 0 });
+            if (inPond(m.x, 80)) m.x = POND_X - POND_RX - 140;
+            const c = (DD_X0 + DD_X1) / 2, w = (DD_X1 - DD_X0) / 2;
+            if (Math.abs(m.x - c) > w + 30) { DD_X0 = m.x - w; DD_X1 = m.x + w }          // the family lives wherever she was put down
+            m.st = 'idle'; m.t = 0; m.tt = 1.5; m.gx = m.x; m.hdT = 1;
+            DD.trail.length = 0; DD.trail.push({ t: DD.clock, x: m.x });
+        }
+
+        // ---- on-foot crouch + lean (reach down to the neck, rise as she lifts) ----
+        function ddSolveLean(dx, h, hipYa, hipX) {
+            for (let L = .15; L <= 1.45; L += .03) { const shx = hipX + 87 * Math.sin(L), shy = hipYa - 87 * Math.cos(L); if (Math.hypot(dx - shx, -h - shy) <= 112) return L }
+            return 1.45;
+        }
+        function ddFootPose(Q) {
+            const g = DD.g, S = CSc(), F = Q.face; let comp = 0;
+            if (g.ph === 'grab') comp = g.t < .4 ? sm(g.t / .3) : 1 - sm((g.t - .4) / .4);
+            else if (g.ph === 'release') comp = g.rt < .45 ? sm(g.rt / .35) : 1 - sm((g.rt - .45) / .3);
+            if (comp < .002) return null;
+            const dx = Math.max(6, (g.ax - Q.x) * F / S), h = -(g.ay + (P.dh || 0) + (P.mh || 0)) / S;
+            const hipX = -4 * comp, hipYa = -169 + 58 * comp, L = ddSolveLean(dx, h, -169 + 58, -4) * comp;
+            return {
+                w: clamp01(comp * 4), a0: .08, f0: 0, a1: lerp(.08, -.8, comp), f1: lerp(0, .3, comp), lean: L, hipX, hipY: 0, hipAbs: hipYa,
+                arch: .02 + .06 * comp, hx: 2 + 6 * comp, hy: 2 + 5 * comp, l0: [24 - hipX, 0, 0], l1: [-18 - hipX, 0, 0],
+                kneeFull: true, st: STEPS[0], sw: 0, ik: 0
+            };
+        }
+
+        // ---- grabbing arm (works on foot and on the horse): reach -> grip -> lift -> hold -> follow her down ----
+        function ddArm(sh, F, S) {
+            const g = DD.g; if (!g.on || g.ph === 'recover') return null;
+            const t = g.t, now = performance.now() / 1000; let T, w = 1;
+            if (g.ph === 'release') { T = ddToChar(g.ax, g.ay); w = 1 - sm((g.rt - .4) / .3) }
+            else {
+                const Hh = [sh[0] + F * 58 + Math.sin(now * 2.3) * 2, sh[1] + 40 + Math.sin(now * 3.1) * 2];
+                const N = ddToChar(g.gnx, DD_NECK[1] * S * DD_SIZE), u = g.ph === 'held' ? 1 : sm((t - .4) / .3);
+                T = [lerp(N[0], Hh[0], u), lerp(N[1], Hh[1], u)];
+                w = g.mode === 'mount' ? 1 : sm(t / .12);
+            }
+            const [a, f] = ikTo(sh, T[0], T[1], F);
+            return [a, f, w];
+        }
+
+        // ---- mother: attach to the hand, lift, sway, lower, shake ----
+        function ddGrabTick(dt) {
+            const g = DD.g, m = DD.m, S = CSc(), sc = S * DD_SIZE, now = performance.now() / 1000;
+            m.vx = 0; m.gx = m.x; m.maxV = 0; m.fv += clampN(m.face - m.fv, -dt * 6, dt * 6);
+            const F = Math.abs(m.fv) < .15 ? .15 * (Math.sign(m.fv) || 1) : m.fv, sg = Math.sign(F);
+            if ((g.ph === 'grab' || g.ph === 'held') && ((g.mode === 'foot' && (P.mount || swim.on)) || (g.mode === 'mount' && P.mount !== 2))) ddBeginRelease();
+
+            if (g.ph === 'grab' || g.ph === 'held') {
+                g.t += dt;
+                const hand = ddHand();
+                g.aw = g.ph === 'held' ? 1 : sm((g.t - .26) / .14);
+                if (hand && g.aw > 0) { m.x = lerp(g.ox, hand[0] - F * DD_NECK[0] * sc, g.aw); g.oy = lerp(0, hand[1] - DD_NECK[1] * sc, g.aw) }
+                g.air = g.ph === 'held' ? 1 : sm((g.t - .38) / .35);
+                if (!g.swung && g.t >= .45) { g.swung = true; g.swv += 1.8 * sg }          // jolt as she leaves the ground
+                if (g.ph === 'grab' && g.t >= .8) g.ph = 'held';
+            } else {
+                g.rt += dt;
+                if (g.ph === 'release') {
+                    const u = sm(g.rt / .55);
+                    g.oy = lerp(g.oy0, 0, u); g.air = 1 - u; m.x = g.rx;
+                    if (g.rt >= .55 && !g.landed) {                                        // feet touch down
+                        g.landed = true; g.ph = 'recover'; g.rc = 0; g.oy = 0; g.air = 0; shake = Math.max(shake, 1.5);
+                        for (let i = 0; i < 4; i++) flecks.push({ x: m.x + (Math.random() - .5) * 30, y: -2, vx: (Math.random() - .5) * 90, vy: -(20 + Math.random() * 50), r: 1 + Math.random(), t: 0, life: .3 });
+                        const cx = DD.k.reduce((s, d) => s + d.x, 0) / Math.max(1, DD.k.length);
+                        m.face = Math.sign(cx - m.x) || m.face;                            // looks straight at her ducklings
+                    }
+                } else { g.rc += dt; g.oy = 0; g.air = 0; if (g.rc >= .75) { ddEnd(); return } }
+            }
+            // pendulum sway
+            const swT = clampN(P.vx / 800, -.45, .45) * (g.ph === 'held' ? 1 : 0) + Math.sin(now * 1.9) * .05;
+            g.swv += (-55 * (g.sw - swT) - 5 * g.swv) * dt; g.sw += g.swv * dt;
+            g.ax = m.x + F * DD_NECK[0] * sc; g.ay = g.oy + DD_NECK[1] * sc;
+            // pose parameters read by ddMotherShape
+            const air = g.air, nT = g.ph === 'grab' ? .8 : g.ph === 'held' ? .5 : g.ph === 'release' ? .3 * air : 0;
+            m.nkx = (m.nkx || 0) + (nT - (m.nkx || 0)) * Math.min(1, dt * 8);
+            m.air = air; m.swayR = sg * g.sw * air;
+            m.nb = clampN(-g.sw * sg * 1.6, -.5, .5) * air + Math.sin(now * 3.1) * .05 * air;
+            m.flap = g.ph === 'release' ? air * .7 : air * (.4 + .6 * Math.exp(-Math.max(0, g.t - .5) * 1.4));
+            m.dip = 0; m.hdT = 1; m.peck = 0;
+        }
+
+        // ---- ducklings: stop, cluster, look up, bounce; after release the nearest one goes first ----
+        function ddKidReact(d, dt, S, m) {
+            const g = DD.g, sc = S * DD_SIZE, now = performance.now() / 1000, active = g.ph === 'grab' || g.ph === 'held';
+            if (active) {
+                const n = DD.k.length, slot = (d.i - (n - 1) / 2) * 15 * sc;
+                let tx = g.ox + slot;
+                if ((d.i === 1 || d.i === 3) && g.t > .4) tx += Math.sign(P.x - g.ox) * Math.min(30 * sc, Math.abs(P.x - g.ox) * .5);   // two brave ones edge toward the player
+                d.gx = tx; d.maxV = 30 * sc; d.hdT = 1; d.peck = 0;
+                if (Math.abs(g.ax - d.x) > 5) d.face = Math.sign(g.ax - d.x);
+                d.up = (d.up || 0) + (sm((g.t - .15) / .3) - (d.up || 0)) * Math.min(1, dt * 7);
+                d.bn = (d.bn || 0) + (Math.abs(Math.sin(now * 9 + d.seed * 2)) * 2.4 * sm((g.t - .3) / .2) - (d.bn || 0)) * Math.min(1, dt * 10);
+            } else {
+                d.up = (d.up || 0) * Math.max(0, 1 - dt * 4); d.bn = (d.bn || 0) * Math.max(0, 1 - dt * 8);
+                if (g.rt > .22 + (d.rk || 0) * .22) {
+                    const F = Math.sign(m.fv) || 1;
+                    d.gx = m.x - F * (14 + (d.rk || 0) * 13) * sc * .9;
+                    d.maxV = 64 * sc * d.spd * (Math.abs(d.gx - d.x) > 100 * sc ? 1.6 : 1);
+                    d.face = Math.sign(d.gx - d.x) || d.face;
+                } else { d.gx = d.x; d.maxV = 0; d.face = Math.sign(m.x - d.x) || d.face }
+            }
+        }
+
+        function drawHeldDuck(gy) {                           // late layer so she is in front of the horse and behind the fist
+            const g = DD.g; if (!g.on || !DD.init) return;
+            const S = CSc(), sc = S * DD_SIZE, m = DD.m, now = performance.now() / 1000;
+            const F = Math.abs(m.fv) < .15 ? .15 * (Math.sign(m.fv) || 1) : m.fv, sx = m.x - P.x + W / 2;
+            if (Math.abs(sx - W / 2) > W / 2 + 300) return;
+            ctx.save(); ctx.globalAlpha = .22 * (1 - .35 * g.air); ctx.fillStyle = '#111'; ctx.beginPath(); ctx.ellipse(sx - F * 2 * sc, gy + 5, 30 * sc * (1 - .25 * g.air), 3 * sc, 0, 0, 7); ctx.fill(); ctx.restore();
+            ctx.save(); ctx.translate(sx, gy + 4 + g.oy); ctx.scale(sc * F, sc); ddShape(m, now); ctx.restore();
         }
 
         // ADULT WHITE DOMESTIC DUCK, traced from the reference drawing.
@@ -15969,13 +16150,16 @@
             ctx.lineJoin = 'round'; ctx.lineCap = 'round';
 
             // ground shadow
-            ctx.save(); ctx.globalAlpha *= .22; ctx.fillStyle = INK; ctx.beginPath(); ctx.ellipse(-1, 1, 30, 3, 0, 0, 7); ctx.fill(); ctx.restore();
+            if (!(a.air > .01)) { ctx.save(); ctx.globalAlpha *= .22; ctx.fillStyle = INK; ctx.beginPath(); ctx.ellipse(-1, 1, 30, 3, 0, 0, 7); ctx.fill(); ctx.restore(); }
+            const air = a.air || 0;
+            if (air > .001 || a.swayR) { ctx.translate(26, -50); ctx.rotate(-.72 * air + (a.swayR || 0)); ctx.translate(-26, 50); }   // hangs from the neck
 
             // ---- short orange legs + webbed feet ----
             for (let i = 0; i < 2; i++) {
                 const p = a.ph + i * Math.PI, hx = i ? -7.5 : 7.8;
                 const st = walking ? Math.sin(p) : 0, lift = walking ? Math.max(0, Math.cos(p)) * 5 : 0;
-                const fx = hx + st * 5.5, fy = -lift;
+                let fx = hx + st * 5.5, fy = -lift;
+                if (air > 0) { fx = lerp(fx, hx * .75 - 4 + Math.sin(now * 6.5 + i * 2.3) * 4.5, air); fy = lerp(fy, 4 + Math.cos(now * 5.3 + i * 1.9) * 2.5, air); }
                 ctx.beginPath(); ctx.moveTo(hx, -13 - bob); ctx.lineTo(fx, fy - 1.5);
                 ctx.strokeStyle = INK; ctx.lineWidth = 5.4; ctx.stroke(); ctx.strokeStyle = LG; ctx.lineWidth = 3.1; ctx.stroke();
                 ctx.beginPath(); ctx.moveTo(fx - 3, fy - 3.2); ctx.quadraticCurveTo(fx + 6, fy - 4.4, fx + 15, fy - 1.2);
@@ -16006,7 +16190,8 @@
             ctx.stroke(); ctx.globalAlpha /= .55;
 
             // BIG FOLDED WING (teardrop, tip pointing back, feather layers)
-            ctx.save(); ctx.translate(905, 505); ctx.rotate(a.wing * .45); ctx.translate(-905, -505);
+            const fl = a.flap || 0, fw = a.wing * .45 + fl * (.5 + .4 * Math.sin(now * 13 + a.seed));
+            ctx.save(); ctx.translate(905, 505); ctx.rotate(fw); ctx.scale(1 + .18 * fl, 1 + .18 * fl); ctx.translate(-905, -505);
             ctx.beginPath(); ctx.moveTo(392, 598);
             ctx.bezierCurveTo(470, 672, 640, 722, 790, 678); ctx.bezierCurveTo(890, 648, 955, 588, 946, 520);
             ctx.bezierCurveTo(944, 495, 925, 480, 900, 474); ctx.bezierCurveTo(740, 455, 560, 500, 430, 562); ctx.closePath();
@@ -16021,8 +16206,8 @@
 
             // ---- NECK + HEAD ----
             const pk = a.dip, bn = walking ? Math.sin(a.ph * 2) * 10 : Math.sin(now * 1.3 + a.seed) * 7;
-            const hx = lerp(1060, 1322, pk) + bn, hy = lerp(110, 830, pk) + (walking ? Math.cos(a.ph * 2) * 8 : 0);
-            const hr = .1 + pk * 1.1 + Math.sin(now * 1.1 + a.seed) * .04, cs = Math.cos(hr), sn = Math.sin(hr);
+            const nx_ = a.nkx || 0, hx = lerp(1060, 1322, pk) + bn + nx_ * 16 + (a.nb || 0) * 70, hy = lerp(110, 830, pk) + (walking ? Math.cos(a.ph * 2) * 8 : 0) - nx_ * 50 + Math.abs(a.nb || 0) * 10;
+            const hr = .1 + pk * 1.1 + Math.sin(now * 1.1 + a.seed) * .04 + (a.nb || 0) * .5, cs = Math.cos(hr), sn = Math.sin(hr);
             const HL = (lx, ly) => [hx + lx * cs - ly * sn, hy + lx * sn + ly * cs];
             const Be = HL(-88, 62), Fe = HL(22, 72);                                   // where the neck meets the back / throat of the head
             const Q1 = [lerp(962, 1109, pk), lerp(350, 325, pk)], Q2 = [lerp(940, 1360, pk), lerp(250, 570, pk)];   // back edge of neck
@@ -16124,13 +16309,13 @@
             // neck + head
             const b = [11, -41], pk = a.dip, bn = walking ? Math.sin(a.ph * 2) * 1.4 : Math.sin(now * 1.3 + a.seed) * .8;
             const hI = kid ? [18, -62] : [16, -76], cI = kid ? [14, -52] : [8, -58], hP = [34, -12], cP = [26, -50];
-            const hx = lerp(hI[0], hP[0], pk) + bn, hy = lerp(hI[1], hP[1], pk) + (walking ? Math.cos(a.ph * 2) * .8 : 0);
+            const hx = lerp(hI[0], hP[0], pk) + bn + (a.up || 0) * 3, hy = lerp(hI[1], hP[1], pk) + (walking ? Math.cos(a.ph * 2) * .8 : 0) - (a.up || 0) * 3;
             const cx = lerp(cI[0], cP[0], pk), cy = lerp(cI[1], cP[1], pk), nw = kid ? 6.4 : 6.6;
             ctx.beginPath(); ctx.moveTo(b[0], b[1]); ctx.quadraticCurveTo(cx, cy, hx, hy);
             ctx.strokeStyle = INK; ctx.lineWidth = nw + 3; ctx.stroke(); ctx.strokeStyle = WH; ctx.lineWidth = nw; ctx.stroke();
 
             const hr = kid ? 7.6 : 6.4, hdS = Math.abs(a.hd) < .2 ? .2 * (Math.sign(a.hd) || 1) : a.hd;
-            ctx.save(); ctx.translate(hx, hy); ctx.scale(hdS, 1); ctx.rotate(pk * 1.25 + Math.sin(now * 1.1 + a.seed) * .05);
+            ctx.save(); ctx.translate(hx, hy); ctx.scale(hdS, 1); ctx.rotate(pk * 1.25 + Math.sin(now * 1.1 + a.seed) * .05 - (a.up || 0) * .6);
             ctx.beginPath(); ctx.arc(0, 0, hr, 0, 7); ctx.fillStyle = WH; ctx.fill(); ctx.strokeStyle = INK; ctx.lineWidth = lw; ctx.stroke();
             ctx.beginPath(); ctx.moveTo(hr * .5, -2.4);                                                 // beak
             ctx.bezierCurveTo(hr + 5, -2.8, hr + (kid ? 8 : 11), -1.6, hr + (kid ? 8.5 : 12), .4);
@@ -16150,12 +16335,12 @@
         function drawDomesticDucks(gy) {
             if (!DD.init) return;
             const S = CSc(), now = performance.now() / 1000;
-            const list = [DD.m].concat(DD.k).filter(a => Math.abs(a.x - P.x) < W / 2 + 200);
-            list.sort((p, q) => (p.mother ? 1 : 0) - (q.mother ? 1 : 0));          // ducklings first, mother in front
+            const list = [DD.m].concat(DD.k).filter(a => Math.abs(a.x - P.x) < W / 2 + 200 && !(a === DD.m && DD.g.on));
+            list.sort((p, q) => (p.mother ? 1 : 0) - (q.mother ? 1 : 0));
             for (const a of list) {
                 const sc = S * DD_SIZE * a.s, F = Math.abs(a.fv) < .15 ? .15 * (Math.sign(a.fv) || 1) : a.fv;
                 const sx = a.x - P.x + W / 2, lane = a.mother ? 0 : (a.i % 2 ? -2 * sc : 0);
-                ctx.save(); ctx.translate(sx, gy + 4 + lane); ctx.scale(sc * F, sc); ddShape(a, now); ctx.restore();
+                ctx.save(); ctx.translate(sx, gy + 4 + lane - (a.bn || 0) * sc); ctx.scale(sc * F, sc); ddShape(a, now); ctx.restore();
             }
         }
 
@@ -16238,6 +16423,7 @@
             drawCroc(gy); drawCrocGore(gy);
             drawBGoreAir(gy);
             drawHorse(gy);
+            drawHeldDuck(gy);
             beginSwimDraw(gy);
             drawChar(W / 2, gy - P.dh - P.mh, P);
             endSwimDraw();
