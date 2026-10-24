@@ -341,7 +341,7 @@
         const groundKnives = [];
         const TOSS_T = .95;
         function pressK() {
-            if (P.mount) { banner.t = .6; banner.text = 'DISMOUNT FIRST (H)'; return }
+            if (P.mount && P.mount !== 2) return;   // knife can be drawn / put away while riding
             if (P.thw > 0 || P.fin > 0 || P.pk > 0) return;
             if (P.gun || P.gs === 2 || P.sg) { banner.t = .6; banner.text = 'HOLSTER GUN FIRST (G)'; return }
             P.idle = 0; P.fid = 0;
@@ -6879,7 +6879,6 @@
             if (HRS.hDead) { banner.t = .8; banner.text = 'THE HORSE IS DEAD'; return }
             if (P.sm === 1 || P.sm === 3) return;   // lighting up / flicking: wait
             if (P.fin > 0 || P.cs > 0 || P.thw > 0 || P.tt > 0 || P.pk > 0 || P.fs > 0 || P.gu > 0 || P.yk > 0 || P.stbk > 0 || P.sgp > 0 || P.gs === 2 || P.z < 0 || P.ln > 0 || P.lb > 0) return;
-            if (P.kn !== 0 || P.kt > .2) { banner.t = .7; banner.text = 'PUT THE KNIFE AWAY (K)'; return }
             if (Math.abs(HRS.vx) > 60) { banner.t = .8; banner.text = 'WAIT FOR THE HORSE TO STOP'; return }
             const S = CSc();
             if (Math.abs(HRS.x - P.x) > HR_MOUNT_R * S) { banner.t = .8; banner.text = 'WALK TO THE HORSE'; return }
