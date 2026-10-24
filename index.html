@@ -1039,7 +1039,7 @@
                 flecks.push({ x, y, vx: Math.cos(a) * sp * .6 + dirv * sp * .5, vy: Math.sin(a) * sp * .8 - sp * .25, r: 1.5 + Math.random() * (2 + pow / 120), t: 0, life: .45 + Math.random() * .55 })
             }
         }
-        function respawn(n) {
+        function respawnFresh(n) {
             const side = Math.random() < .5 ? -1 : 1, x = P.x + side * (W / 2 + 150 + Math.random() * 250);
             Object.assign(n, { decap: 0, tfall: 0, kneelT: 0, pool: null, pulse: 0, stomachStabbed: false, stbStoP: null, stoDrag: 0, stabTh0: undefined, legHurt: 0, legGone: 0, crawl: 0, crawlDead: 0, crawlT: 0, crT: 0, cwK: 0, crDeadT: 0, lmK: 0, lgT: 0, lveins: null, stumpL: null, legW: null, lhDrip: 0, trailD: 0, hpK: 0, hCrack: 0, hCrackT: 0, headHits: 0, hsPart: 0, hcDrip: 0, dbl: 0, dbK: 0, hsDead: 0, hsT: 0, veins: null, int: null, gut: 0, headThud: 0, gutDead: false, gutK: 0, gutPop: 0, gutCut: 0, fkSnk: 0, fk: null, fkT: 0, fkK: 0, fkPend: false, stab: 0, kneelK: 0, fst: 0, fallT: 0, fallK: 0, thud: 0, x, home: x, goal: x, vx: 0, z: 0, vz: 0, hp: n.maxhp, hurt: 0, down: 0, rot: 0, dying: 0, dead: 0, bar: 0, tumble: 0, wait: 1.5, face: -side, fid: 0, fidK: 0, headCut: 0, headK: 0, cord: null, brainOut: 0 });
         }
@@ -1051,6 +1051,120 @@
             streaks.push({ x0: n.x - 80, x1: n.x + 80, off: 0, dy: 7, w: 18, live: false, t: .5, seed: Math.random() * 100 });
             streaks.push({ x0: n.x - 40, x1: n.x + 110, off: 0, dy: 12, w: 11, live: false, t: .5, seed: Math.random() * 100 });
             n.dead = 2.8; n.stab = 0; n.kneelK = 0; n.fst = 0; n.fallK = 0; n.fallT = 0; n.thud = 0; n.stab = 0; n.kneelK = 0; n.stab = 0; n.kneelK = 0; n.stab = 0; n.kneelK = 0; n.stab = 0; n.kneelK = 0; n.stab = 0; n.kneelK = 0; n.stab = 0; n.kneelK = 0; n.stab = 0; n.kneelK = 0; shake = Math.max(shake, 14); hitstop = Math.max(hitstop, .13);
+        }
+
+        // ================= CORPSES: bodies stay and slowly decay =================
+        const ROT_LIFE = 100;          // seconds until a body has fully decayed and sunk into the ground (raise = slower)
+        const CORPSES = [];
+
+        // leave a body behind (snapshot of the NPC) and let the NPC object be reused
+        function leaveBody(n, plain) {
+            const S = CSc(), dir = n.kdir || 1;
+            for (let i = knives.length - 1; i >= 0; i--) if (knives[i].st === n) { dropKnife(n.x + (n.face || 1) * 30 * S, -50 * S, knives[i].F, 0); knives.splice(i, 1); }
+            if (n.fk || n.fkPend) freeFootKnife(n);
+            if (P.grabbed === n) P.grabbed = null;
+            const c = Object.assign({}, n);
+            Object.assign(c, { isBody: 1, rotT: 0, dying: 0, dead: 0, bar: 0, hurt: 0, down: 0, vx: 0, vz: 0, z: 0, fid: 0, fidK: 0, wait: 1 });
+            if (plain) {
+                Object.assign(c, {
+                    corpse: 1, stab: 0, stomachStabbed: false, stbStoP: null, kneelK: 0, fst: 0, fallK: 0, fallT: 0, thud: 0, dbl: 0, dbK: 0,
+                    hpK: 0, lmK: 0, fkK: 0, fkT: 0, tumble: 0, amp: 0, lean: 0, skidK: 0, gut: 0, rot: dir * Math.PI / 2
+                });
+                burst(n.x + dir * 110 * S, -4, 8, 200, dir); shake = Math.max(shake, 3);
+            }
+            if (!c.pool) c.pool = bgStain(n.x + (plain ? dir : (n.face || 1)) * 60 * S, 30 * S, true);
+            CORPSES.push(c);
+            while (CORPSES.length > 14) CORPSES.shift();
+        }
+        function respawn(n) { leaveBody(n, false); respawnFresh(n); }   // used by the special deaths (gut, headshot, crawl, decap...)
+
+        function corpseTick(dt) {
+            const S = CSc(), R = Math.random;
+            for (let i = CORPSES.length - 1; i >= 0; i--) {
+                const c = CORPSES[i]; c.rotT += dt;
+                if (c.pool && c.rotT < 18) c.pool.gw = Math.min(110, c.pool.gw + dt * 6);       // pool spreads, then dries by itself
+                if (c.rotT < 5) {                                                                // still bleeding a little
+                    c.rdr = (c.rdr || 0) - dt;
+                    if (c.rdr <= 0) {
+                        c.rdr = .18 + R() * .25;
+                        bgDrop(c.x + ((c.corpse ? c.kdir : c.face) || 1) * R() * 140 * S, -6 * S, (R() - .5) * 20, 10, .9 + R() * 1.1);
+                    }
+                }
+                if (c.rotT >= ROT_LIFE) CORPSES.splice(i, 1);
+            }
+        }
+        function corpsesIn() { if (CORPSES.length) ENEMIES.unshift(...CORPSES); }       // so the existing gore drawers (guts, veins...) draw them too
+        function corpsesOut() { if (CORPSES.length) ENEMIES.splice(0, CORPSES.length); }
+
+        function drawBody(n, sx, gy) {
+            const S = CSc(), p = clamp01(n.rotT / ROT_LIFE), sink = 36 * S * sm((p - .84) / .16);
+            ctx.save(); ctx.beginPath(); ctx.rect(sx - 500, -3000, 1000, gy + 6 + 3000); ctx.clip();   // anything below the ground line is hidden
+            drawChar(sx, gy + sink, n);
+            drawDecay(n, sx, gy + sink, p, S);
+            ctx.restore();
+        }
+
+        function drawDecay(n, sx, gy, p, S) {
+            const now = performance.now() / 1000, sd = (n.home || 0) * .017 + 5.3;
+            const flat = !!(n.corpse || n.gutDead || n.hsDead || n.crawl), dir = flat ? (n.kdir || 1) : (n.face || 1);
+            const cx = sx + dir * (flat ? 122 : 50) * S, hl = (flat ? 146 : 120) * S, yc = gy + 4 - 10 * S, ry = 14 * S;
+            ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+
+            // 1. skin goes grey-green, then dark blotches
+            const tint = sm((p - .04) / .5);
+            if (tint > .01) {
+                ctx.fillStyle = 'rgb(110,128,84)'; ctx.globalAlpha = .32 * tint;
+                ctx.beginPath(); ctx.ellipse(cx, yc, hl, ry, 0, 0, 7); ctx.fill();
+                ctx.fillStyle = 'rgb(70,58,34)'; ctx.globalAlpha = .34 * sm((p - .22) / .5);
+                for (let i = 0; i < 7; i++) {
+                    ctx.beginPath();
+                    ctx.ellipse(cx + (hash(sd + i * 3.1) - .5) * 1.7 * hl, yc + (hash(sd + i * 5.3) - .5) * ry, (6 + hash(sd + i) * 12) * S, (3 + hash(sd + i * 2) * 4) * S, 0, 0, 7);
+                    ctx.fill();
+                }
+            }
+
+            // 2. ribs + spine show through (normal kills)
+            const bone = n.corpse ? sm((p - .45) / .35) : 0;
+            if (bone > .01) {
+                ctx.globalAlpha = .92 * bone;
+                const x0 = sx + dir * 150 * S;
+                const spine = () => { ctx.beginPath(); ctx.moveTo(x0 - dir * 8 * S, yc); ctx.lineTo(x0 + dir * 100 * S, yc); ctx.stroke(); };
+                ctx.strokeStyle = '#111'; ctx.lineWidth = 5; spine(); ctx.strokeStyle = '#efe9da'; ctx.lineWidth = 2.4; spine();
+                for (const [col, w] of [['#111', 4.4], ['#efe9da', 2]]) {
+                    ctx.strokeStyle = col; ctx.lineWidth = w;
+                    for (let j = 0; j < 6; j++) for (const side of [-1, 1]) {
+                        const x = x0 + dir * j * 17 * S;
+                        ctx.beginPath(); ctx.moveTo(x, yc); ctx.quadraticCurveTo(x + dir * 6 * S, yc + side * 12 * S, x - dir * 3 * S, yc + side * (15 - j * .6) * S); ctx.stroke();
+                    }
+                }
+            }
+
+            // 3. stink wisps
+            const st = sm((p - .15) / .3) * (1 - sm((p - .75) / .2));
+            if (st > .02) {
+                ctx.strokeStyle = 'rgb(90,110,60)'; ctx.lineWidth = 1.6;
+                for (let k = 0; k < 3; k++) {
+                    const ph = (now * .35 + k / 3 + hash(sd + k)) % 1, x0 = cx + (k - 1) * hl * .5;
+                    ctx.globalAlpha = .35 * st * Math.sin(Math.PI * ph); ctx.beginPath();
+                    for (let j = 0; j <= 10; j++) {
+                        const x = x0 + Math.sin(j * .9 + now * 2 + k * 2) * 4 * S, y = yc - 16 * S - ph * 50 * S - j * 4 * S;
+                        j ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+                    }
+                    ctx.stroke();
+                }
+            }
+
+            // 4. flies
+            const nf = Math.round(10 * sm((p - .04) / .3) * (1 - sm((p - .78) / .2)));
+            ctx.globalAlpha = 1; ctx.fillStyle = '#111'; ctx.strokeStyle = 'rgba(120,120,120,.6)'; ctx.lineWidth = .8;
+            for (let i = 0; i < nf; i++) {
+                const w = 1.4 + hash(sd + i * 1.9) * 1.8, t = now * w + hash(sd + i * 7.7) * 6.28;
+                const fx = cx + Math.cos(t * .8) * hl * (.25 + .6 * hash(sd + i * 4.1)) + Math.sin(now * 31 + i * 5) * 2.2;
+                const fy = yc - 12 * S - (.5 + .5 * Math.sin(t * 1.3)) * 34 * S + Math.sin(now * 43 + i * 3) * 2;
+                ctx.beginPath(); ctx.arc(fx, fy, 1.5, 0, 7); ctx.fill();
+                ctx.beginPath(); ctx.ellipse(fx, fy - 1.5, Math.sin(now * 70 + i) > 0 ? 2.6 : 1.2, .8, .4, 0, 7); ctx.stroke();
+            }
+            ctx.restore();
         }
 
         function startStep(n) {
@@ -1923,11 +2037,11 @@
                 if (n.dead > 0 || n.dying > 0) freeFootKnife(n);   // only death frees it now; no timer
             }
 
-            if (n.dead > 0) { n.dead -= dt; if (n.dead <= 0) respawn(n); return }
+            if (n.dead > 0) { n.dead -= dt; if (n.dead <= 0) respawnFresh(n); return }
             if (n.hsDead) n.hsT = (n.hsT || 0) + dt;
 
             if (n.decap) n.dying = 0;   // stray hits can't make the corpse topple stiff or explode
-            if (n.dying > 0) { n.dying -= dt; if (n.dying <= 0) { if (n.gutDead || n.hsDead || n.crawlDead) { respawn(n); return } killBurst(n); return } }
+            if (n.dying > 0) { n.dying -= dt; if (n.dying <= 0) { if (n.gutDead || n.hsDead || n.crawlDead) { respawn(n); return } leaveBody(n, true); respawnFresh(n); n.dead = 4; return } }
             if (n.bar > 0) n.bar -= dt; if (n.hurt > 0) n.hurt -= dt; if (n.down > 0) n.down -= dt;
             const isGrabbed = (P.grabbed === n && (P.cs >= 1 && P.cs <= 4 || (P.cs === 0 && P.clast >= 1 && P.clast <= 4)));
             if (isGrabbed) {
@@ -2132,6 +2246,7 @@
                 if (n.dead > 0) continue;
                 const sx = n.x - P.x + W / 2;
                 if (Math.abs(sx - W / 2) > W / 2 + 300) continue;
+                if (n.isBody) { drawBody(n, sx, gy); continue; }
                 drawChar(sx, gy, n);
                 if (n.bar > 0 && n.dying <= 0 && n.fst !== 2) {
                     ctx.save(); ctx.globalAlpha = Math.min(1, n.bar); ctx.strokeStyle = '#111'; ctx.fillStyle = '#111'; ctx.lineWidth = 2;
@@ -2246,7 +2361,7 @@
             const m = Math.min(1, lift / 20), pitch = m * .85 * (Math.atan2(uy, ux * F) - Math.PI / 2);
             ctx.save(); ctx.translate(fx + (ax + ux * 12 - fx) * m, fy + (ay + uy * 12 - fy) * m); ctx.scale(F * ((CUR.kneelK || 0) > .5 ? -1 : 1), 1);
             const pvx = 0; ctx.translate(pvx, 0);
-            ctx.rotate(pitch - F * ((CUR.gutDead || CUR.hsDead || CUR.crawl) ? (CUR.rot || 0) : 0) - (CUR === PL ? (PL.mtTilt || 0) * PL.mtW * (1 - m) : 0));
+            ctx.rotate(pitch - F * ((CUR.gutDead || CUR.hsDead || CUR.crawl || CUR.corpse) ? (CUR.rot || 0) : 0) - (CUR === PL ? (PL.mtTilt || 0) * PL.mtW * (1 - m) : 0));
             ctx.translate(-pvx, 0);
             ctx.fillStyle = '#111'; ctx.beginPath(); ctx.moveTo(-9, 0); ctx.quadraticCurveTo(-11, -12, -3, -15);
             ctx.quadraticCurveTo(8, -13, 18, -1); ctx.lineTo(18, 0); ctx.lineTo(-9, 0); ctx.closePath(); ctx.fill();
@@ -2742,8 +2857,8 @@
             const dbk = (P !== PL) ? sm(P.dbK || 0) : 0;   // doubled over, clutching his stomach
             const lmK = (P !== PL && P.legHurt && !P.legGone) ? sm(P.lmK || 0) : 0;   // limping with an exposed bone
             const hpK = (P !== PL && P.hCrack && !P.hsDead) ? sm(P.hpK || 0) : 0;   // clutching his cracked head
-            const gk = (P !== PL && P.gutDead) ? (P.gutK || 0) : ((P !== PL && (P.hsDead || P.crawl)) ? Math.min(1, Math.abs(P.rot || 0) / (Math.PI / 2)) : 0);   // headshot body: "flat" amount follows how far he has toppled
-            const gkv = (P !== PL && (P.hsDead || P.crawl)) ? 0 : gk * (1 - Math.min(1, Math.abs(P.rot || 0) / (Math.PI / 2)));   // no split for the headshot body
+            const gk = (P !== PL && P.gutDead) ? (P.gutK || 0) : ((P !== PL && (P.hsDead || P.crawl || P.corpse)) ? Math.min(1, Math.abs(P.rot || 0) / (Math.PI / 2)) : 0);   // headshot body: "flat" amount follows how far he has toppled
+            const gkv = (P !== PL && (P.hsDead || P.crawl || P.corpse)) ? 0 : gk * (1 - Math.min(1, Math.abs(P.rot || 0) / (Math.PI / 2)));   // no split for the headshot body
             let hl = 0;   // head lift: 0 = on the ground, 1 = raised looking at his guts
             if (P !== PL && P.gutDead) {
                 const lt = P.gutT || 0;
@@ -2816,12 +2931,12 @@
             ctx.save(); ctx.translate(cx, gy + 4); ctx.scale(S, S); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
             if (pain > 0) ctx.translate((Math.sin(now * 47) * 1.6 + Math.sin(now * 83)) * pain, Math.sin(now * 61) * 1.2 * pain - spasm * 3);
             const FLAT_DROP = 48;   // tune: bigger = body lies lower
-            const flatDrop = (P !== PL && P.crawl && !P.hsDead)
+            const flatDrop = (P !== PL && P.corpse) ? 14 * Math.min(1, Math.abs(P.rot || 0) / (Math.PI / 2)) : (P !== PL && P.crawl && !P.hsDead)
                 ? FLAT_DROP * Math.min(1, Math.abs(P.rot || 0) / (Math.PI / 2)) : 0;
             if (flatDrop) ctx.translate(0, flatDrop);
             if (P.rot) {
                 const pk = Math.min(1, -z / 60);
-                const py = (P !== PL && (P.gutDead || P.hsDead || P.crawl)) ? -24 : ((cb && cb.py !== undefined) ? cb.py : (-40 * (1 - pk) + (hipY - 30) * pk));
+                const py = (P !== PL && (P.gutDead || P.hsDead || P.crawl || P.corpse)) ? -24 : ((cb && cb.py !== undefined) ? cb.py : (-40 * (1 - pk) + (hipY - 30) * pk));
                 const px = (cb && cb.px !== undefined) ? cb.px : 0;
                 ctx.translate(px, py); ctx.rotate(P.rot + pain * Math.sin(now * 40) * .02 + spasm * .06 * Math.sin(now * 22)); ctx.translate(-px, -py);
             }
@@ -3345,6 +3460,7 @@
                 }
                 if (P.female) femaleHairFront(hd, F);
                 if (P.hCrack > 0) drawHeadCrack(hd, F, P, now);
+                if (P.corpse) { ctx.strokeStyle = P.dark ? PAPER : '#111'; ctx.lineWidth = 2.2; const ex_ = hd[0] + F * 11, ey_ = hd[1] - 3; ctx.beginPath(); ctx.moveTo(ex_ - 4, ey_ - 4); ctx.lineTo(ex_ + 4, ey_ + 4); ctx.moveTo(ex_ + 4, ey_ - 4); ctx.lineTo(ex_ - 4, ey_ + 4); ctx.stroke(); }
             }
             if (P === PL && P.sm) drawSmokeProps(F, hd, S, now);
             if (P === PL) drawLanternProps(F, S, now);
@@ -15586,7 +15702,7 @@
             let dt = dt0;
             if (hitstop > 0) { hitstop -= dt0; dt = 0 }
 
-            update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); sgTick(dt); sgGroundTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); waterFXTick(dt); brainTick(dt); hzTick(dt); gibTick(dt); boneTick(dt); weatherTick(dt); horseTick(dt); mpkTick(dt); birdTick(dt); fowlTick(dt); frogTick(dt); duckTick(dt); crocTick(dt); bgTick(dt); dayTick(dt0); fireflyTick(dt0); stExtrasTick(dt0);
+            update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); sgTick(dt); sgGroundTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); waterFXTick(dt); brainTick(dt); hzTick(dt); gibTick(dt); boneTick(dt); weatherTick(dt); horseTick(dt); mpkTick(dt); birdTick(dt); fowlTick(dt); frogTick(dt); duckTick(dt); crocTick(dt); bgTick(dt); corpseTick(dt); dayTick(dt0); fireflyTick(dt0); stExtrasTick(dt0);
             const hStop = MT_HORSE_STOP_X();
             const hGap = HRS.x - hStop;
             if (hGap < 350 && HRS.vx < 0) HRS.vx *= Math.max(0, 1 - dt * 6 * (1 - hGap / 350));
@@ -15635,7 +15751,7 @@
             drawButts(gy);
             drawGhosts(gy);
             drawSgProp(gy, false);
-            drawEnemies(gy);
+            corpsesIn(); drawEnemies(gy);
             drawGutFX(gy);
             drawIntestines(gy);
             drawCords(gy);
@@ -15643,7 +15759,7 @@
             drawBrainBits(gy);
             drawHzFx(gy);
             drawGibs(gy);
-            drawLegVeins(gy);
+            drawLegVeins(gy); corpsesOut();
             drawBones(gy);
             drawFootKnives(gy);
             drawKnives(gy);
