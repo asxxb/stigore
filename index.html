@@ -1041,7 +1041,7 @@
         }
         function respawn(n) {
             const side = Math.random() < .5 ? -1 : 1, x = P.x + side * (W / 2 + 150 + Math.random() * 250);
-            Object.assign(n, { decap: 0, pool: null, pulse: 0, stomachStabbed: false, stbStoP: null, stoDrag: 0, stabTh0: undefined, legHurt: 0, legGone: 0, crawl: 0, crawlDead: 0, crawlT: 0, crT: 0, cwK: 0, crDeadT: 0, lmK: 0, lgT: 0, lveins: null, stumpL: null, legW: null, lhDrip: 0, trailD: 0, hpK: 0, hCrack: 0, hCrackT: 0, headHits: 0, hsPart: 0, hcDrip: 0, dbl: 0, dbK: 0, hsDead: 0, hsT: 0, veins: null, int: null, gut: 0, headThud: 0, gutDead: false, gutK: 0, gutPop: 0, gutCut: 0, fkSnk: 0, fk: null, fkT: 0, fkK: 0, fkPend: false, stab: 0, kneelK: 0, fst: 0, fallT: 0, fallK: 0, thud: 0, x, home: x, goal: x, vx: 0, z: 0, vz: 0, hp: n.maxhp, hurt: 0, down: 0, rot: 0, dying: 0, dead: 0, bar: 0, tumble: 0, wait: 1.5, face: -side, fid: 0, fidK: 0, headCut: 0, headK: 0, cord: null, brainOut: 0 });
+            Object.assign(n, { decap: 0, tfall: 0, kneelT: 0, pool: null, pulse: 0, stomachStabbed: false, stbStoP: null, stoDrag: 0, stabTh0: undefined, legHurt: 0, legGone: 0, crawl: 0, crawlDead: 0, crawlT: 0, crT: 0, cwK: 0, crDeadT: 0, lmK: 0, lgT: 0, lveins: null, stumpL: null, legW: null, lhDrip: 0, trailD: 0, hpK: 0, hCrack: 0, hCrackT: 0, headHits: 0, hsPart: 0, hcDrip: 0, dbl: 0, dbK: 0, hsDead: 0, hsT: 0, veins: null, int: null, gut: 0, headThud: 0, gutDead: false, gutK: 0, gutPop: 0, gutCut: 0, fkSnk: 0, fk: null, fkT: 0, fkK: 0, fkPend: false, stab: 0, kneelK: 0, fst: 0, fallT: 0, fallK: 0, thud: 0, x, home: x, goal: x, vx: 0, z: 0, vz: 0, hp: n.maxhp, hurt: 0, down: 0, rot: 0, dying: 0, dead: 0, bar: 0, tumble: 0, wait: 1.5, face: -side, fid: 0, fidK: 0, headCut: 0, headK: 0, cord: null, brainOut: 0 });
         }
         function killBurst(n) {
             const S = CSc();
@@ -1979,7 +1979,27 @@
                 decapTick(n, dt, Sf);
                 if (n.fallT > 11) { respawn(n); return; }
             }
-            if (n.fst === 2 && !n.decap) {
+            // thrown-knife head stab: kneels in pain, after 10 s he collapses flat
+            if (n.stab && !n.stomachStabbed && !n.fst && !n.tfall && !n.decap && n.dying <= 0 && n.down <= 0 && n.z >= 0 && (n.kneelK || 0) > .6) n.kneelT = (n.kneelT || 0) + dt;
+            else if (!n.tfall) n.kneelT = 0;
+            if (n.kneelT > 10 && !n.tfall) { n.tfall = 1; n.fst = 2; n.fallT = 0; n.fallK = 0; n.thud = 0; n.bar = 0; n.hp = 0; }
+            if (n.tfall) {
+                const Sf = CSc();
+                n.fallT += dt; n.vx = 0; n.wait = 1; n.fid = 0;
+                n.fallK = sm(n.fallT / .8);                                   // knees buckle, then he drops onto his face
+                if (n.fallT > .5 && !n.thud) {
+                    n.thud = 1; shake = Math.max(shake, 7);
+                    burst(n.x + n.face * 70 * Sf, -6, 14, 260, n.face);
+                    impacts.push({ x: n.x + n.face * 70 * Sf, y: -6, t: 0, life: .25, s: 90, seed: Math.random() * 50 });
+                    n.pool = bgStain(n.x + n.face * 60 * Sf, 30 * Sf, true);
+                }
+                if (n.pool && n.fallT < 12) n.pool.gw = Math.min(110, n.pool.gw + dt * 10);
+                if (n.fallT > 9) {                                            // body disappears, the knife drops to the ground, new NPC respawns
+                    for (let i = knives.length - 1; i >= 0; i--) if (knives[i].st === n) { dropKnife(n.x + n.face * 40, -50 * Sf, knives[i].F, 0); knives.splice(i, 1); }
+                    respawn(n); return;
+                }
+            }
+            if (n.fst === 2 && !n.decap && !n.tfall) {
                 const Sf = CSc();
                 n.fallT += dt;
                 n.vx = 0;
@@ -5145,6 +5165,44 @@
                 })
             };
         }
+        // tiny brain / vein bits dragged out along the knife while it is pulled from the head
+        function headPullFX(e, pu, dt, pop) {
+            if (!e.hdp) return;
+            const S = CSc(), R = Math.random, F = e.stabF, th = e.stabTh;
+            const ux = F * Math.cos(th), uy = Math.sin(th);                 // knife direction (into the head)
+            const wx = e.x + e.hdp[0] * S - ux * 22 * S, wy = e.hdp[1] * S - uy * 22 * S;   // wound entry
+            const out = FIN_PULL * pu * S + 30 * S;                          // how far the blade is exposed
+            const n = pop ? 22 : ((e.pullAcc = (e.pullAcc || 0) + dt * (14 + 26 * pu)) | 0);
+            if (!pop) e.pullAcc -= n;
+            for (let i = 0; i < n; i++) {
+                const s = pop ? R() * 36 * S : R() * out;                     // a point along the blade
+                const x = wx - ux * s, y = wy - uy * s;
+                const kick = pop ? 160 + R() * 420 : 20 + R() * 90;
+                const vx = -ux * kick + (R() - .5) * (pop ? 240 : 70), vy = -uy * kick - (pop ? 60 + R() * 260 : 10 + R() * 70);
+                if (R() < .55 && brainBits.length < 140) brainBits.push({           // tiny brain flecks
+                    x, y, vx, vy, r: (1.1 + R() * (pop ? 2.4 : 1.4)) * S, rot: R() * 6, vr: (R() - .5) * 18,
+                    k: R() < .5 ? 0 : R() < .6 ? 1 : 2, landed: false, bounced: 0, t: 0
+                });
+                else bgDrop(x, y, vx * .6, vy * .6, .9 + R() * 1.3);                 // blood droplets
+            }
+            // mini veins that cling to the blade and slide off
+            if ((pop && !e.veinBurst) || (!pop && R() < dt * (3 + 5 * pu))) {
+                const cnt = pop ? 5 : 1, cols = ['#a3121a', '#8c0d14', '#6b2a5a'];
+                for (let c = 0; c < cnt; c++) {
+                    const s = R() * out * (pop ? .6 : 1), x = wx - ux * s, y = wy - uy * s, N = 4 + (R() * 3 | 0), rest = (2 + R() * 1.4) * S;
+                    const vx = -ux * (pop ? 140 + R() * 200 : 30 + R() * 50), vy = -uy * 60 + 20 + R() * 40;
+                    bg.veins.push({
+                        p: Array.from({ length: N }, (_, j) => ({ x: x - ux * j * rest * .3, y, ox: x - ux * j * rest * .3 - vx / 60, oy: y - vy / 60 })),
+                        rest, w: (.7 + R() * .6) * S * 1.2, col: cols[c % 3], gut: false, t: 0, bl: 0
+                    });
+                }
+                if (pop) e.veinBurst = 1;
+            }
+            if (pop) {
+                spray(wx, wy, 18, 380, -F); spray(wx, wy, 8, 220, 0);
+                e.pullAcc = 0; e.veinBurst = 0;
+            }
+        }
         function finK(t) {
             const foot = t < .35 ? sm(t / .35) : t < FIN_POP ? 1 : 1 - sm((t - FIN_POP) / .3);
             const grip = t < 1.3 ? sm((t - .2) / .25) : 1 - sm((t - 1.3) / .3);
@@ -5444,8 +5502,10 @@
             const tx = e.x + anchorX * S - P.face * dist * S;
             P.x += (tx - P.x) * Math.min(1, dt * 10);
             const pu = finK(P.fin).pull;
+            if (!isSto && !P.finDone && held && P.fin >= .6) headPullFX(e, pu, dt, false);
             for (const k of knives) if (k.st === e) k.pull = pu * FIN_PULL;
             if (!P.finDone && P.fin >= FIN_POP) {
+                if (!isSto) headPullFX(e, 1, 0, true);
                 P.finDone = 1;
                 for (let i = knives.length - 1; i >= 0; i--) if (knives[i].st === e) knives.splice(i, 1);
                 P.kn = 1; P.kt = 0; P.rv = 0;
