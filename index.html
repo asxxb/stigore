@@ -4898,13 +4898,16 @@
             return best;
         }
         function pressThrow() {
-            if (P.mount) { banner.t = .6; banner.text = 'DISMOUNT FIRST (H)'; return }
+            if (P.mount && P.mount !== 2) { banner.t = .6; banner.text = 'WAIT UNTIL YOU ARE SEATED'; return }   // only blocked during climb on/off
+            if (P.mSl > 0) return;                                                                              // not mid-slash
             P.idle = 0; P.fid = 0;
             if (P.thw > 0 || P.fin > 0 || P.cs > 0 || P.tt > 0 || P.kn === 0 || P.kt < .9) return;
 
             if (P.skid) endSkid();
-            const t = pickTarget(P.face) || pickTarget(-P.face);
-            if (t) P.face = t.x >= P.x ? 1 : -1;
+            if (!P.mount) {                                   // on foot: turn toward the nearest target
+                const t = pickTarget(P.face) || pickTarget(-P.face);
+                if (t) P.face = t.x >= P.x ? 1 : -1;
+            }                                                 // mounted: P.face is locked to the horse, so you throw straight ahead
             P.rv = 0; P.thw = .0001; P.thr = 0;
         }
         function releaseKnife() {
@@ -9820,13 +9823,13 @@
         // [a0 shoulder, f0 elbow, blade angle, torso lean, hipX, headX, headY]
         // angles are unwrapped on purpose: the arm goes back, UP and OVER, then forward-down
         const MS_K = [
-            { t: 0,   v: [1.3,  .5,  2.2,  0,    0,  0,  0] },
-            { t: .16, v: [-.8,  .45, 2.7,  .13,  2,  3,  1], e: 'io'  },   // 1 prepare: lean forward, arm back, blade diagonal-back
-            { t: .30, v: [-2.8, .5,  4.1, -.14, -4, -2,  0], e: 'io'  },   // 2 wind-up: torso rotates back, sword above/behind shoulder
-            { t: .40, v: [-4.8, .12, 6.2,  .30,  8,  7,  3], e: 'in'  },   // 3 strike: fast diagonal arc, arm almost straight
-            { t: .47, v: [-5.1, .05, 6.9,  .33,  9,  8,  3], e: 'lin' },   // 4 contact (very short)
-            { t: .62, v: [-5.7, .6,  7.6,  .20,  6,  5,  2], e: 'out' },   // 5 follow-through: blade past NPC, elbow bends
-            { t: .85, v: [-4.9, .7,  7.2,  0,    0,  0,  0], e: 'io'  }    // 6 recovery: low/ready, then fades into riding
+            { t: 0, v: [1.3, .5, 2.2, 0, 0, 0, 0] },
+            { t: .16, v: [-.8, .45, 2.7, .13, 2, 3, 1], e: 'io' },   // 1 prepare: lean forward, arm back, blade diagonal-back
+            { t: .30, v: [-2.8, .5, 4.1, -.14, -4, -2, 0], e: 'io' },   // 2 wind-up: torso rotates back, sword above/behind shoulder
+            { t: .40, v: [-4.8, .12, 6.2, .30, 8, 7, 3], e: 'in' },   // 3 strike: fast diagonal arc, arm almost straight
+            { t: .47, v: [-5.1, .05, 6.9, .33, 9, 8, 3], e: 'lin' },   // 4 contact (very short)
+            { t: .62, v: [-5.7, .6, 7.6, .20, 6, 5, 2], e: 'out' },   // 5 follow-through: blade past NPC, elbow bends
+            { t: .85, v: [-4.9, .7, 7.2, 0, 0, 0, 0], e: 'io' }    // 6 recovery: low/ready, then fades into riding
         ];
         const msEase = (k, u) => k === 'in' ? u * u : k === 'out' ? 1 - (1 - u) * (1 - u) : k === 'lin' ? u : sm(u);
         function mSlRow(t) {
