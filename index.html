@@ -278,6 +278,7 @@
             if (e.repeat) return;
             if (e.code === 'KeyV') { P.female = !P.female; banner.t = .8; banner.text = P.female ? 'WOMAN' : 'MAN'; }
             if (P.pu > 0 && e.code !== 'KeyN') return;   // no other actions during PICKUP
+            if (P.mpk > 0 && e.code !== 'KeyN' && e.code !== 'KeyV') return;
             if (e.code === 'KeyC') pressSmoke();
             if (e.code === 'KeyN') { const toNight = DN.d < .5; DN.t = toNight ? 0 : .5; banner.t = .8; banner.text = toNight ? 'MIDNIGHT' : 'NOON'; }
             if (e.code === 'KeyO') pressLantern();
@@ -1817,6 +1818,7 @@
             if (Q === PL && TH_CL.on && TH_CL.pose) return TH_CL.pose;
             if (Q === PL && Q.pu > 0) return puPose(Q);
             if (Q === PL && Q.mSl > 0 && Q.mount === 2) return mSlPose(Q);
+            if (Q === PL && Q.mpk > 0 && Q.mount === 2) return mpkPose(Q);
             if (Q === PL && Q.stc > 0) return Q.stcM >= 2 ? Q.stcPose : null;
             if (Q === PL && Q.stbk > 0) return stabPose(Q);
             if (Q === PL && Q.sqSl > 0 && Q.sqRows) return sqPose(Q);
@@ -2760,6 +2762,7 @@
             hipY += 16 * sgpE;
             if (cb && cb.hipAbs !== undefined) hipY = hipY * (1 - cb.w) + cb.hipAbs * cb.w;
             if (mk > 0) hipY = hipY * (1 - mk) + seatY * mk;
+            if (P === PL && P.mpkSink) hipY += P.mpkSink * mk;      // saddle sags a little; the feet stay on the horse
             if (mpa) hipY = hipY * (1 - MP.W) + MP.pose.hipY * MP.W;
             let hipX = cb ? F * cb.hipX * cb.w : 0, cbLean = cb ? cb.lean * cb.w : 0;
             if (mpa) hipX += MP.pose.hipX * MP.W;
@@ -2783,7 +2786,7 @@
             const walkLean = ((P.pk > 0) ? 0 : (P.lean * (.2 + .8 * R) * BODY_LEAN * (1 - sk)) + F * mountLean) * (1 - ldW);
 
             // blend by the mount amount so climbing on/off stays smooth
-            const moveLean = walkLean * (1 - mk) + rideLean * mk;
+            const moveLean = walkLean * (1 - mk) + rideLean * mk * (P === PL ? 1 - clamp01(P.mpkRl || 0) : 1);
 
 
 
@@ -3053,6 +3056,10 @@
                     const w = P.mSlW;
                     ang += wrapA(P.mSlA[0] - ang) * w;                    // shortest-path blend, so it returns cleanly to the riding pose
                     flex = flex * (1 - w) + P.mSlA[1] * w;
+                }
+                if (P === PL && P.mpk > 0 && i === 0) {
+                    const o = mpkArm(sh, F, S);
+                    if (o && o[2] > .001) { ang += wrapA(o[0] - ang) * o[2]; flex = flex * (1 - o[2]) + o[1] * o[2]; }
                 }
                 if (isGrabbed) {
                     ang = .12; flex = .15;     // arms just hang while he is held
@@ -6933,6 +6940,7 @@
 
         function pressHorse() {
             if (P.mount === 2) {
+                if (P.mpk > 0) return;
                 if (P.mSl > 0) return;
                 if (HRS.z < -4 || !HJ_GROUND[HRS.jp]) return;
                 if (Math.abs(HRS.vx) > 300) { banner.t = .8; banner.text = 'SLOW DOWN TO DISMOUNT'; return }   // fast = no instant dismount
@@ -8637,7 +8645,7 @@
 
 
         function drawReins(F) {
-            const A = P.armPts && P.armPts[((MPA() && MP.dis) || P.mSl > 0) ? 1 : 0]; if (!A || !HRS.muz) return;
+            const A = P.armPts && P.armPts[((MPA() && MP.dis) || P.mSl > 0 || P.mpk > 0) ? 1 : 0]; if (!A || !HRS.muz) return;
             const w = A[1];
             const mx = HRS.muzS * HORSE_W, my = HRS.muz[1] * HORSE_H + HRS.z / CSc();
             ctx.save(); ctx.strokeStyle = '#111'; ctx.lineWidth = 1.8; ctx.lineCap = 'round';
@@ -9844,6 +9852,7 @@
         const mTrail = [];
 
         function pressMSlash() {
+            if (P.mpk > 0) return true;
             if (P.mount !== 2) return false;
             if (P.mSl > 0) { if (P.mSl > MS_REC0) P.mSlQ = .25; return true }      // buffer a follow-up swing
             if (P.kn === 0 || P.kt < .5 || P.gun || P.gs === 2 || P.sg || P.sm > 0 || P.tt > 0 || P.thw > 0) return false;
@@ -12986,7 +12995,7 @@
             if (HJ_GROUND[h.jp]) h.jp = Math.abs(h.vx) < 8 ? 'IDLE' : 'RUN';
 
             // 1. jump key -> APPROACH (never an instant jump)
-            if (st === 2 && P.jbuf > 0 && HJ_GROUND[h.jp] && h.z >= 0 && h.q < .02 && (Math.abs(h.vx) < 40 || Math.sign(h.vx) === h.face)) {
+            if (st === 2 && !(P.mpk > 0) && P.jbuf > 0 && HJ_GROUND[h.jp] && h.z >= 0 && h.q < .02 && (Math.abs(h.vx) < 40 || Math.sign(h.vx) === h.face)) {
                 P.jbuf = 0;
                 const sp = Math.abs(h.vx), d = sp > 40 ? Math.sign(h.vx) : h.face;
                 const hit = hrsNextObs(d, h.x + d * 68 * cx, 150 * S + sp * 1.1);
@@ -15113,6 +15122,7 @@
         const groundItems = [], INV = {};
         let itemSeq = 0;
         P.pu = 0; P.puM = 0; P.puT = 0; P.puT2 = 0; P.puIt = null; P.puHeld = null; P.puC = null; P.puSent = 0;
+        P.mpk = 0; P.mpkRl = 0; P.mpkSink = 0; P.mpkLs = 0; P.mpkG = 0; P.mpkT = null; P.mpkSw = 1; P.mpkMiss = 0; P.mpkDone = 0;
         // pu modes: 1 approach, 2 crouch+reach, 3 hold after grab, 4 rise
 
         function dropItem(type, x) { groundItems.push({ id: ++itemSeq, type, x, seed: Math.random() * 99 }) }
@@ -15134,6 +15144,8 @@
             return b;
         }
         function pressPickup() {
+            if (P.mpk > 0) return;
+            if (P.mount === 2) { pressMountedPickup(); return; }
             if (puBlocked()) return;
             const S = CSc();
             let it = puNearest(), itd = it ? Math.abs(it.x - P.x) : 1e9;
@@ -15313,14 +15325,191 @@
                 ctx.scale(S, S); ctx.translate(0, -ITEM_DEFS[it.type].h); drawItemShape(it, now, false); ctx.restore();
             }
         }
-        // called from drawChar (character space): item in the fist, fist redrawn on top so the fingers wrap it
+        // =====================================================================
+        //  MOUNTED PICKUP  (press T / the T button while riding)
+        //  Layered on the normal riding pose: hips stay on the saddle, legs stay
+        //  gripping, the horse keeps running. Works for sticks, stones, herbs,
+        //  the knife and the shotgun.
+        // =====================================================================
+        const MPK_REACH = 150;      // how far the fist can reach from the shoulder (character units)
+        const MPK_GRAB_TOL = 36;    // fist-to-item distance that counts as a grab
+        const MPK_HOLD = .14;       // the brief "fingers close" hold
+        const MPK_SINK = 20;        // saddle sag at full reach (hips stay on the saddle, the horse's body is just very tall)
+        const MPK_LMAX = 2.85;      // max torso angle from upright (rad). 1.57 = horizontal; the horse is tall, so it has to hang lower
+
+        // ---------- find something to pick up ----------
+        function mpkKnifeHandle(g, S) {                       // same maths as the on-foot knife pickup
+            const nw = KN.naturalWidth || 220, nh = KN.naturalHeight || 65, r = g.th + KNIFE_SPRITE_TILT;
+            const gdx = (KGX - KCOMX) * KNIFE_LEN, gdy = (KGY - KCOMY) * KNIFE_LEN * nh / nw;
+            const gx = g.F * (gdx * Math.cos(r) - gdy * Math.sin(r)), gy = gdx * Math.sin(r) + gdy * Math.cos(r);
+            return { x: g.x + gx * S, h: Math.max(2, -(g.y / S + gy)) };
+        }
+        function mpkFindTarget() {
+            const S = CSc(), vx = HRS.vx, mv = Math.abs(vx) > 40, dv = Math.sign(vx), c = [];
+            const ok = x => {
+                const d = x - P.x;
+                if (inPond(x, 0)) return false;
+                return mv ? (d * dv > -30 * S && d * dv < 900) : Math.abs(d) < 260 * S;   // moving: only things ahead; standing: either side
+            };
+            for (const it of groundItems) {
+                if (it.type === 'knife' || !ITEM_DEFS[it.type]) continue;
+                if (ok(it.x)) c.push({ kind: 'item', ref: it, x: it.x, h: ITEM_DEFS[it.type].h, type: it.type });
+            }
+            if (!hasKnife) for (const g of groundKnives) {
+                if (!g.landed) continue;
+                const k = mpkKnifeHandle(g, S);
+                if (ok(k.x)) c.push({ kind: 'knife', ref: g, x: k.x, h: k.h, type: 'knife' });
+            }
+            if (SGG.on && !SGG.air && !SGG.flying && !P.sg && ok(SGG.x)) c.push({ kind: 'sg', ref: SGG, x: SGG.x, h: Math.max(4, -SGG.y / S), type: 'shotgun' });   // x = the grip, not the barrel tip
+            let best = null, bd = 1e9;
+            for (const t of c) { const d = Math.abs(t.x - P.x); if (d < bd) { bd = d; best = t; } }
+            return best;
+        }
+
+        function pressMountedPickup() {
+            if (P.mount !== 2 || P.mpk > 0) return;
+            if (P.mSl > 0 || P.gun || P.gs === 2 || P.sg || P.kn !== 0 || P.kt > .05 || P.sm > 0 || P.ln > 0 || P.lb > 0 || P.tt > 0 || P.thw > 0) {
+                banner.t = .7; banner.text = 'FREE YOUR HAND FIRST'; return;
+            }
+            if (HRS.z < -4 || !HJ_GROUND[HRS.jp]) return;
+            const t = mpkFindTarget();
+            if (!t) { banner.t = .7; banner.text = 'NOTHING TO PICK UP'; return; }
+            const S = CSc(), sw = Math.sign(t.x - P.x) || P.face, d = (t.x - P.x) / S * sw;
+            if (Math.abs(HRS.vx) <= 40) {
+                if (d > 140) { banner.t = .7; banner.text = 'TOO FAR TO REACH'; return; }
+                if (d < 10) { banner.t = .7; banner.text = 'TOO CLOSE: MOVE ON'; return; }
+            }
+            Object.assign(P, { mpk: .0001, mpkT: t, mpkSw: sw, mpkRl: 0, mpkG: 0, mpkLs: 1.2, mpkMiss: 0, mpkDone: 0, mpkSink: 0 });
+            P.idle = 0; P.fid = 0; P.abuf = 0;
+        }
+
+        // smallest torso angle from upright that lets the fist reach the item (item at distance d along the lean side, h above ground)
+        function mpkSolve(d, h, hipY) {
+            let best = MPK_LMAX, bd = 1e9;
+            for (let L = .3; L <= MPK_LMAX + .001; L += .03) {
+                const shx = 87 * Math.sin(L), shy = hipY - 87 * Math.cos(L), dist = Math.hypot(d - shx, -h - shy);
+                if (dist <= MPK_REACH) return L;
+                if (dist < bd) { bd = dist; best = L; }
+            }
+            return best;
+        }
+
+        function mpkEnd() { P.mpk = 0; P.mpkRl = 0; P.mpkSink = 0; P.mpkT = null; P.mpkG = 0; P.mpkMiss = 0; P.mpkDone = 0; }
+        function mpkCancel() {                                   // dismounted / interrupted: put the item back
+            const h = P.puHeld;
+            if (h) {
+                if (h.type === 'knife') hasKnife = true;
+                else if (h.type === 'shotgun') Object.assign(SGG, { on: 1, air: 1, bounced: 0, flying: 0, F: P.face, x: P.x, y: -30 * CSc(), th: 0, vx: 0, vy: 0 });
+                else groundItems.push(h);
+                P.puHeld = null;
+            }
+            mpkEnd();
+        }
+
+        function mpkGrab() {
+            const t = P.mpkT, S = CSc();
+            P.mpkG = P.mpk; P.mpkGP = [(t.x - P.x) / S, -t.h]; P.mpkLg = P.mpkLs;
+            let held;
+            if (t.kind === 'item') { const i = groundItems.indexOf(t.ref); if (i >= 0) groundItems.splice(i, 1); held = t.ref; }
+            else if (t.kind === 'knife') { const i = groundKnives.indexOf(t.ref); if (i >= 0) groundKnives.splice(i, 1); held = { type: 'knife', seed: Math.random() * 99 }; }
+            else { SGG.on = 0; held = { type: 'shotgun', seed: 1 }; }
+            P.puHeld = held;
+            burst(t.x, -3, 6, 130, P.face); shake = Math.max(shake, 2.5);
+            banner.t = .6; banner.text = 'GOT IT';
+        }
+
+        function mpkTick(dt) {
+            if (!(P.mpk > 0)) { P.mpkSink = 0; return; }
+            if (P.mount !== 2) { mpkCancel(); return; }
+            const S = CSc(), t0 = P.mpkT, sw = P.mpkSw;
+            P.mpk += dt; P.idle = 0; P.fid = 0; P.abuf = 0; P.jbuf = 0;
+            const t = P.mpk, sp = Math.abs(HRS.vx);
+            const hipY = HR_SEAT + hrsBob() + HRS.cmp * HORSE_H + HRS.z / S + P.mpkSink;
+            let tgt = 0, rate = 4;
+
+            if (!P.mpkG) {
+                // the item must still be there
+                const alive = t0.kind === 'item' ? groundItems.indexOf(t0.ref) >= 0 : t0.kind === 'knife' ? groundKnives.indexOf(t0.ref) >= 0 : (SGG.on && !SGG.air && !SGG.flying);
+                if (!alive) P.mpkMiss = 1;
+                if (t0.kind === 'sg') t0.x = SGG.x;
+                const d = (t0.x - P.x) / S * sw;                      // distance to the item on the lean side (negative = already behind us)
+                P.mpkLs += (mpkSolve(Math.max(0, d), t0.h, hipY) - P.mpkLs) * Math.min(1, dt * 10);
+                if (!P.mpkMiss) {
+                    // initiate (head + shoulder), then deep lean to ~45 degrees, then wait at that depth until the item is close, then full reach
+                    let base = t < .22 ? .22 * sm(t / .22) : lerp(.22, .42, sm((t - .22) / .35));
+                    if (t > .5) base = Math.max(base, .42 + .58 * clamp01((330 - d) / 180));
+                    tgt = base; rate = 7 + sp / 60;
+                    // grab: the fist is actually on the item
+                    const A = P.armPts && P.armPts[0];
+                    if (A && t > .45 && P.mpkRl > .75) {
+                        const el = A[0], wr = A[1]; let dx = wr[0] - el[0], dy = wr[1] - el[1]; const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
+                        const tx = wr[0] + dx * PALM * .8, ty = wr[1] + dy * PALM * .8;
+                        if (Math.hypot(tx - (t0.x - P.x) / S, ty + t0.h) < MPK_GRAB_TOL) mpkGrab();
+                    }
+                    if (!P.mpkG && (d < -70 || t > 4)) { P.mpkMiss = 1; banner.t = .7; banner.text = d < -70 ? 'MISSED IT' : 'OUT OF REACH'; }
+                }
+            } else {
+                const u = t - P.mpkG;
+                tgt = u < MPK_HOLD ? 1 : 0; rate = u < MPK_HOLD ? 20 : 3.4;                  // hold briefly, then pull back up
+                if (!P.mpkDone && u >= (t0.kind === 'sg' ? .8 : .7)) {
+                    P.mpkDone = 1; const h = P.puHeld;
+                    if (h) {
+                        if (h.type === 'knife') { hasKnife = true; banner.t = .8; banner.text = 'KNIFE RECOVERED'; }
+                        else if (h.type === 'shotgun') { P.sg = 1; P.aimV = 0; SGG.on = 0; banner.t = .8; banner.text = 'LOCKED & LOADED'; }
+                        else { INV[h.type] = (INV[h.type] || 0) + 1; banner.t = .8; banner.text = 'PICKED UP: ' + ITEM_DEFS[h.type].label; }
+                        P.puHeld = null;
+                    }
+                }
+                if (u >= .95) { mpkEnd(); return; }
+            }
+            P.mpkRl += (tgt - P.mpkRl) * Math.min(1, dt * rate);
+            P.mpkSink = MPK_SINK * P.mpkRl;
+            if (P.mpkMiss && !P.mpkG && P.mpkRl < .02) mpkEnd();
+        }
+
+        // ---------- pose: whole-body weight shift. The torso rotates about the anchored hips. ----------
+        function mpkPose(Q) {
+            const rl = Q.mpkRl, L = Q.mpkG ? Q.mpkLg : Q.mpkLs;
+            return {
+                w: 1, a0: .08, f0: 0, a1: .08, f1: 0,
+                lean: Q.mpkSw * Q.face * L * rl,                  // drawChar multiplies by F, so this leans toward the item in world space
+                hipX: 0, hipY: 0,                                 // hips never move; the saddle sag is added separately in drawChar
+                arch: .1 * rl, hx: 7 * rl, hy: 5 * rl,            // head follows the hand
+                l0: [26, 0, 0], l1: [-28, 0, 0],                  // overridden by the riding legs (they keep gripping)
+                st: STEPS[0], sw: 0, ik: 0, noArms: true
+            };
+        }
+
+        // ---------- free arm: IK to the item (follows it as it passes), then lifts it to the chest ----------
+        function mpkArm(sh, F, S) {
+            const t0 = P.mpkT; if (!t0) return null;
+            const grabbed = !!P.mpkG, u = grabbed ? P.mpk - P.mpkG : 0;
+            let tx = grabbed ? P.mpkGP[0] : (t0.x - P.x) / S, ty = grabbed ? P.mpkGP[1] : -t0.h;
+            if (grabbed) {
+                const e = sm((u - MPK_HOLD) / .5), cx = sh[0] + F * 34, cy = sh[1] + 54;       // the item follows the hand up toward the chest
+                tx = lerp(tx, cx, e); ty = lerp(ty, cy, e);
+            }
+            let ux = tx - sh[0], uy = ty - sh[1]; { const l_ = Math.hypot(ux, uy) || 1; ux /= l_; uy /= l_; }
+            let ha = 0, hf = 0;
+            for (let i = 0; i < 3; i++) { [ha, hf] = ik2(sh, tx - ux * PALM * .8, ty - uy * PALM * .8, F); ux = Math.sin(ha + hf) * F; uy = Math.cos(ha + hf); }
+            const w = grabbed ? 1 - sm((u - .45) / .35) : clamp01((P.mpkRl - .1) / .35);
+            return [ha, hf, w];
+        }
+
+        // ---------- REPLACES the existing drawHeldItem (adds the shotgun) ----------
         function drawHeldItem(F, S, now) {
             const it = P.puHeld, A = P.armPts && P.armPts[0]; if (!it || !A) return;
             const el = A[0], wr = A[1]; let dx = wr[0] - el[0], dy = wr[1] - el[1]; const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
-            ctx.save(); ctx.translate(wr[0] + dx * PALM * .75, wr[1] + dy * PALM * .75);
-            ctx.rotate(Math.atan2(dy, dx) + Math.PI / 2);
-            if (it.type === 'plant') ctx.translate(0, 9);
-            ctx.scale(.85, .85); drawItemShape(it, now, true); ctx.restore();
+            if (it.type === 'shotgun') {                              // carried muzzle-down, swings up toward the aim pose as the torso rises
+                const u = P.mpkG ? P.mpk - P.mpkG : 0, ang = 1.5 * (1 - sm((u - .35) / .45));
+                ctx.save(); ctx.translate(wr[0] + dx * PALM * .35, wr[1] + dy * PALM * .35); ctx.scale(F, 1); ctx.rotate(ang); ctx.scale(.9, .9);
+                sgPropBody(); ctx.restore();
+            } else {
+                ctx.save(); ctx.translate(wr[0] + dx * PALM * .75, wr[1] + dy * PALM * .75);
+                ctx.rotate(Math.atan2(dy, dx) + Math.PI / 2);
+                if (it.type === 'plant') ctx.translate(0, 9);
+                ctx.scale(.85, .85); drawItemShape(it, now, true); ctx.restore();
+            }
             const f = P.fistInfo && P.fistInfo[0];
             if (f && FIST.complete) { ctx.save(); ctx.translate(f.x, f.y); ctx.scale(f.F, 1); ctx.rotate(f.a - Math.PI / 2); ctx.drawImage(FIST, -FIST.naturalWidth / 2, -4); ctx.restore() }
         }
@@ -15337,11 +15526,31 @@
             let dt = dt0;
             if (hitstop > 0) { hitstop -= dt0; dt = 0 }
 
-            update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); sgTick(dt); sgGroundTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); waterFXTick(dt); brainTick(dt); hzTick(dt); gibTick(dt); boneTick(dt); weatherTick(dt); horseTick(dt); birdTick(dt); fowlTick(dt); frogTick(dt); duckTick(dt); crocTick(dt); bgTick(dt); dayTick(dt0); fireflyTick(dt0); stExtrasTick(dt0);
+            update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); sgTick(dt); sgGroundTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); waterFXTick(dt); brainTick(dt); hzTick(dt); gibTick(dt); boneTick(dt); weatherTick(dt); horseTick(dt); mpkTick(dt); birdTick(dt); fowlTick(dt); frogTick(dt); duckTick(dt); crocTick(dt); bgTick(dt); dayTick(dt0); fireflyTick(dt0); stExtrasTick(dt0);
             const hStop = MT_HORSE_STOP_X();
             const hGap = HRS.x - hStop;
             if (hGap < 350 && HRS.vx < 0) HRS.vx *= Math.max(0, 1 - dt * 6 * (1 - hGap / 350));
             if (HRS.x < hStop) { HRS.x = hStop; if (HRS.vx < 0) HRS.vx = 0; }
+
+            // horse can't enter the pond (the dock is solid up to DOCK_X1)
+            {
+                const S = CSc(), wl = DOCK_X1 - 120 * S, wr = POND_X + POND_RX + 120 * S;   // horse centre limits; margins cover the body length
+                const prev = HRS.px !== undefined ? HRS.px : HRS.x;
+                // ease off before the edge so it brakes instead of slamming into a wall
+                const gl = HRS.x - wl, gr = wr - HRS.x;
+                if (gl > -350 && gl < 0 && HRS.vx > 0) HRS.vx *= Math.max(0, 1 - dt * 6 * (1 + gl / 350));
+                if (gr > -350 && gr < 0 && HRS.vx < 0) HRS.vx *= Math.max(0, 1 - dt * 6 * (1 + gr / 350));
+                if (HRS.x > wl && HRS.x < wr) {
+                    const side = prev <= wl ? -1 : prev >= wr ? 1 : (HRS.x < (wl + wr) / 2 ? -1 : 1);   // which bank it came from
+                    HRS.x = side < 0 ? wl : wr;
+                    if (HRS.vx * side > 0) HRS.vx = 0;
+                    if (!P.mount) { HRS.home = HRS.x - side * 200; HRS.goal = HRS.home; HRS.wait = 2; }   // a free horse wanders elsewhere
+                    if (P.mount === 2) { P.x = HRS.x; P.vx = HRS.vx; }
+                    if (HRS.panic > 0) HRS.panic = 0;
+                }
+                HRS.px = HRS.x;
+            }
+
             const pStop = P.mount ? hStop : MT_STOP_X();
             if (P.x < pStop) { P.x = pStop; if (P.vx < 0) P.vx = 0; }
             deckTick();
