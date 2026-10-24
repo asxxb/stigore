@@ -1033,6 +1033,28 @@
         }
         const ENEMIES = [mkEnemy(300, 1), mkEnemy(-520, 0), mkEnemy(760, 0)];
 
+        function addPerson(x, o = {}) {
+            const e = mkEnemy(x, !!o.hat);
+            if (o.dark !== undefined) e.dark = o.dark ? 1 : 0;   // black-filled head or paper head
+            if (o.female) e.female = true;                       // drawChar already draws the skirt and ponytail for this
+            e.range = o.range || 350;                            // how far he wanders from where he stands
+            e.spawnX = x;                                        // where he comes back after dying (see step 3)
+            e.face = Math.random() < .5 ? -1 : 1;
+            ENEMIES.push(e);
+            return e;
+        }
+
+        [
+            [-11200, { hat: true }],
+            [-10600, { female: true, dark: false, range: 250 }],
+            [-9400,  { dark: true }],
+            [-9150,  { female: true, hat: true, range: 200 }],   // two people close together = small group
+            [-7900,  { hat: true, range: 500 }],
+            [-6800,  { female: true }],
+            [-5600,  { dark: true, range: 300 }],
+            [-5000,  { hat: true, range: 250 }]                  // near the liquor shop
+        ].forEach(([x, o]) => addPerson(x, o));
+
         function burst(x, y, n, pow, dirv) {
             for (let i = 0; i < n && flecks.length < 700; i++) {
                 const a = Math.random() * Math.PI * 2, sp = pow * (.25 + Math.random() * .75);
@@ -1040,8 +1062,10 @@
             }
         }
         function respawnFresh(n) {
-            const side = Math.random() < .5 ? -1 : 1, x = P.x + side * (W / 2 + 150 + Math.random() * 250);
+            const side = Math.random() < .5 ? -1 : 1,
+                  x = n.spawnX !== undefined ? n.spawnX : P.x + side * (W / 2 + 150 + Math.random() * 250);
             Object.assign(n, { sk2: null, decap: 0, tfall: 0, kneelT: 0, pool: null, pulse: 0, stomachStabbed: false, stbStoP: null, stoDrag: 0, stabTh0: undefined, legHurt: 0, legGone: 0, crawl: 0, crawlDead: 0, crawlT: 0, crT: 0, cwK: 0, crDeadT: 0, lmK: 0, lgT: 0, lveins: null, stumpL: null, legW: null, lhDrip: 0, trailD: 0, hpK: 0, hCrack: 0, hCrackT: 0, headHits: 0, hsPart: 0, hcDrip: 0, dbl: 0, dbK: 0, hsDead: 0, hsT: 0, veins: null, int: null, gut: 0, headThud: 0, gutDead: false, gutK: 0, gutPop: 0, gutCut: 0, fkSnk: 0, fk: null, fkT: 0, fkK: 0, fkPend: false, stab: 0, kneelK: 0, fst: 0, fallT: 0, fallK: 0, thud: 0, x, home: x, goal: x, vx: 0, z: 0, vz: 0, hp: n.maxhp, hurt: 0, down: 0, rot: 0, dying: 0, dead: 0, bar: 0, tumble: 0, wait: 1.5, face: -side, fid: 0, fidK: 0, headCut: 0, headK: 0, cord: null, brainOut: 0 });
+            if (n.spawnX !== undefined && Math.abs(n.spawnX - P.x) < W / 2 + 300) n.dead = 2;   // wait until the player isn't looking
         }
         function killBurst(n) {
             const S = CSc();
@@ -2190,7 +2214,7 @@
                     else {
                         const gd = n.goal - n.x;
                         if (Math.abs(gd) > 10) { dir = Math.sign(gd); n.face = dir }
-                        else { n.wait = 2.5 + Math.random() * 3.5; n.goal = n.home + (Math.random() * 2 - 1) * 600 }
+                        else { n.wait = 2.5 + Math.random() * 3.5; n.goal = n.home + (Math.random() * 2 - 1) * (n.range || 600) }
                     }
                 }
             }
@@ -7105,7 +7129,36 @@
             }
         }
 
-        // segment (previous -> current projectile position) vs. every head still lying around
+        // a loose head / skull piece bursts into smaller gore
+        function headBurstGib(g, F, sg, x, y) {
+            const S = CSc(), R = Math.random, head = g.k === 3, n = sg ? 1.5 : 1;
+            // blood + brain
+            spray(x, y, Math.round((head ? 70 : 30) * n), 680, F); spray(x, y, Math.round((head ? 34 : 14) * n), 460, -F); spray(x, y, 16, 300, 0);
+            burst(x, y, Math.round((head ? 40 : 18) * n), 460, F);
+            for (let i = 0; i < Math.round((head ? 30 : 10) * n); i++)
+                bgDrop(x + (R() - .5) * 14, y, F * (40 + R() * 500) + (R() - .5) * 300, -(100 + R() * 520), 1 + R() * 2.4);
+            for (let i = 0; i < (head ? 18 : 5) && brainBits.length < 150; i++) brainBits.push({
+                x: x + (R() - .5) * 20 * S, y: Math.min(-6, y) - R() * 8 * S,
+                vx: F * (60 + R() * 480) + (R() - .5) * 320, vy: -(120 + R() * 420),
+                r: (3 + R() * 6) * S, rot: R() * 6, vr: (R() - .5) * 18,
+                k: R() < .45 ? 0 : R() < .6 ? 1 : 2, landed: false, bounced: 0, t: 0
+            });
+            // shards / jaw (a severed head breaks into several pieces; shards just crumble)
+            const pieces = head ? 6 : (g.k === 0 ? 2 : 3);
+            for (let i = 0; i < pieces && gibs.length < 70; i++) gibs.push({
+                k: 0, x: x + (R() - .5) * 16 * S, y: Math.min(-8, y),
+                vx: F * (160 + R() * 520) + (R() - .5) * 320, vy: -(100 + R() * 420),
+                rot: R() * 6, vr: (R() - .5) * 26, s: (head ? 6 + R() * 7 : 3.5 + R() * 4) * S, seed: R() * 100, bn: 0, landed: false, t: 0, bl: 0
+            });
+            if (head) gibs.push({ k: 1, x, y: Math.min(-8, y + 6 * S), vx: F * (100 + R() * 240), vy: -(80 + R() * 260), rot: 0, vr: (R() - .5) * 14, s: 13 * S, seed: R() * 99, bn: 0, landed: false, t: 0, bl: 0 });
+            for (let i = 0; i < (head ? 6 : 3); i++) boneSplinter(x, y, F, 380);
+            bgStain(x + F * 8 * S, (head ? 22 : 10) * S, true);
+            impacts.push({ x, y, t: 0, life: .3, s: head ? 150 : 80, seed: R() * 50 });
+            hitstop = Math.max(hitstop, head ? .09 : .04); shake = Math.max(shake, head ? 9 : 4);
+            banner.t = .8; banner.text = head ? 'HEAD SPLATTERED!' : 'CRUSHED!';
+            combo.n++; combo.t = 1.8; combo.pop = 1.3;
+        }
+
         function headGoreHit(x0, y0, x1, y1, F, sg, id) {
             const S = CSc(), dx = x1 - x0, dy = y1 - y0, l2 = dx * dx + dy * dy || 1;
             const test = (cx, cy, r) => {
@@ -7113,34 +7166,33 @@
                 const px = x0 + dx * t, py = y0 + dy * t;
                 return ((px - cx) ** 2 + (py - cy) ** 2 < r * r) ? [px, py] : null;
             };
-            // 1) severed heads (beheading) lying on / flying over the ground
-            for (const g of gibs) {
-                if (g.k !== 3) continue;
-                const h = test(g.x, g.y, g.s * 1.1 + 6);
+            // 1) loose gibs: severed head (k3), jaw (k1), skull shards (k0), falling or on the ground
+            for (let i = gibs.length - 1; i >= 0; i--) {
+                const g = gibs[i];
+                if (g.k === 2) continue;                                      // hats are just cloth
+                const h = test(g.x, g.y, g.k === 3 ? g.s * 1.1 + 6 : g.s * .9 + 5);
                 if (!h) continue;
-                const first = !(sg && g.lastBlast === id); if (sg) g.lastBlast = id;
-                headSplat(h[0], h[1], F, sg, first);
-                if (first) {                                           // knock the head: it hops and rolls away
-                    g.landed = false; g.bn = 0; g.t = 0;
-                    g.vx = F * (sg ? 420 : 220); g.vy = -(sg ? 380 : 220); g.vr = F * (6 + Math.random() * 8);
-                }
-                if (first) { banner.t = .7; banner.text = 'HEAD SPLATTER!'; combo.n++; combo.t = 1.8; combo.pop = 1.3 }
+                if (sg && g.lastBlast === id) return true;                    // rest of the same blast: absorbed
+                gibs.splice(i, 1);
+                headBurstGib(g, F, sg, h[0], h[1]);
                 return true;
             }
-            // 2) intact heads of dead bodies
+            // 2) intact heads on dead bodies: the skull blows open
             for (const c of CORPSES) {
                 if (c.hsDead || c.decap || c.headCut || !c.hdp) continue;
                 const hw = headWorld(c);
                 const drop = c.corpse ? 14 * S * Math.min(1, Math.abs(c.rot || 0) / (Math.PI / 2)) : 0;
                 const h = test(hw[0], hw[1] + drop, 24 * S + 6);
                 if (!h) continue;
-                const first = !(sg && c.lastBlast === id); if (sg) c.lastBlast = id;
-                headSplat(h[0], h[1], F, sg, first);
-                if (first) { banner.t = .7; banner.text = 'HEAD SPLATTER!'; combo.n++; combo.t = 1.8; combo.pop = 1.3 }
+                if (sg && c.lastBlast === id) return true;
+                c.lastBlast = id;
+                Object.assign(c, { hsDead: 1, hsPart: 1, hsT: 99, brainOut: 1 });   // hsT high = no twitching, it's long dead
+                headBurstGib({ k: 3 }, F, sg, h[0], h[1]);
                 return true;
             }
             return false;
         }
+
 
         function drawGibs(gy) {
             ctx.save(); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
