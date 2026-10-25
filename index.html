@@ -279,7 +279,7 @@
             if (e.code === 'Space') e.preventDefault();
             if (e.repeat) return;
             if (e.code === 'KeyV') { P.female = !P.female; banner.t = .8; banner.text = P.female ? 'WOMAN' : 'MAN'; }
-            if (P.pu > 0 && e.code !== 'KeyN') return;   // no other actions during PICKUP
+            if ((P.pu > 0 || P.sqg > 0) && e.code !== 'KeyN') return;   // no other actions during PICKUP
             if (P.mpk > 0 && e.code !== 'KeyN' && e.code !== 'KeyV') return;
             if (e.code === 'KeyC') pressSmoke();
             if (e.code === 'KeyN') { const toNight = DN.d < .5; DN.t = toNight ? 0 : .5; banner.t = .8; banner.text = toNight ? 'MIDNIGHT' : 'NOON'; }
@@ -348,7 +348,7 @@
         let hasKnife = true;       // you only own one knife now
         const groundKnives = [];
         const TOSS_T = .95;
-        function duckHandBusy() { return typeof DD !== 'undefined' && !!((DD.g && DD.g.on) || DD.carry || P.dts > 0); }
+        function duckHandBusy() { return typeof DD !== 'undefined' && !!((DD.g && DD.g.on) || DD.carry || P.dts > 0 || TH_SQ.held); }
         function pressK() {
             if (P.dts > 0) return;
             if (P.mSl > 0) return;
@@ -540,6 +540,7 @@
             if (P.stc > 0 || P.pk > 0 || P.mount || swim.on || (typeof thClimbActive === 'function' && thClimbActive())) ldCancel();
             if (P.stc > 0) { stairTick(dt); return; }
             if (P.pu > 0) { puTick(dt); return; }
+            if (P.sqg > 0) { sqgTick(dt); return; }
             if (typeof thLadderUpdate === 'function' && thLadderUpdate(dt)) return;
             if (typeof updateSwim === 'function' && updateSwim()) {
                 P.vz = 0; P.z = 0;
@@ -1998,6 +1999,7 @@
             if (Q === PL && swim.on) { const sp = swimPose(); if (sp) return sp }
             if (Q === PL && TH_CL.on && TH_CL.pose) return TH_CL.pose;
             if (Q === PL && Q.pu > 0) return puPose(Q);
+            if (Q === PL && Q.sqg > 0) return sqgPose(Q);
             if (Q === PL && Q.stm > 0 && !Q.stmWalk) return stompPose(Q);
             if (Q === PL && DD.g.on && DD.g.mode === 'foot') { const dp = ddFootPose(Q); if (dp) return dp; }
             if (Q === PL && Q.mSl > 0 && Q.mount === 2) return mSlPose(Q);
@@ -3456,7 +3458,8 @@
             if (P === PL && P.dts > 0) dtTrailPush(F, S);
             if (P === PL && P.mSl > 0) mSlTrailPush(F, S);
             if (P === PL && P.gunK < .05 && P.sgK < .05 && (mk > .9 || (mpa && MP.dis && MP.t < 1.15) || (mpa && !MP.dis && MP.t > 2.9))) drawReins(F);
-            if (P === PL && P.puHeld) drawHeldItem(F, S, now);
+            if (P === PL && TH_SQ.held) drawHeldSquirrel(F, S, now);
+            else if (P === PL && P.puHeld) drawHeldItem(F, S, now);
             if (P === PL && DD.carry) drawCarriedKid(F, S, now);
             if (P === PL && DD.sq.stain > 0) drawSqStain(F, S, now);
             const grabHdOffX = isGrabbed ? F * 4 - F * hk * 10 + Math.sin(now * 23) * 1.5 : 0;
@@ -9368,7 +9371,7 @@
 
         // segment (previous -> current projectile position) vs. squirrel, so fast bullets can't tunnel through
         function thSqHit(x0, y0, x1, y1, F, rad) {
-            const q = TH_SQ; if (q.dead > 0) return false;
+            const q = TH_SQ; if (q.dead > 0 || q.held || q.cap) return false;
             const [cx, cy] = thSqCenter(q), r = 12 * TH_SQ_S * TH_SC + (rad || 20) * .5;
             const dx = x1 - x0, dy = y1 - y0, l2 = dx * dx + dy * dy || 1;
             let t = ((cx - x0) * dx + (cy - y0) * dy) / l2; t = Math.max(0, Math.min(1, t));
@@ -9392,7 +9395,7 @@
 
         // squirrel in slash range? -> { c: world centre, dx } or null
         function sqReach() {
-            const q = TH_SQ; if (q.dead > 0) return null;
+            const q = TH_SQ; if (q.dead > 0 || q.held || q.cap) return null;
             const S = CSc(), c = thSqCenter(q), dx = c[0] - P.x, rel = c[1] + (P.dh || 0);
             if (Math.abs(dx) > SQ_REACH * S || rel < -240 * S || rel > 30 * S) return null;
             return { c, dx };
@@ -9774,6 +9777,7 @@
             if (!(dt > 0)) return; dt = Math.min(dt, .05);
             thSqHalvesTick(dt);
             if (q.dead > 0) { q.dead -= dt; if (q.dead <= 0) thSqRespawn(q); return; }
+            if (q.held || q.cap) { q.alert = 1; return; }
             q.t += dt;
             const rnd = Math.random, m = q.mode, k = Math.min(1, dt * 7);
 
@@ -9957,7 +9961,7 @@
         }
 
         function thSquirrel(q, now) {
-            if (q.dead > 0) return;
+            if (q.dead > 0 || (q.held && q === TH_SQ)) return;
             const F = q.F, u = q.up, p = q.p, cr = q.cr, hug = sm(p), lw = 1.05;
             const jmp = q.sh > 0 ? Math.sin(Math.PI * (1 - q.sh)) : 0, a = Math.max(q.air, jmp);
             const FUR = 'rgba(178,140,98,.55)', FURD = 'rgba(146,108,72,.62)', BEL = 'rgba(240,229,200,.85)';
@@ -14780,6 +14784,7 @@
         const groundItems = [], INV = {};
         let itemSeq = 0;
         P.pu = 0; P.puM = 0; P.puT = 0; P.puT2 = 0; P.puIt = null; P.puHeld = null; P.puC = null; P.puSent = 0;
+        P.sqg = 0; P.sqgM = 0; P.sqgT = 0; P.sqgC = null;
         P.mpk = 0; P.mpkRl = 0; P.mpkSink = 0; P.mpkLs = 0; P.mpkG = 0; P.mpkT = null; P.mpkSw = 1; P.mpkMiss = 0; P.mpkDone = 0;
         // pu modes: 1 approach, 2 crouch+reach, 3 hold after grab, 4 rise
 
@@ -14804,6 +14809,8 @@
         function pressPickup() {
             if (P.mpk > 0) return;
             if (DD.carry && P.pu === 0) { ddPutDown(); return; }   // NEW
+            if (TH_SQ.held && P.pu === 0 && P.sqg === 0) { sqPutDown(); return; }
+            if (sqGrabPress()) return;
             if (ddKidPress()) return;                               // NEW
             if (ddPress()) return;
             if (P.mount === 2) { pressMountedPickup(); return; }
@@ -14843,8 +14850,9 @@
             P.idle = 0; P.fid = 0; P.abuf = 0; P.jbuf = 0; P.grabbed = null; P.clast = 0;
         }
         function puCancel() {
-            if (P.puIt && P.puIt.kid) P.puIt.kid.cap = 0;                       // NEW
-            if (P.puHeld && P.puHeld.type !== 'duckling') groundItems.push(P.puHeld);   // CHANGED
+            if (P.puIt && P.puIt.kid) P.puIt.kid.cap = 0;
+            if (P.puIt && P.puIt.type === 'squirrel') { TH_SQ.cap = 0; TH_SQ.held = 0; }
+            if (P.puHeld && P.puHeld.type !== 'duckling' && P.puHeld.type !== 'squirrel') groundItems.push(P.puHeld);
             P.pu = 0; P.puM = 0; P.puIt = null; P.puHeld = null; P.puC = null;
         }
 
@@ -14869,15 +14877,17 @@
             if (k >= 0) groundItems.splice(k, 1);
             P.puHeld = it; P.puM = 3; P.puT2 = 0;
             if (it.type === 'duckling') { it.kid.cap = 0; it.kid.carried = 1; it.kid.noShadow = 1; DD.carry = it.kid; }   // NEW
+            if (it.type === 'squirrel') { TH_SQ.cap = 0; TH_SQ.held = 1; }
             burst(it.x, -2, 4, 100, P.face);
         }
 
         function puTick(dt) {
             const S = CSc(), F = P.face, it = P.puIt;
             if (it && it.type === 'duckling') it.x = it.kid.x;
+            if (it && it.type === 'squirrel') it.x = thSqCenter(TH_SQ)[0];
             P.abuf = 0; P.jbuf = 0; P.idle = 0; P.fid = 0; P.vz = 0; P.z = 0;
             if (swim.on || inPond(P.x, -10) || (P.puM < 3 && (!it ||
-                (it.type === 'duckling' ? (it.kid.dead || DD.g.on) : groundItems.indexOf(it) < 0)))) { puCancel(); return }
+                (it.type === 'duckling' ? (it.kid.dead || DD.g.on) : it.type === 'squirrel' ? TH_SQ.dead > 0 : groundItems.indexOf(it) < 0)))) { puCancel(); return }
 
             if (P.puM === 1) {                                  // short walk (forward or a step back) to a comfortable distance
                 P.puT += dt;
@@ -14909,6 +14919,8 @@
                     P.puSent = 1; const h = P.puHeld;
                     if (h && h.type === 'duckling') {
                         banner.t = .8; banner.text = 'GOT THE DUCKLING';
+                    } else if (h && h.type === 'squirrel') {
+                        banner.t = .8; banner.text = 'GOT THE SQUIRREL';
                     } else if (h && h.type === 'knife') {
                         hasKnife = true; banner.t = .8; banner.text = 'KNIFE RECOVERED';
                     } else if (h) {
@@ -15173,7 +15185,7 @@
 
         // ---------- REPLACES the existing drawHeldItem (adds the shotgun) ----------
         function drawHeldItem(F, S, now) {
-            const it = P.puHeld, A = P.armPts && P.armPts[0]; if (!it || !A || it.type === 'duckling') return;
+            const it = P.puHeld, A = P.armPts && P.armPts[0]; if (!it || !A || it.type === 'duckling' || it.type === 'squirrel') return;
             const el = A[0], wr = A[1]; let dx = wr[0] - el[0], dy = wr[1] - el[1]; const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
             if (it.type === 'shotgun') {                              // carried muzzle-down, swings up toward the aim pose as the torso rises
                 const u = P.mpkG ? P.mpk - P.mpkG : 0, ang = 1.5 * (1 - sm((u - .35) / .45));
@@ -15309,7 +15321,7 @@
             const S = CSc(), now = performance.now() / 1000, m = DD.m, g = DD.g;
             DD.clock += dt;
             if (DD.carry && P.pu === 0 && (P.mount || swim.on || P.pk > 0 || P.stc > 0 || TH_CL.on)) ddPutDown(true);
-            DD.cw += (((DD.carry && P.pu === 0) ? 1 : 0) - DD.cw) * Math.min(1, dt * 6);
+            DD.cw += ((((DD.carry || TH_SQ.held) && P.pu === 0) ? 1 : 0) - DD.cw) * Math.min(1, dt * 6);
             DD.dir += (m.face - DD.dir) * Math.min(1, dt * .9);
             const pre = !g.on && P.mpk > 0 && P.mpkT && P.mpkT.kind === 'duck' && !P.mpkG;   // horseback: she notices you while you reach
             if (m.dead) ddDeadTick(m, dt, now);
@@ -17021,6 +17033,136 @@
             }
         }
 
+        // ================= SQUIRREL GRAB (T) =================
+        function sqBlocked() {
+            return P.pu > 0 || P.sqg > 0 || DD.carry || DD.g.on || P.dts > 0 || P.stm > 0 || P.mpk > 0 || P.mount || P.z < 0 || P.pk > 0 || P.stc > 0 ||
+                P.cs > 0 || P.fin > 0 || P.thw > 0 || P.tt > 0 || P.stbk > 0 || P.fs > 0 || P.gu > 0 || P.yk > 0 || P.sgp > 0 || P.sm > 0 ||
+                P.ln > 0 || P.lb > 0 || P.ld > 0 || P.gun || P.gs === 2 || P.sg || swim.on || TH_CL.on;
+        }
+        // -> { kind: 'ground' | 'tree', x: world x, h: height above feet (char units) } or null
+        function sqGrabInfo() {
+            const q = TH_SQ;
+            if (q.dead > 0 || q.held || q.cap || q.sh > 0 || q.mode === 'hop' || q.mode === 'uncling') return null;
+            const S = CSc(), c = thSqCenter(q), dx = c[0] - P.x, h = (-c[1] - (P.dh || 0) - (P.mh || 0)) / S;
+            if (q.p < .3) {                                           // on the ground / deck, same level as you
+                if (Math.abs(dx) > 180 * S || h < -5 || h > 45 || q.air > .5) return null;
+                return { kind: 'ground', x: c[0], h: Math.max(3, h) };
+            }
+            if (q.p > .6 && Math.abs(dx) < 110 * S && h > 125 && h < 250) return { kind: 'tree', x: c[0], h };   // clinging to the trunk
+            return null;
+        }
+        function sqGrabPress() {
+            const g = sqGrabInfo(); if (!g || P.pu > 0 || P.sqg > 0 || TH_SQ.held) return false;
+            if (P.kn !== 0 || P.kt > .05) { banner.t = .7; banner.text = 'PUT THE KNIFE AWAY (K)'; return true; }
+            if (sqBlocked()) return false;
+            const q = TH_SQ;
+            if (P.skid) endSkid(); P.skidK = 0;
+            q.cap = 1; q.queue = []; q.air = 0; q.hop = 0; q.sh = 0;
+            P.face = g.x >= P.x ? 1 : -1;
+            P.idle = 0; P.fid = 0; P.abuf = 0; P.jbuf = 0; P.grabbed = null; P.clast = 0;
+            if (g.kind === 'ground') {                                // reuse the existing crouch pickup
+                const it = { id: ++itemSeq, type: 'squirrel', x: g.x, h: g.h, seed: q.sd };
+                P.pu = .0001; P.puM = 1; P.puT = 0; P.puT2 = 0; P.puIt = it; P.puHeld = null; P.puSent = 0; P.puC = null;
+            } else { P.sqg = .0001; P.sqgM = 1; P.sqgT = 0; P.sqgC = { dx: 0, h: g.h, L: 0 }; }   // new reach-up animation
+            return true;
+        }
+
+        // ---- tree grab: walk to stand-off -> reach up -> grip -> pull down to the chest ----
+        function sqgCancel() { P.sqg = 0; P.sqgM = 0; P.sqgC = null; if (!TH_SQ.held) TH_SQ.cap = 0; }
+        function sqgTick(dt) {
+            const S = CSc(), q = TH_SQ, F = P.face;
+            P.abuf = 0; P.jbuf = 0; P.idle = 0; P.fid = 0; P.vz = 0; P.z = 0;
+            if (q.dead > 0 || P.mount || swim.on) { sqgCancel(); return; }
+            const c = thSqCenter(q), dx = (c[0] - P.x) * F / S;
+            if (!q.held) q.cap = 1;
+            if (P.sqgM === 1) {                                       // short walk with the normal cycle
+                P.sqgT += dt;
+                const tgt = dx > 70 ? 58 : (dx < 36 ? 44 : null);
+                if (tgt === null || P.sqgT > 2) {
+                    P.sqgM = 2; P.vx = 0;
+                    const h = P.sqgC.h; let L = 1.2;
+                    for (let l = -.1; l <= 1.2; l += .03) {           // least lean that lets the fist reach
+                        if (Math.hypot(dx - 87 * Math.sin(l), -h - (-169 - 87 * Math.cos(l))) <= 112) { L = l; break; }
+                    }
+                    P.sqgC = { dx, h, L };
+                    return;
+                }
+                const rem = (dx - tgt) * S, sp = 120, sg = Math.sign(rem), mv = sg * Math.min(Math.abs(rem), sp * dt);
+                P.x += F * mv; P.vx = sg * F * sp; P.phase += sg * sp * dt / (280 * S) * Math.PI * 2;
+                P.amp += (1 - P.amp) * Math.min(1, dt * 10);
+                P.lean += (Math.max(-1, Math.min(1, P.vx / 420)) * .4 - P.lean) * Math.min(1, dt * 6);
+                return;
+            }
+            P.vx = 0; P.amp += (0 - P.amp) * Math.min(1, dt * 14); P.lean += (0 - P.lean) * Math.min(1, dt * 14);
+            P.sqg += dt;
+            if (P.sqgM === 2 && P.sqg >= .5) {                        // fist closes: it leaves the trunk
+                P.sqgM = 3; q.held = 1; q.cap = 0;
+                burst(c[0], c[1], 6, 140, F); shake = Math.max(shake, 2);
+                banner.t = .8; banner.text = 'GOT THE SQUIRREL';
+            }
+            if (P.sqg >= 1.25) { P.sqg = 0; P.sqgM = 0; P.sqgC = null; }
+        }
+        function sqgPose(Q) {
+            if (Q.sqgM < 2 || !Q.sqgC) return null;
+            const F = Q.face, t = Q.sqg, c = Q.sqgC;
+            const e = sm(t / .4), u = sm((t - .55) / .5), L = c.L * e * (1 - .7 * u);
+            const sh = [F * 87 * Math.sin(L), -169 - 87 * Math.cos(L)];
+            let tx = lerp(F * c.dx, sh[0] + F * 30, u), ty = lerp(-c.h, sh[1] + 56, u);   // squirrel position -> chest
+            let ux = tx - sh[0], uy = ty - sh[1]; { const l_ = Math.hypot(ux, uy) || 1; ux /= l_; uy /= l_; }
+            let ha = 0, hf = 0;
+            for (let i = 0; i < 3; i++) { [ha, hf] = ik2(sh, tx - ux * PALM * .8, ty - uy * PALM * .8, F); ux = Math.sin(ha + hf) * F; uy = Math.cos(ha + hf); }
+            const rw = sm(t / .3), w = sm(t / .12) * (1 - sm((t - 1.05) / .2));
+            return {
+                w, a0: lerp(.08, ha, rw), f0: lerp(0, hf, rw), a1: lerp(.08, -.7, e), f1: lerp(0, .3, e),   // other arm swings back for balance
+                lean: L, hipX: 0, hipY: 0, hipAbs: -169, arch: .03 + .05 * e, hx: 2 + 6 * e, hy: -2 * e,
+                l0: [22, 0, 0], l1: [-20, 0, 0], kneeFull: true, st: STEPS[0], sw: 0, ik: 0
+            };
+        }
+
+        // ---- carrying ----
+        function sqPutDown(quiet) {
+            const q = TH_SQ; if (!q.held) return;
+            const S = CSc(), lx = (P.x + P.face * 40 * S - TH_WX) / TH_SC, far = Math.abs((P.x - TH_WX) / TH_SC) > 380;
+            const deck = !far && P.dh > 0 && P.thDeck, lo = deck ? -125 : -340, hi = deck ? 125 : 235;
+            q.held = 0; q.cap = 0; q.queue = [];
+            Object.assign(q, { lvl: deck ? 1 : 0, y: deck ? TH_DY : 0, p: 0, F: P.face, air: 0, hop: 0, up: 0, sn: 0, cr: 0, sh: 0 });
+            q.x = far ? -190 : clampN(lx, lo, hi);
+            thSqStart(q, 'run', clampN(q.x + P.face * (80 + Math.random() * 80), lo, hi));   // scampers off
+            if (!quiet) { banner.t = .7; banner.text = 'PUT DOWN'; }
+        }
+        function sqHeldTick(dt) {
+            const q = TH_SQ; if (!q.held) return;
+            if (q.dead > 0) { q.held = 0; return; }
+            if (P.mount || swim.on || P.pk > 0 || P.stc > 0 || TH_CL.on || Math.abs((P.x - TH_WX) / TH_SC) > 380) {
+                const far = Math.abs((P.x - TH_WX) / TH_SC) > 380;
+                sqPutDown(true);
+                if (far) { banner.t = .8; banner.text = 'IT WRIGGLES FREE!'; }
+            }
+        }
+        function drawHeldSquirrel(F, S, now) {                        // called from drawChar, after the arms
+            const A = P.armPts && P.armPts[0]; if (!A) return;
+            const wr = A[1];
+            const s = Object.assign({}, TH_SQ, {
+                x: 0, y: 0, p: 0, lvl: 0, F: 1, air: 0, hop: 0, up: 0, sn: 0, cr: 0, gl: 0, sh: 0, dead: 0, held: 0, cap: 0, noShadow: true, tdesc: 0,
+                alert: 1, pant: 1, br: now * 16, tf: .5 + .5 * Math.sin(now * 9), head: Math.sin(now * 7) * .5,
+                ear: .5 + .5 * Math.sin(now * 14), ear2: .5 + .5 * Math.sin(now * 11)
+            });
+            ctx.save();
+            ctx.translate(wr[0] + F * 6, wr[1] + 10); ctx.scale(F, 1); ctx.rotate(-.6 + Math.sin(now * 9) * .25);   // wriggling in the fist
+            const k = TH_SC / S * .8; ctx.scale(k, k); ctx.translate(-1.5, 4);
+            thSquirrel(s, now); ctx.restore();
+            const f = P.fistInfo && P.fistInfo[0];
+            if (f && FIST.complete) { ctx.save(); ctx.translate(f.x, f.y); ctx.scale(f.F, 1); ctx.rotate(f.a - Math.PI / 2); ctx.drawImage(FIST, -FIST.naturalWidth / 2, -4); ctx.restore(); }
+        }
+
+        // "T" hint over the squirrel, only while it is in a grabbable position
+        function drawSqGrabHint(gy) {
+            if (P.pu > 0 || P.sqg > 0 || TH_SQ.held || !sqGrabInfo()) return;
+            const S = CSc(), c = thSqCenter(TH_SQ), now = performance.now();
+            ctx.save(); ctx.fillStyle = '#111'; ctx.font = 'italic bold 20px Georgia,serif'; ctx.textAlign = 'center';
+            ctx.fillText('T', W / 2 + c[0] - P.x, gy + 4 + c[1] - 26 * S - 4 * Math.sin(now / 200)); ctx.restore();
+        }
+
         function frame(now) {
 
 
@@ -17028,7 +17170,7 @@
             let dt = dt0;
             if (hitstop > 0) { hitstop -= dt0; dt = 0 }
 
-            update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); sgTick(dt); sgGroundTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); waterFXTick(dt); brainTick(dt); hzTick(dt); gibTick(dt); boneTick(dt); weatherTick(dt); horseTick(dt); mpkTick(dt); birdTick(dt); fowlTick(dt); frogTick(dt); duckTick(dt); ddTick(dt); ddSqueezeTick(dt); ddHalvesTick(dt); stompTick(dt); crocTick(dt); bgTick(dt); corpseTick(dt); dayTick(dt0); fireflyTick(dt0); stExtrasTick(dt0);
+            update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); sgTick(dt); sgGroundTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); waterFXTick(dt); brainTick(dt); hzTick(dt); gibTick(dt); boneTick(dt); weatherTick(dt); horseTick(dt); mpkTick(dt); birdTick(dt); fowlTick(dt); frogTick(dt); duckTick(dt); ddTick(dt); ddSqueezeTick(dt); sqHeldTick(dt); ddHalvesTick(dt); stompTick(dt); crocTick(dt); bgTick(dt); corpseTick(dt); dayTick(dt0); fireflyTick(dt0); stExtrasTick(dt0);
             const hStop = MT_HORSE_STOP_X();
             const hGap = HRS.x - hStop;
             if (hGap < 350 && HRS.vx < 0) HRS.vx *= Math.max(0, 1 - dt * 6 * (1 - hGap / 350));
@@ -17112,6 +17254,7 @@
             drawMSlTrail(gy);
             drawBreath(gy);
             drawStairHint(gy);
+            drawSqGrabHint(gy);
             drawLadderHint(gy);
             drawForest(gy, 1);
             drawSgProp(gy, true);
