@@ -885,7 +885,8 @@
             if (P.dts > 0) return;
             if (DD.carry) {
                 if (P.kn === 1 && P.kt > .6 && P.pu === 0) ddToss();
-                else { banner.t = .7; banner.text = 'DRAW KNIFE (K) FIRST'; }
+                else if (P.kn === 0 && P.kt < .05 && P.pu === 0) { /* hold J = squeeze, see ddSqueezeTick */ }
+                else { banner.t = .7; banner.text = 'PUT THE KNIFE AWAY (K) TO SQUEEZE'; }
                 return;
             }
             if (duckHandBusy()) {
@@ -2001,6 +2002,7 @@
             if (Q === PL && Q.stc > 0) return Q.stcM >= 2 ? Q.stcPose : null;
             if (Q === PL && Q.stbk > 0) return stabPose(Q);
             if (Q === PL && Q.dts > 0) return ddTossPose(Q);
+            if (Q === PL && DD.carry && DD.sq.w > .02 && Q.z >= 0 && !Q.cs) return ddSqPose(Q);
             if (Q === PL && Q.sqSl > 0 && Q.sqRows) return sqPose(Q);
             if (Q === PL && Q.gu > 0) return guPose(Q);
             if (Q === PL && Q.yk > 0) return ykPose(Q);
@@ -3279,7 +3281,8 @@
                     if (o && o[2] > .001) { ang += wrapA(o[0] - ang) * o[2]; flex = flex * (1 - o[2]) + o[1] * o[2]; }
                 }
                 if (P === PL && i === 0 && DD.cw > .01) {      // cradle the duckling at chest height
-                    const tx = sh[0] + F * (34 + Math.sin(now * 9) * .8), ty = sh[1] + 56 + Math.sin(now * 11) * .8;
+                    const sqk = DD.sq.k;
+                    const tx = sh[0] + F * (34 + Math.sin(now * 9) * .8 + 6 * sqk + Math.sin(now * 60) * 1.3 * sqk), ty = sh[1] + 56 - 6 * sqk + Math.sin(now * 11) * .8 + Math.sin(now * 57) * 1.3 * sqk;
                     const [ca, cf] = ikTo(sh, tx, ty, F);
                     ang += wrapA(ca - ang) * DD.cw; flex = flex * (1 - DD.cw) + cf * DD.cw;
                 }
@@ -3293,6 +3296,7 @@
                 }
                 if (P === PL && i === 1 && DD.g.on && DD.g.sawW > .02) { const o = ddSawArm(sh, F, S); if (o) { ang += wrapA(o[0] - ang) * o[2]; flex = flex * (1 - o[2]) + o[1] * o[2]; } }
                 if (P === PL && i === 1 && DD.g.on && DD.g.tearW > .02) { const o = ddTearArm(sh, F, S); if (o) { ang += wrapA(o[0] - ang) * o[2]; flex = flex * (1 - o[2]) + o[1] * o[2]; } }
+                if (P === PL && i === 1 && DD.carry && DD.sq.w > .02) { const o = ddSqArm(sh, F, S); if (o) { ang += wrapA(o[0] - ang) * o[2]; flex = flex * (1 - o[2]) + o[1] * o[2]; } }
                 if (isGrabbed) {
                     ang = .12; flex = .15;     // arms just hang while he is held
                 } else if (hk > 0) {
@@ -3451,6 +3455,7 @@
             if (P === PL && P.gunK < .05 && P.sgK < .05 && (mk > .9 || (mpa && MP.dis && MP.t < 1.15) || (mpa && !MP.dis && MP.t > 2.9))) drawReins(F);
             if (P === PL && P.puHeld) drawHeldItem(F, S, now);
             if (P === PL && DD.carry) drawCarriedKid(F, S, now);
+            if (P === PL && DD.sq.stain > 0) drawSqStain(F, S, now);
             const grabHdOffX = isGrabbed ? F * 4 - F * hk * 10 + Math.sin(now * 23) * 1.5 : 0;
             const grabHdOffY = isGrabbed ? 6 - hk * 2 : 0;
             const fnn = (P !== PL && P.fst === 1 && PL.fin > 0) ? finK(PL.fin) : null;
@@ -3930,7 +3935,7 @@
 
         // ================= WEATHER: wind, paper scraps =================
         const wind = { v: 90, g: 0, gt: 4, t: 0 };        // v = current wind (px/s, + = right), g = gust part of it
-        const WX_SCRAPS = 9;
+        const WX_SCRAPS = 4;
         const scraps = [];
         let wxInited = false;
 
@@ -9269,7 +9274,7 @@
                 const sx = f.x - P.x + W / 2; if (sx < -20 || sx > W + 20) continue;
                 ctx.globalAlpha = Math.min(1, (f.life - f.t) / .8);
                 ctx.save(); ctx.translate(sx, gy + 4 + f.y); ctx.rotate(f.rot);
-                ctx.fillStyle = f.dark ? '#111' : PAPER; ctx.strokeStyle = '#111'; ctx.lineWidth = 1;
+                ctx.fillStyle = f.bl ? '#9a1018' : (f.dark ? '#111' : PAPER); ctx.strokeStyle = '#111'; ctx.lineWidth = 1;
                 ctx.beginPath(); ctx.ellipse(0, 0, f.s * 2.4, f.s * .8, 0, 0, 7); ctx.fill(); ctx.stroke();
                 ctx.restore();
             }
@@ -13921,7 +13926,7 @@
                 ctx.bezierCurveTo(-r, -r * 1.1, r, -r * 1.1, r, 0); ctx.bezierCurveTo(r, r * .6, r * .2, r * .5, 0, r * .1);
                 ctx.bezierCurveTo(-r * .2, r * .5, -r, r * .6, -r, 0); ctx.closePath(); ctx.fill(); ctx.stroke();
             } else {
-                ctx.fillStyle = '#c9505a'; ctx.beginPath();
+                ctx.fillStyle = k === 'fat' ? '#ecd27a' : k === 'gliver' ? '#6f7f3a' : '#c9505a'; ctx.beginPath();
                 for (let j = 0; j < 6; j++) { const a = j / 6 * Math.PI * 2, rr = r * (.7 + .5 * hash(seed + j * 3)); const px = Math.cos(a) * rr * 1.2, py = Math.sin(a) * rr * .8; j ? ctx.lineTo(px, py) : ctx.moveTo(px, py) }
                 ctx.closePath(); ctx.fill(); ctx.stroke();
             }
@@ -16113,6 +16118,7 @@
             return [(q.x - W / 2) / S, (q.y - (groundY() + 4) + (P.dh || 0) + (P.mh || 0)) / S];
         }
         DD.g = { tear: 0, tearW: 0, on: false, ph: '', t: 0, rt: 0, rc: 0, mode: 'foot', aw: 0, air: 0, ox: 0, oy: 0, oy0: 0, rx: 0, gnx: 0, ax: 0, ay: 0, sw: 0, swv: 0, swung: false, landed: false };
+        DD.sq = { k: 0, w: 0, cracked: 0, ft: 0, jet: 0, jetT: 0, steam: 0, st2: 0, stain: 0, dripT: 0, halves: null };
 
         function ddNeck() {
             const m = DD.m, sc = CSc() * DD_SIZE, F = Math.abs(m.fv) < .15 ? .15 * (Math.sign(m.fv) || 1) : m.fv;
@@ -16124,7 +16130,7 @@
             const S = CSc(), el = A[0], wr = A[1]; let dx = wr[0] - el[0], dy = wr[1] - el[1]; const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
             return [P.x + (wr[0] + dx * 11) * S, (wr[1] + dy * 11) * S - (P.dh || 0) - (P.mh || 0)];
         }
-        function ddLock() { const g = DD.g; return P.dts > 0 || (g.on && ((g.mode === 'foot' && (g.ph === 'grab' || g.ph === 'release')) || g.sawW > .05 || g.tearW > .05)); }
+        function ddLock() { const g = DD.g; return P.dts > 0 || (DD.sq && DD.sq.w > .05) || (g.on && ((g.mode === 'foot' && (g.ph === 'grab' || g.ph === 'release')) || g.sawW > .05 || g.tearW > .05)); }
 
         function ddBegin(mode, t0) {
             const g = DD.g, m = DD.m, sc = CSc() * DD_SIZE;
@@ -16143,7 +16149,7 @@
             if (!DD.init || DD.g.on || DD.carry || P.mount || puBlocked()) return false;
             const S = CSc(); let b = null, bd = PU_R * S;
             for (const d of DD.k) {
-                if (d.carried || inPond(d.x, 0)) continue;
+                if (d.carried || d.dead || inPond(d.x, 0)) continue;
                 const dd = Math.abs(d.x - P.x); if (dd < bd) { bd = dd; b = d; }
             }
             if (!b) return false;
@@ -16159,6 +16165,7 @@
 
         function ddPutDown(quiet) {
             const d = DD.carry; if (!d) return;
+            if (DD.sq.cracked) { if (quiet) ddSqPop(); return; }   // a headless duckling can't be put down alive
             const S = CSc(); let x = P.x + P.face * 46 * S;
             if (inPond(x, 120)) x = P.x;
             d.x = x; d.gx = x; d.vx = 0; d.carried = 0; d.noShadow = 0; d.bn = 16; d.face = P.face;
@@ -16167,24 +16174,33 @@
             if (!quiet) { banner.t = .7; banner.text = 'PUT DOWN'; }
         }
 
-        function drawCarriedKid(F, S, now) {          // called from drawChar
+        function drawCarriedKid(F, S, now) {
             const d = DD.carry, A = P.armPts && P.armPts[0]; if (!d || !A) return;
-            const wr = A[1], sv = d.vx, sph = d.ph;
-            d.noShadow = 1; d.vx = 10; d.ph = now * 15 + d.seed;      // little legs kick
+            const q = DD.sq, k = q.k, wr = A[1], sv = d.vx, sph = d.ph;
+            d.noShadow = 1; d.vx = 10; d.ph = now * (15 + 30 * k) + d.seed;          // little legs kick, faster under pressure
+            const tr = k > .05 ? Math.sin(now * 55) * 1.4 * k + Math.sin(now * 31) * .8 * k : 0;
             ctx.save();
-            ctx.translate(wr[0] + F * 3, wr[1] + 20);
-            ctx.rotate(Math.sin(now * 11) * .07 * F);                 // wriggle
-            const k = DD_SIZE * d.s * .85; ctx.scale(F * k, k);
+            ctx.translate(wr[0] + F * 3 + tr, wr[1] + 20 + Math.sin(now * 47) * .9 * k);
+            ctx.rotate(Math.sin(now * 11) * .07 * F * (1 - k) + Math.sin(now * 40) * .04 * k);
+            const kk = DD_SIZE * d.s * .85;
+            ctx.scale(F * kk * (1 + .22 * k), kk * (1 - .3 * k));                      // squashed sideways, bulging outward
+            ctx.save();
+            if (q.cracked) { ctx.beginPath(); ctx.rect(-200, -46, 400, 300); ctx.clip(); }   // head is gone
             ddShape(d, now);
             ctx.restore();
+            if (q.cracked) ddNeckStump(now);
+            if (k > .03) ddSqOverlay(k, now);
+            ctx.restore();
             d.vx = sv; d.ph = sph;
-            const f = P.fistInfo && P.fistInfo[0];                    // fist back on top, so it grips the duckling
-            if (f && FIST.complete) { ctx.save(); ctx.translate(f.x, f.y); ctx.scale(f.F, 1); ctx.rotate(f.a - Math.PI / 2); ctx.drawImage(FIST, -FIST.naturalWidth / 2, -4); ctx.restore(); }
-            const pk = (now * .7 + d.seed) % 3;                       // "peep!"
-            if (pk < .55) {
+            for (let i = 0; i < (q.w > .03 ? 2 : 1); i++) {                           // fists back on top, so they grip over the duckling
+                const f = P.fistInfo && P.fistInfo[i];
+                if (f && FIST.complete) { ctx.save(); ctx.translate(f.x, f.y); ctx.scale(f.F, 1); ctx.rotate(f.a - Math.PI / 2); ctx.drawImage(FIST, -FIST.naturalWidth / 2, -4); ctx.restore(); }
+            }
+            const pk = (now * .7 + d.seed) % 3;
+            if (pk < .55 && !q.cracked) {
                 ctx.save(); ctx.globalAlpha = Math.sin(Math.PI * pk / .55); ctx.fillStyle = '#111';
                 ctx.font = 'italic bold 13px Georgia,serif'; ctx.textAlign = 'center';
-                ctx.fillText('peep!', wr[0] + F * 8, wr[1] - 48 - pk * 14); ctx.restore();
+                ctx.fillText(k > .4 ? 'pe-eep!' : 'peep!', wr[0] + F * 8, wr[1] - 48 - pk * 14); ctx.restore();
             }
         }
 
@@ -17055,7 +17071,12 @@
                 const Rr = 140, s = h.side, p0 = [DT_C[0] - DT_L[0] * Rr, DT_C[1] - DT_L[1] * Rr], p1 = [DT_C[0] + DT_L[0] * Rr, DT_C[1] + DT_L[1] * Rr];
                 ctx.beginPath(); ctx.moveTo(p0[0], p0[1]); ctx.lineTo(p1[0], p1[1]);
                 ctx.lineTo(p1[0] + s * DT_N[0] * Rr, p1[1] + s * DT_N[1] * Rr); ctx.lineTo(p0[0] + s * DT_N[0] * Rr, p0[1] + s * DT_N[1] * Rr); ctx.closePath(); ctx.clip();
-                ddShape(h.snap, now);
+                if (h.snap.nohead) {
+                    ctx.save(); ctx.beginPath(); ctx.rect(-200, -46, 400, 300); ctx.clip();
+                    ddShape(h.snap, now);
+                    ctx.restore();
+                    if (h.side < 0) ddNeckStump(now);
+                } else ddShape(h.snap, now);
                 ctx.restore();
                 ddCutFace(h, now);
                 ctx.restore();
@@ -17302,6 +17323,276 @@
             }
         }
 
+        // ================= DUCKLING SQUEEZE (hold J while carrying, knife away) =================
+        const SQA = { a: null };
+        function sqAC() { try { if (!SQA.a) SQA.a = new (window.AudioContext || window.webkitAudioContext)(); if (SQA.a.state === 'suspended') SQA.a.resume(); return SQA.a; } catch (e) { return null; } }
+        function sqCreak(k) {                                   // low wood-creak + tiny muffled peeping
+            if (k <= 0 && !SQA.o1) return;
+            const a = sqAC(); if (!a) return;
+            try {
+                if (!SQA.o1) {
+                    SQA.o1 = a.createOscillator(); SQA.o1.type = 'sawtooth'; SQA.o2 = a.createOscillator(); SQA.o2.type = 'triangle';
+                    SQA.f = a.createBiquadFilter(); SQA.f.type = 'lowpass'; SQA.f.frequency.value = 320;
+                    SQA.g = a.createGain(); SQA.g.gain.value = 0; SQA.g2 = a.createGain(); SQA.g2.gain.value = 0;
+                    SQA.o1.connect(SQA.f); SQA.f.connect(SQA.g); SQA.g.connect(a.destination); SQA.o2.connect(SQA.g2); SQA.g2.connect(a.destination);
+                    SQA.o1.start(); SQA.o2.start();
+                }
+                const t = a.currentTime;
+                SQA.o1.frequency.setTargetAtTime(48 + 90 * k + Math.sin(t * (14 + 20 * k)) * 12 * k, t, .02);
+                SQA.o2.frequency.setTargetAtTime(1200 + 1100 * k + Math.sin(t * 38) * 220 * k, t, .015);
+                SQA.g.gain.setTargetAtTime(k > .02 ? .05 + .09 * k : 0, t, .06);
+                SQA.g2.gain.setTargetAtTime(k > .3 ? .012 + .03 * k : 0, t, .05);
+            } catch (e) { }
+        }
+        function sqSfx(kind) {                                  // 'peep' | 'crack' | 'pop'
+            const a = sqAC(); if (!a) return;
+            try {
+                const t = a.currentTime;
+                if (kind === 'peep') {
+                    const o = a.createOscillator(), g = a.createGain(); o.type = 'sine';
+                    o.frequency.setValueAtTime(2300, t); o.frequency.exponentialRampToValueAtTime(1500, t + .12);
+                    g.gain.setValueAtTime(.08, t); g.gain.exponentialRampToValueAtTime(.001, t + .14); o.connect(g); g.connect(a.destination); o.start(t); o.stop(t + .15); return;
+                }
+                const pop = kind === 'pop', len = pop ? .55 : .12, n = Math.floor(a.sampleRate * len), buf = a.createBuffer(1, n, a.sampleRate), dd = buf.getChannelData(0);
+                for (let i = 0; i < n; i++) dd[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, pop ? 2.2 : 3);
+                const s = a.createBufferSource(); s.buffer = buf;
+                const f = a.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = pop ? .8 : 2; f.frequency.setValueAtTime(pop ? 1400 : 3200, t);
+                if (pop) f.frequency.exponentialRampToValueAtTime(260, t + .5);
+                const g = a.createGain(); g.gain.value = pop ? .5 : .28; s.connect(f); f.connect(g); g.connect(a.destination); s.start(t);
+                if (pop) {                                       // wet low thump
+                    const o = a.createOscillator(), g2 = a.createGain(); o.type = 'sine'; o.frequency.setValueAtTime(110, t); o.frequency.exponentialRampToValueAtTime(40, t + .3);
+                    g2.gain.setValueAtTime(.45, t); g2.gain.exponentialRampToValueAtTime(.001, t + .35); o.connect(g2); g2.connect(a.destination); o.start(t); o.stop(t + .4);
+                }
+            } catch (e) { }
+        }
+
+        // duck-local point -> world, following the squashed, carried duckling
+        function ddSqPt(lx, ly) {
+            const d = DD.carry, A = P.armPts && P.armPts[0], S = CSc(), F = P.face;
+            if (!d || !A) return [P.x + F * 30 * S, -110 * S - (P.dh || 0) - (P.mh || 0)];
+            const kk = DD_SIZE * d.s * .85, wr = A[1], k = DD.sq.k;
+            return [P.x + (wr[0] + F * 3 + F * kk * (1 + .22 * k) * lx) * S, (wr[1] + 20 + kk * (1 - .3 * k) * ly) * S - (P.dh || 0) - (P.mh || 0)];
+        }
+
+        function ddSqPose(Q) {
+            const q = DD.sq, k = q.k, tr = Math.sin(performance.now() / 1000 * 45) * 1.2 * k;
+            return {
+                w: clamp01(q.w), a0: .08, f0: 0, a1: .08, f1: 0, lean: .1 * k, hipX: -3 * k + tr * .2, hipY: 8 * k, arch: .03 + .05 * k, hx: 3 * k, hy: 4 * k,
+                l0: [34, 0, 0], l1: [-34, 0, 0], st: STEPS[0], sw: 0, ik: 0, noArms: true
+            };
+        }
+        function ddSqArm(sh, F, S) {                            // free hand clamps onto the duckling
+            const q = DD.sq, A = P.armPts && P.armPts[0]; if (!A || !DD.carry) return null;
+            const wr = A[1], k = q.k, tr = Math.sin(performance.now() / 1000 * 50) * 1.2 * k;
+            const [a, f] = ikTo(sh, wr[0] + F * (16 - 5 * k) + tr, wr[1] + 4 + 3 * k + tr * .5, F);
+            return [a, f, clamp01(q.w * 3)];
+        }
+
+        function ddNeckStump(now) {                             // duck-local, at the base of the neck
+            ctx.save(); ctx.translate(11, -45); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+            ctx.strokeStyle = '#8c0d14'; ctx.lineWidth = 2.6; ctx.beginPath(); ctx.moveTo(0, 1); ctx.quadraticCurveTo(5, 8, 3.5, 15 + Math.sin(now * 4) * .6); ctx.stroke();   // blood sheeting down the chest
+            ctx.fillStyle = '#7a0b11'; ctx.strokeStyle = '#3a0508'; ctx.lineWidth = 1; ctx.beginPath(); ctx.ellipse(0, 0, 4.8, 2.5, -.3, 0, 7); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = '#d4443a'; ctx.beginPath(); ctx.ellipse(0, -.2, 3, 1.3, -.3, 0, 7); ctx.fill();
+            ctx.fillStyle = '#f1e3d6'; ctx.beginPath(); ctx.arc(1.3, -.3, 1, 0, 7); ctx.fill();    // windpipe
+            ctx.fillStyle = '#efe9da'; ctx.beginPath(); ctx.arc(-1.6, -.2, .9, 0, 7); ctx.fill();   // spine
+            ctx.restore();
+        }
+
+        // everything the pressure does to the duckling's body (duck-local space, drawn after ddShape)
+        function ddSqOverlay(k, now) {
+            const d = DD.carry, pulse = .5 + .5 * Math.sin(now * (9 + 14 * k)), cr = DD.sq.cracked;
+            ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+            // blood pressure flush under the skin
+            ctx.globalAlpha = clamp01((k - .15) * 1.1) * (.28 + .22 * pulse);
+            ctx.fillStyle = '#6b2a5a'; ctx.beginPath(); ctx.ellipse(-3, -28, 20 + 3 * k, 9 + 2 * k, .1, 0, 7); ctx.fill();
+            ctx.fillStyle = '#9a1020'; ctx.globalAlpha *= .8; ctx.beginPath(); ctx.ellipse(5, -24, 11, 6, 0, 0, 7); ctx.fill();
+            // capillaries darkening and throbbing
+            ctx.globalAlpha = clamp01((k - .2) * 1.3) * (.5 + .35 * pulse); ctx.lineWidth = .55;
+            for (let i = 0; i < 9; i++) {
+                const x0 = -20 + hash(i * 3.1) * 36, y0 = -38 + hash(i * 4.7) * 16, L = 6 + hash(i * 5.9) * 9, an = hash(i * 7.3) * 6.28;
+                ctx.strokeStyle = i % 2 ? '#5a1a4a' : '#8c0d14';
+                ctx.beginPath(); ctx.moveTo(x0, y0); ctx.quadraticCurveTo(x0 + Math.cos(an) * L * .5 + 2, y0 + Math.sin(an) * L * .5 - 2, x0 + Math.cos(an) * L, y0 + Math.sin(an) * L); ctx.stroke();
+            }
+            // skin bulging out of the weak points: neck, wing base, tail root
+            ctx.globalAlpha = clamp01((k - .3) * 1.4);
+            const bump = (x, y, rx, ry) => {
+                ctx.fillStyle = '#f2c3bd'; ctx.strokeStyle = '#111'; ctx.lineWidth = .8; ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0, 0, 7); ctx.fill(); ctx.stroke();
+                ctx.strokeStyle = 'rgba(120,20,40,.7)'; ctx.lineWidth = .4; ctx.beginPath(); ctx.moveTo(x - rx * .6, y); ctx.lineTo(x + rx * .6, y - ry * .3); ctx.moveTo(x - rx * .5, y + ry * .4); ctx.lineTo(x + rx * .5, y + ry * .2); ctx.stroke();
+            };
+            if (!cr) bump(12, -46, 2.2 + 2.6 * k, 2 + 2.2 * k);
+            bump(-25, -32, 1.8 + 2.4 * k, 2.4 + 1.6 * k);
+            bump(8, -39, 2 + 2.4 * k, 1.6 + 1.6 * k);
+            // feathers flatten, then splay outward
+            if (k > .4) {
+                ctx.globalAlpha = clamp01((k - .4) * 2); ctx.strokeStyle = '#111'; ctx.fillStyle = '#fbf4dc'; ctx.lineWidth = .6;
+                for (let i = 0; i < 14; i++) {
+                    const an = (i / 14) * Math.PI * 2 + hash(i) * .3, ex = -4 + Math.cos(an) * 23, ey = -28 + Math.sin(an) * 14.5, L = 2 + (3 + 3 * hash(i * 2.3)) * k;
+                    ctx.beginPath(); ctx.ellipse(ex + Math.cos(an) * L * .5, ey + Math.sin(an) * L * .5, L * .6, .9, an, 0, 7); ctx.fill(); ctx.stroke();
+                }
+            }
+            if (!cr) {
+                const hx = 18 + 3 * d.hd, hy = -63.8, er = 1.7 + 2.3 * k, hd = Math.sign(d.hd) || 1;
+                // eye bulging out of the socket, veined, pupil shrinking
+                ctx.globalAlpha = clamp01((k - .2) * 2);
+                ctx.fillStyle = '#fff'; ctx.strokeStyle = '#111'; ctx.lineWidth = .9; ctx.beginPath(); ctx.arc(hx, hy, er, 0, 7); ctx.fill(); ctx.stroke();
+                ctx.strokeStyle = '#b3141c'; ctx.lineWidth = .4;
+                for (let i = 0; i < 5; i++) { const a = i * 1.3 + 1; ctx.beginPath(); ctx.moveTo(hx + Math.cos(a) * er, hy + Math.sin(a) * er); ctx.lineTo(hx + Math.cos(a) * er * .35, hy + Math.sin(a) * er * .35); ctx.stroke(); }
+                ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(hx + hd * .3, hy, Math.max(.4, 1.1 - .5 * k), 0, 7); ctx.fill();
+                // beak gaping in silent agony, blood welling
+                if (k > .25) {
+                    const g = clamp01((k - .25) * 1.4), x0 = 18 + hd * 5, x1 = 18 + hd * (15 + 2 * g);
+                    ctx.globalAlpha = g; ctx.fillStyle = '#6a0a12'; ctx.beginPath(); ctx.moveTo(x0, -62.2); ctx.lineTo(x1, -62.4 - 2.6 * g); ctx.lineTo(x1, -61.4 + 2.6 * g); ctx.closePath(); ctx.fill();
+                    ctx.fillStyle = '#e98a8a'; ctx.beginPath(); ctx.ellipse((x0 + x1) / 2, -61.8 + g, 3 * g, .8, 0, 0, 7); ctx.fill();
+                    if (k > .55) { ctx.strokeStyle = '#a8141c'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(x1 - hd, -60); ctx.lineTo(x1 - hd * 1.5, -56 + 3 * k); ctx.stroke(); }
+                }
+            }
+            ctx.restore();
+        }
+
+        function drawSqStain(F, S, now) {                       // blood-soaked fists with stuck feathers
+            const a = clamp01(DD.sq.stain / 1.5); if (a <= 0) return;
+            for (let i = 0; i < 2; i++) {
+                const f = P.fistInfo && P.fistInfo[i]; if (!f) continue;
+                ctx.save(); ctx.translate(f.x, f.y); ctx.scale(f.F, 1); ctx.rotate(f.a - Math.PI / 2); ctx.globalAlpha = a * .85;
+                ctx.fillStyle = '#8c0d14'; ctx.beginPath(); ctx.ellipse(0, 11, 7.5, 9.5, 0, 0, 7); ctx.fill();
+                ctx.fillStyle = '#b3141c'; ctx.beginPath(); ctx.ellipse(-2, 8, 3, 3.6, 0, 0, 7); ctx.fill();
+                ctx.fillStyle = '#e9786c'; ctx.beginPath(); ctx.ellipse(3, 15, 2, 1.4, .5, 0, 7); ctx.fill();
+                ctx.fillStyle = '#9a1018'; ctx.strokeStyle = '#111'; ctx.lineWidth = .8; ctx.beginPath(); ctx.ellipse(5 - i * 9, 22, 4.5, 1.5, .9 + i, 0, 7); ctx.fill(); ctx.stroke();
+                ctx.restore();
+            }
+        }
+
+        // ---- stage 1: the neck gives way ----
+        function ddSqCrack() {
+            const q = DD.sq, d = DD.carry, S = CSc(), F = P.face, R = Math.random, sc = S * DD_SIZE * d.s;
+            const h = ddSqPt(18, -62), n = ddSqPt(11, -45);
+            q.cracked = 1; q.jetT = 0;
+            gibs.push({ k: 4, f: F, x: h[0], y: Math.min(-8, h[1]), vx: F * (70 + R() * 150) + (R() - .5) * 120, vy: -(420 + R() * 200), rot: 0, vr: F * (11 + R() * 6), s: 9 * sc, seed: R() * 99, bn: 0, landed: false, t: 0, bl: 0 });
+            for (const [col, w] of [['#eadfcf', 1.6], ['#8c0d14', 1.1], ['#b3141c', 1]]) {       // tendons whipping off the stump
+                const vx = F * (20 + R() * 90), vy = -(20 + R() * 60);
+                bg.veins.push({ p: Array.from({ length: 6 }, (_, j) => ({ x: n[0] + F * j, y: n[1] - j, ox: n[0] - vx / 60, oy: n[1] - vy / 60 })), rest: 3 * S, w: w * S, col, gut: false, t: 0, bl: 0, pin: () => ddSqPt(11, -45), pinT: .3 });
+            }
+            spray(n[0], n[1], 40, 600, F); spray(n[0], n[1], 22, 420, -F); burst(n[0], n[1], 14, 300, F);
+            for (let i = 0; i < 30; i++) bgDrop(n[0] + (R() - .5) * 4, n[1], (R() - .5) * 220 + F * 50, -(450 + R() * 650), 1.3 + R() * 1.7);
+            for (let i = 0; i < 3; i++) boneSplinter(n[0], n[1], F, 300);
+            puffFeathers(n[0], n[1], 10, F);
+            impacts.push({ x: n[0], y: n[1], t: 0, life: .25, s: 70, seed: R() * 50 });
+            hitstop = Math.max(hitstop, .09); shake = Math.max(shake, 10);
+            banner.t = .9; banner.text = 'NECK SNAPS!'; sqSfx('crack');
+        }
+
+        // ---- stage 2: the torso bursts ----
+        function ddSqPop() {
+            const q = DD.sq, d = DD.carry; if (!d) return;
+            const S = CSc(), F = P.face, R = Math.random, sc = S * DD_SIZE * d.s, c = ddSqPt(DT_C[0], DT_C[1]);
+            const hand = i => { const f = P.fistInfo && P.fistInfo[i]; return f ? [P.x + f.x * S, f.y * S + 8 * S - (P.dh || 0) - (P.mh || 0)] : c; };
+            const base = Object.assign({}, d, { dead: 1, headless: 0, cut: 0, air: 0, dip: 0, tilt: 0, str: 0, gape: 0, flap: 0, swayR: 0, nb: 0, nkx: 0, vx: 10, bl: 0, noShadow: 1, lie: 0, conv: 0, carried: 0, wing: .4, nohead: q.cracked ? 1 : 0 });
+            const mk = side => {
+                const top = side < 0, h = {
+                    side, F, sk: d.s, hwK: .7, snap: Object.assign({}, base), M: { a: sc * F * 1.15, b: 0, c: 0, d: sc * .78 }, x: c[0], y: c[1], rot: 0, t: 0, bn: 0, bl: 0, landed: false, tl: 0, seed: R() * 99,
+                    vx: top ? F * (50 + R() * 110) + (R() - .5) * 60 : -F * (20 + R() * 60), vy: top ? -(240 + R() * 200) : -(60 + R() * 120),
+                    vr: top ? F * (3 + R() * 3) : -F * (1.5 + R() * 2), restY: top ? DT_REST.top.y : DT_REST.bot.y, restRot: (top ? DT_REST.top.rot : DT_REST.bot.rot) * F, pool: null
+                };
+                dHalves.push(h); return h;
+            };
+            const hT = mk(-1), hB = mk(1);
+
+            // sinew stretching between the halves, then snapping
+            const cols = ['#4a0710', '#5c0a12', '#d9cdb0', '#3b0a2a'];
+            for (let i = 0; i < 7; i++) dLinks.push({ a: hT, b: hB, u: DT_UC + (i - 3) * DT_HW * .2, alive: true, gut: i === 1, w: (i === 1 ? 1.7 : .6 + R() * .8) * S, col: i === 1 ? '#c9605a' : cols[i % 4], max: (40 + R() * 70) * S });
+            // intestines hanging from the halves
+            for (let i = 0; i < 3; i++) {
+                const half = i === 1 ? hT : hB, u = DT_UC + (i - 1) * DT_HW * .45, vx = (R() - .5) * 200, vy = -(30 + R() * 120);
+                bg.veins.push({ p: Array.from({ length: 16 }, () => ({ x: c[0], y: c[1], ox: c[0] - vx / 60, oy: c[1] - vy / 60 })), rest: 3 * S, w: 2 * S, col: '#d0675f', gut: true, t: 0, bl: 0, pin: () => ddHalfEnd(half, u), pinT: 1.2 + R() * .8 });
+            }
+            // loose torn veins flung free
+            for (let i = 0; i < 6; i++) {
+                const a = R() * 6.283, sp = 200 + R() * 350, vx = Math.cos(a) * sp, vy = Math.sin(a) * sp - 150;
+                bg.veins.push({ p: Array.from({ length: 5 }, (_, j) => ({ x: c[0] - Math.cos(a) * j * 2, y: c[1] - Math.sin(a) * j * 2, ox: c[0] - vx / 60, oy: c[1] - vy / 60 })), rest: 3 * S, w: (1 + R() * .6) * S, col: ['#a3121a', '#8c0d14', '#6b2a5a'][i % 3], gut: false, t: 0, bl: 0 });
+            }
+            // organs: pale yellow fat, green liver, heart, lungs, gizzard...
+            const kinds = ['heart', 'lung', 'lung', 'liver', 'gizzard', 'kidney', 'kidney', 'fat', 'fat', 'fat', 'gliver', 'bit', 'bit', 'bit', 'bit', 'bit', 'bit', 'bit'];
+            const size = { heart: 3.2, lung: 3.6, liver: 3.8, gizzard: 3.2, kidney: 2.4, fat: 2.6, gliver: 3, bit: 1.6 };
+            for (const k of kinds) bg.organs.push({ k, x: c[0] + (R() - .5) * 10, y: c[1] + (R() - .5) * 8, vx: (R() - .5) * 900 + F * 60, vy: -(120 + R() * 560), rot: R() * 6, vr: (R() - .5) * 22, r: size[k] * S * 1.05, landed: false, bn: 0, t: 0, bl: 0, sq: 0, seed: R() * 100 });
+            for (let i = 0; i < 8 && brainBits.length < 150; i++) brainBits.push({ x: c[0], y: c[1], vx: (R() - .5) * 700, vy: -(80 + R() * 420), r: (2 + R() * 2.5) * S, rot: R() * 6, vr: (R() - .5) * 16, k: R() < .6 ? 2 : 0, landed: false, bounced: 0, t: 0 });   // red muscle chunks
+            for (let i = 0; i < 8; i++) boneSplinter(c[0], c[1], R() < .5 ? F : -F, 420);
+
+            // blood, layer 1: fast fine mist. layer 2: heavy blobs
+            for (let i = 0; i < 110; i++) { const a = R() * 6.283, sp = 300 + R() * 750; ddDark(c[0], c[1], Math.cos(a) * sp, Math.sin(a) * sp * .9 - 160, .5 + R() * .6); }
+            for (let i = 0; i < 22; i++) { const a = R() * 6.283, sp = 60 + R() * 260; ddDark(c[0], c[1], Math.cos(a) * sp, Math.sin(a) * sp - 140 - R() * 160, 2.4 + R() * 1.3); }
+            spray(c[0], c[1], 50, 640, F); spray(c[0], c[1], 40, 600, -F); spray(c[0], c[1], 26, 420, 0); burst(c[0], c[1], 30, 420, F);
+            // hands get sprayed too
+            for (const i of [0, 1]) { const hp = hand(i); spray(hp[0], hp[1], 14, 240, i ? -F : F); for (let j = 0; j < 8; j++) bgDrop(hp[0], hp[1], (R() - .5) * 160, -(40 + R() * 160), 1.2 + R() * 1.4); }
+            // blood-soaked feathers everywhere
+            const n0 = feathers.length; puffFeathers(c[0], c[1], 55, F); puffFeathers(c[0], c[1], 40, -F);
+            for (let i = n0; i < feathers.length; i++) { const f = feathers[i]; f.bl = R() < .6 ? 1 : 0; f.vx *= 1.8; f.vy -= 150; }
+            for (let i = 0; i < 7; i++) bgStain(c[0] + (R() - .5) * 160, 6 * S + R() * 9 * S, i < 3);
+            impacts.push({ x: c[0], y: c[1], t: 0, life: .4, s: 190, seed: R() * 50 }); impacts.push({ x: c[0], y: c[1], t: 0, life: .25, s: 100, seed: R() * 50 });
+            hitstop = Math.max(hitstop, .14); shake = Math.max(shake, 18);
+            combo.n++; combo.dmg += 40; combo.t = 2; combo.pop = 1.4; birdKills++;
+            banner.t = 1.4; banner.text = 'POPPED!';
+            sqSfx('pop'); sqCreak(0);
+
+            // aftermath: hands free but stained, halves jet and steam
+            d.dead = true; d.respT = 40; d.carried = 0; d.noShadow = 0;
+            DD.carry = null; DD.cw = 0;
+            q.k = 0; q.cracked = 0; q.w = 0; q.halves = [hT, hB]; q.jet = .7; q.steam = 7; q.st2 = 0; q.stain = 7; q.dripT = 0;
+        }
+
+        function ddSqueezeTick(dt) {
+            if (!(dt > 0)) return;
+            const q = DD.sq, d = DD.carry, S = CSc(), R = Math.random, F = P.face;
+            const can = !!d && P.pu === 0 && P.dts === 0 && (q.cracked || (P.kn === 0 && P.kt < .05)) && !P.mount && !swim.on && P.z >= 0 && !DD.g.on;
+            const prev = q.k;
+            if (!d) { q.k = 0; q.cracked = 0; }
+            else if (can) {
+                const want = !!keys.KeyJ || !!q.cracked;                                     // after the neck snaps there is no letting go
+                q.k = want ? Math.min(1, q.k + dt * (q.cracked ? .6 : .3 + .55 * q.k)) : Math.max(0, q.k - dt * 1.3);
+            } else if (!q.cracked) q.k = Math.max(0, q.k - dt * 3);
+            q.w += ((can && q.k > .02 ? 1 : 0) - q.w) * Math.min(1, dt * 10);
+
+            if (d && can) {
+                const k = q.k;
+                if (k > .02) shake = Math.max(shake, .6 + 4.5 * k * k);
+                if (prev < .08 && k >= .08) { banner.t = .7; banner.text = 'SQUEEZING...'; }
+                if (prev < .4 && k >= .4) { banner.t = .8; banner.text = 'IT CREAKS...'; sqSfx('peep'); }
+                if (prev < .62 && k >= .62) { banner.t = .8; banner.text = 'BONES GIVE...'; sqSfx('peep'); }
+                q.ft -= dt;
+                if (k > .35 && q.ft <= 0) {                                                  // feathers pop loose, blood weeps from the beak
+                    q.ft = .24 - .17 * k;
+                    const p = ddSqPt(0, -28); puffFeathers(p[0], p[1], 1, R() < .5 ? F : -F);
+                    if (k > .55 && !q.cracked) { const b = ddSqPt(33, -61); bgDrop(b[0], b[1], F * 20, 20 + R() * 40, 1.2 + R()); }
+                }
+                sqCreak(k);
+                if (!q.cracked && k >= .78) ddSqCrack();
+                if (q.cracked) {                                                             // arterial jets from the stump
+                    q.jetT -= dt;
+                    if (q.jetT <= 0) { q.jetT = .025; const n = ddSqPt(11, -45); for (let i = 0; i < 3; i++) bgDrop(n[0] + (R() - .5) * 4, n[1], (R() - .5) * 200 + F * 50, -(380 + R() * 620), 1.3 + R() * 1.7); }
+                }
+                if (q.k >= 1) ddSqPop();
+            } else sqCreak(0);
+
+            if (q.jet > 0) {                                                                 // pressurised blood keeps jetting from the cut faces
+                q.jet -= dt; const k = clamp01(q.jet / .7), pulse = .5 + .5 * Math.sin(q.jet * 30);
+                for (const h of q.halves || []) {
+                    if (!dHalves.includes(h)) continue;
+                    for (let i = 0; i < 3; i++) { const e = ddHalfEnd(h, DT_UC + (R() - .5) * DT_HW * .9); bgDrop(e[0], e[1], (R() - .5) * 280 + h.vx * .3, -(200 + R() * 700) * k * (.5 + .5 * pulse), 1.1 + R() * 1.7); }
+                }
+            }
+            if (q.steam > 0) {                                                               // faint steam off the fresh wounds
+                q.steam -= dt; q.st2 -= dt;
+                if (q.st2 <= 0) { q.st2 = .09; for (const h of q.halves || []) if (dHalves.includes(h)) { const e = ddHalfEnd(h, DT_UC); puff(e[0], e[1] - 4, 1, 0, -30, 3, 9, 2.4, .16 * clamp01(q.steam / 2)); } }
+            }
+            if (q.stain > 0) {                                                               // blood dripping off the fingers
+                q.stain -= dt; q.dripT -= dt;
+                if (q.dripT <= 0 && q.stain > .5) {
+                    q.dripT = .1 + R() * .18;
+                    const f = P.fistInfo && P.fistInfo[R() < .5 ? 0 : 1];
+                    if (f) bgDrop(P.x + f.x * S, f.y * S + 10 * S - (P.dh || 0) - (P.mh || 0), (R() - .5) * 20, 10 + R() * 30, 1.2 + R() * 1.2);
+                }
+            }
+        }
+
         function frame(now) {
 
 
@@ -17309,7 +17600,7 @@
             let dt = dt0;
             if (hitstop > 0) { hitstop -= dt0; dt = 0 }
 
-            update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); sgTick(dt); sgGroundTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); waterFXTick(dt); brainTick(dt); hzTick(dt); gibTick(dt); boneTick(dt); weatherTick(dt); horseTick(dt); mpkTick(dt); birdTick(dt); fowlTick(dt); frogTick(dt); duckTick(dt); ddTick(dt); ddHalvesTick(dt); crocTick(dt); bgTick(dt); corpseTick(dt); dayTick(dt0); fireflyTick(dt0); stExtrasTick(dt0);
+            update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); sgTick(dt); sgGroundTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); waterFXTick(dt); brainTick(dt); hzTick(dt); gibTick(dt); boneTick(dt); weatherTick(dt); horseTick(dt); mpkTick(dt); birdTick(dt); fowlTick(dt); frogTick(dt); duckTick(dt); ddTick(dt); ddSqueezeTick(dt); ddHalvesTick(dt); crocTick(dt); bgTick(dt); corpseTick(dt); dayTick(dt0); fireflyTick(dt0); stExtrasTick(dt0);
             const hStop = MT_HORSE_STOP_X();
             const hGap = HRS.x - hStop;
             if (hGap < 350 && HRS.vx < 0) HRS.vx *= Math.max(0, 1 - dt * 6 * (1 - hGap / 350));
