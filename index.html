@@ -286,6 +286,7 @@
             if (e.code === 'KeyO') pressLantern();
             if (P.sm === 1 || P.ln > 0 || P.lb > 0 || P.stc > 0) return;
             if (P.sgp > 0) return;    // no actions mid-stomp
+            if (P.stm > 0) return;
             if (e.code === 'KeyG') pressG();
             if (e.code === 'KeyH') pressHorse();
             if (e.code === 'KeyF') pressFire();
@@ -552,7 +553,7 @@
                 fidgetTick(P, true, dt);
                 return;
             }
-            const dir = (P.fin > 0 || P.sm === 1 || P.ln > 0 || P.lb > 0 || P.fs > 0 || P.yk > 0 || P.gu > 0 || P.sgp > 0 || P.mount || P.ldLock || P.sqSl > 0 || ddLock()) ? 0 : (keys.ArrowRight || keys.KeyD ? 1 : 0) - (keys.ArrowLeft || keys.KeyA ? 1 : 0);
+            const dir = (P.fin > 0 || P.sm === 1 || P.ln > 0 || P.lb > 0 || P.fs > 0 || P.yk > 0 || P.gu > 0 || P.sgp > 0 || P.stm > 0 || P.mount || P.ldLock || P.sqSl > 0 || ddLock()) ? 0 : (keys.ArrowRight || keys.KeyD ? 1 : 0) - (keys.ArrowLeft || keys.KeyA ? 1 : 0);
             const run = keys.ShiftLeft || keys.ShiftRight;
             const max0 = run ? 520 : 190, max = mtLimitSpeed(max0, dir, run);
             const grounded = P.z >= 0;
@@ -866,6 +867,7 @@
         STEPS.push(...KICKS);
 
         function pressKick() {
+            if (stompKidTry()) return;
             console.log('[pressKick called] P.gun:', P.gun, 'P.gs:', P.gs, 'P.cs:', P.cs, 'P.z:', P.z, 'P.mount:', P.mount);
             const why =
                 P.mount ? 'mounted' : P.sg ? 'shotgun' : P.sgp > 0 ? 'sgp' : P.pk > 0 ? 'parkour' :
@@ -1996,6 +1998,7 @@
             if (Q === PL && swim.on) { const sp = swimPose(); if (sp) return sp }
             if (Q === PL && TH_CL.on && TH_CL.pose) return TH_CL.pose;
             if (Q === PL && Q.pu > 0) return puPose(Q);
+            if (Q === PL && Q.stm > 0 && !Q.stmWalk) return stompPose(Q);
             if (Q === PL && DD.g.on && DD.g.mode === 'foot') { const dp = ddFootPose(Q); if (dp) return dp; }
             if (Q === PL && Q.mSl > 0 && Q.mount === 2) return mSlPose(Q);
             if (Q === PL && Q.mpk > 0 && Q.mount === 2) return mpkPose(Q);
@@ -3085,6 +3088,7 @@
                     }
                 }
                 if (P === PL && i === 0 && P.sgp > 0 && !P.sgpWalk) { const o = sgpFoot(S, fx, fy, lf, F); fx = o[0]; fy = o[1]; lf = o[2]; }
+                if (P === PL && i === 0 && P.stm > 0 && !P.stmWalk) { const o = stompFoot(S, fx, fy, lf, F); fx = o[0]; fy = o[1]; lf = o[2]; }
 
 
 
@@ -16562,7 +16566,9 @@
             for (const a of list) {
                 const sc = S * DD_SIZE * a.s, F = Math.abs(a.fv) < .15 ? .15 * (Math.sign(a.fv) || 1) : a.fv;
                 const sx = a.x - P.x + W / 2, lane = a.mother ? 0 : (a.i % 2 ? -2 * sc : 0);
-                ctx.save(); ctx.translate(sx, gy + 4 + lane - (a.bn || 0) * sc); ctx.scale(sc * F, sc); ddShape(a, now); ctx.restore();
+                const sq = a.stompK || 0;
+                ctx.save(); ctx.translate(sx, gy + 4 + lane - (a.bn || 0) * sc);
+                ctx.scale(sc * F * (1 + .5 * sq), sc * (1 - .86 * sq)); ddShape(a, now); ctx.restore();
             }
         }
 
@@ -16839,6 +16845,182 @@
             }
         }
 
+        // ================= DUCKLING STOMP (M near a duckling) =================
+        const STM_RANGE = 170, STM_STAND = 46;                       // reach to start / distance you stand from it (x S)
+        const STM_UP = .26, STM_HIT = .36, STM_POP = .46, STM_HOLD = .92, STM_END = 1.28;
+        const stompRemains = [];
+        P.stm = 0; P.stmT = 0; P.stmWalk = 0; P.stmWalkT = 0; P.stmK = null; P.stmHit = 0; P.stmPop = 0; P.stmDrip = 0; P.stmBlood = 0; P.stmD = 0;
+
+        function stompKidTry() {
+            if (P.stm > 0) return true;                                // already stomping: swallow the key
+            if (!DD.init || DD.carry || DD.g.on || DD.fly) return false;
+            if (P.mount || P.sg || P.gun || P.gs === 2 || P.z < 0 || P.pk > 0 || P.stc > 0 || P.pu > 0 || P.dts > 0 || P.mpk > 0 ||
+                P.cs > 0 || P.fin > 0 || P.thw > 0 || P.tt > 0 || P.stbk > 0 || P.fs > 0 || P.gu > 0 || P.yk > 0 || P.sgp > 0 ||
+                P.sm > 0 || P.ln > 0 || P.lb > 0 || P.ld > 0 || swim.on || TH_CL.on || P.dh > 0) return false;
+            const S = CSc(); let best = null, bd = STM_RANGE * S;
+            for (const d of DD.k) {
+                if (d.dead || d.carried || d.cap || inPond(d.x, 0)) continue;
+                const dist = Math.abs(d.x - P.x);
+                if (dist < bd) { bd = dist; best = d; }
+            }
+            if (!best) return false;
+            if (P.skid) endSkid(); P.skidK = 0;
+            P.face = best.x >= P.x ? 1 : -1;
+            best.cap = 1; best.gx = best.x; best.vx = 0; best.stompK = 0;
+            Object.assign(P, { stm: .0001, stmT: 0, stmWalk: 1, stmWalkT: 0, stmK: best, stmHit: 0, stmPop: 0, stmDrip: 0 });
+            P.idle = 0; P.fid = 0; P.abuf = 0; P.jbuf = 0; P.grabbed = null; P.clast = 0;
+            return true;
+        }
+        function stompCancel() {
+            const k = P.stmK; if (k) { k.cap = 0; k.stompK = 0; }
+            P.stm = 0; P.stmT = 0; P.stmWalk = 0; P.stmK = null;
+        }
+
+        function stompFoot(S, fx0, fy0, lf0, F) {                      // same contract as sgpFoot()
+            const t = P.stmT, k = P.stmK; if (!k) return [fx0, fy0, lf0];
+            const top = -(44 * DD_SIZE * k.s) * .8;                    // sole touches the top of its back here
+            const gx = (k.x - P.x) / S - F * 2, ux = gx - F * 10, uy = -84;
+            if (t < STM_UP) { const u = sm(t / STM_UP); return [lerp(fx0, ux, u), lerp(fy0, uy, u), lerp(lf0, 34, u)]; }
+            if (t < STM_HIT) { const u = Math.pow(sm((t - STM_UP) / (STM_HIT - STM_UP)), 1.6); return [lerp(ux, gx, u), lerp(uy, top, u), 34 * (1 - u)]; }
+            if (t < STM_POP) { const u = sm((t - STM_HIT) / (STM_POP - STM_HIT)); return [gx, lerp(top, -3, u), 0]; }
+            if (t < STM_HOLD) { const g = Math.sin(t * 34) * .9 * (1 - sm((t - STM_POP) / (STM_HOLD - STM_POP))); return [gx + g, -3, 0]; }   // grinding twist
+            const u = sm((t - STM_HOLD) / (STM_END - STM_HOLD));
+            return [lerp(gx, fx0, u), lerp(-3, fy0, u), lerp(0, lf0, u)];
+        }
+
+        function stompPose(Q) {
+            const t = Q.stmT;
+            const env = sm(t / .2) * (1 - sm((t - STM_HOLD) / (STM_END - STM_HOLD)));
+            const pr = sm((t - STM_UP) / (STM_HIT - STM_UP)) * (1 - sm((t - STM_HOLD) / (STM_END - STM_HOLD)));   // weight on the stomping leg
+            const hipX = 4 * env + 4 * pr;
+            return {
+                w: sm(t / .12) * (1 - sm((t - (STM_END - .15)) / .15)),
+                a0: -.45, f0: .35, a1: 1.0, f1: .45,                   // arms out a little for balance
+                lean: .08 * env + .12 * pr, hipX, hipY: 10 * env + 8 * pr, arch: .04, hx: 3, hy: 3,
+                l0: [28, 0, 0], l1: [-30 - hipX * .7, 0, 0],           // l0 is overridden by stompFoot() in drawChar
+                kneeFull: true, st: STEPS[0], sw: 0, ik: 0
+            };
+        }
+
+        function stompGore(x, F, S, sc) {
+            const R = Math.random, gy = -3 * S;
+            // small organs squeezed out sideways along the ground
+            const size = { heart: 1.9, lung: 2.2, liver: 2.4, gizzard: 2, kidney: 1.5, bit: 1 };
+            for (const k of ['heart', 'lung', 'lung', 'liver', 'gizzard', 'kidney', 'kidney', 'bit', 'bit', 'bit', 'bit', 'bit']) {
+                const dir = R() < .5 ? -1 : 1;
+                bg.organs.push({
+                    k, x: x + (R() - .5) * 14 * sc, y: gy - R() * 5 * S, vx: dir * (90 + R() * 260), vy: -(40 + R() * 170),
+                    rot: R() * 6, vr: (R() - .5) * 18, r: size[k] * S * .7, landed: false, bn: 0, t: 0, bl: 0, sq: 0, seed: R() * 100
+                });
+            }
+            // mini veins + one short gut loop
+            const cols = ['#a3121a', '#8c0d14', '#6b2a5a'];
+            for (let i = 0; i < 7; i++) {
+                const gut = i === 0, N = gut ? 9 : 4 + (R() * 3 | 0), rest = (gut ? 2.4 : 1.6) * S, dir = R() < .5 ? -1 : 1;
+                const vx = dir * (60 + R() * 220), vy = -(40 + R() * 160), x0 = x + (R() - .5) * 8 * sc;
+                bg.veins.push({
+                    p: Array.from({ length: N }, (_, j) => { const px = x0 - dir * j * rest * .3; return { x: px, y: gy, ox: px - vx / 60 * (1 - j / N * .3), oy: gy - vy / 60 * (1 - j / N * .3) }; }),
+                    rest, w: (gut ? 1.5 : .7 + R() * .4) * S, col: gut ? '#e9786c' : cols[i % 3], gut, t: 0, bl: 0
+                });
+            }
+            // tiny bone splinters
+            for (let i = 0; i < 6 && boneBits.length < 150; i++) {
+                const dir = R() < .5 ? -1 : 1;
+                boneBits.push({ k: 0, x: x + (R() - .5) * 10 * sc, y: gy, vx: dir * (70 + R() * 240), vy: -(50 + R() * 190), rot: R() * 6, vr: (R() - .5) * 28, s: (1.8 + R() * 2.4) * S, bn: 0, landed: false, t: 0, bl: 0 });
+            }
+            // restrained blood: a few low drops + a little fine mist, nothing fountain-like
+            for (let i = 0; i < 16; i++) { const dir = R() < .5 ? -1 : 1; bgDrop(x, gy - 2, dir * (50 + R() * 260), -(20 + R() * 150), .8 + R() * 1.0); }
+            for (let i = 0; i < 10; i++) bgDrop(x, gy - 3, (R() - .5) * 240, -(30 + R() * 120), .5 + R() * .3);
+            puffFeathers(x, -8 * S, 4, F);                                // only a few feathers
+            bgStain(x, 11 * S, true); bgStain(x + (R() - .5) * 30 * sc, 6 * S, false); bgStain(x + (R() - .5) * 30 * sc, 5 * S, false);
+            impacts.push({ x, y: -6 * S, t: 0, life: .2, s: 42, seed: R() * 50 });
+        }
+
+        function stompPop() {
+            const k = P.stmK, S = CSc(), F = P.face, sc = S * DD_SIZE * k.s;
+            P.stmPop = 1;
+            stompGore(k.x, F, S, sc);
+            stompRemains.push({ x: k.x, F: Math.sign(k.fv) || F, sc, seed: Math.random() * 99, t: 0 });
+            k.dead = true; k.respT = 40; k.cap = 0; k.carried = 0; k.stompK = 0; k.vx = 0;
+            P.stmBlood = 7;
+            hitstop = Math.max(hitstop, .05); shake = Math.max(shake, 4);
+            combo.n++; combo.dmg += 15; combo.t = 1.8; combo.pop = 1.2; birdKills++;
+            banner.t = .9; banner.text = 'SQUISH!';
+        }
+
+        function stompTick(dt) {
+            const S = CSc();
+            for (let i = stompRemains.length - 1; i >= 0; i--) { stompRemains[i].t += dt; if (stompRemains[i].t > 45) stompRemains.splice(i, 1); }
+            if (P.stmBlood > 0) {                                          // bloody shoe leaves faint prints
+                P.stmBlood -= dt;
+                if (P.z >= 0 && Math.abs(P.vx) > 20) {
+                    P.stmD += Math.abs(P.vx) * dt;
+                    if (P.stmD > 70 * S && splats.length < 160) { P.stmD = 0; splats.push({ x: P.x + P.face * 18 * S, w: (2.5 + 3 * clamp01(P.stmBlood / 7)) * S, h: 1.3 * S, t: 5 }); }
+                }
+            }
+            if (!(P.stm > 0)) return;
+
+            const k = P.stmK, F = P.face;
+            if (!k || k.dead || P.mount || swim.on) { stompCancel(); return; }
+            P.abuf = 0; P.jbuf = 0; P.idle = 0; P.fid = 0;
+            k.cap = 1; k.gx = k.x; k.vx = 0;
+
+            if (P.stmWalk) {                                               // step up to it
+                P.stmWalkT += dt;
+                const d = (k.x - F * STM_STAND * S) - P.x;
+                if (d * F <= 4 * S || P.stmWalkT > .7) { P.stmWalk = 0; P.vx = 0; }
+                else { P.vx = clampN(d * 7, -190, 190); return; }
+            }
+            P.vx *= Math.max(0, 1 - dt * 14);
+            P.stm += dt; P.stmT += dt;
+            const t = P.stmT;
+
+            k.stompK = t < STM_HIT ? 0 : .9 * sm((t - STM_HIT) / (STM_POP - STM_HIT));   // squashes under the sole
+
+            if (!P.stmHit && t >= STM_HIT) {                               // contact: first crunch
+                P.stmHit = 1; shake = Math.max(shake, 2);
+                const x = k.x, y = -4 * S;
+                for (let i = 0; i < 4; i++) bgDrop(x, y, (Math.random() < .5 ? -1 : 1) * (40 + Math.random() * 120), -(10 + Math.random() * 60), .8 + Math.random() * .6);
+                boneBits.push({ k: 0, x, y, vx: F * 90, vy: -90, rot: 0, vr: 12, s: 2.4 * S, bn: 0, landed: false, t: 0, bl: 0 });
+            }
+            if (!P.stmPop && t >= STM_POP) stompPop();
+            if (P.stmPop && !P.stmDrip && t >= STM_HOLD + .05) {           // lifts the shoe: stringy drips
+                P.stmDrip = 1;
+                const x = k.x;
+                for (let i = 0; i < 4; i++) bgDrop(x + (Math.random() - .5) * 16 * S, -6 * S, (Math.random() - .5) * 30, 10 + Math.random() * 40, 1 + Math.random() * .8);
+            }
+            if (t >= STM_END) { P.stm = 0; P.stmT = 0; P.stmK = null; }
+        }
+
+        function drawStompRemains(gy) {
+            for (const r of stompRemains) {
+                const sx = r.x - P.x + W / 2; if (sx < -120 || sx > W + 120) continue;
+                const a = r.t > 38 ? 1 - (r.t - 38) / 7 : 1, sc = r.sc, F = r.F;
+                ctx.save(); ctx.globalAlpha = Math.max(0, a); ctx.translate(sx, gy + 5); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+                // dark blood under it
+                ctx.fillStyle = '#6a0a12'; ctx.beginPath();
+                for (let j = 0; j < 9; j++) { const an = j / 9 * 6.283, rr = (22 + 10 * hash(r.seed + j * 3)) * sc; const px = Math.cos(an) * rr * 1.15, py = Math.sin(an) * rr * .16; j ? ctx.lineTo(px, py) : ctx.moveTo(px, py); }
+                ctx.closePath(); ctx.fill();
+                // flattened body: pale skin + feather outline
+                ctx.beginPath(); ctx.ellipse(0, -1, 21 * sc, 3.2 * sc, 0, 0, 7); ctx.fillStyle = '#f4ecd0'; ctx.fill(); ctx.strokeStyle = '#111'; ctx.lineWidth = 1.4; ctx.stroke();
+                ctx.save(); ctx.beginPath(); ctx.ellipse(0, -1, 21 * sc, 3.2 * sc, 0, 0, 7); ctx.clip();
+                ctx.fillStyle = '#8c0d14'; ctx.beginPath(); ctx.ellipse(-3 * sc, -1, 11 * sc, 3.4 * sc, .05, 0, 7); ctx.fill();
+                ctx.fillStyle = '#c9605a'; ctx.beginPath(); ctx.ellipse(1 * sc, -1.5, 5 * sc, 1.3 * sc, 0, 0, 7); ctx.fill();
+                ctx.strokeStyle = '#3a0508'; ctx.lineWidth = .7;
+                for (let j = -3; j <= 3; j++) { ctx.beginPath(); ctx.moveTo(j * 5 * sc, -3 * sc); ctx.lineTo(j * 5 * sc + 1, 1 * sc); ctx.stroke(); }
+                ctx.restore();
+                // beak + webbed foot lying flat, tiny bones, a couple of feathers
+                ctx.fillStyle = '#ffd426'; ctx.strokeStyle = '#111'; ctx.lineWidth = 1;
+                ctx.beginPath(); ctx.moveTo(F * 18 * sc, -1); ctx.lineTo(F * 28 * sc, 0); ctx.lineTo(F * 18 * sc, 1.8); ctx.closePath(); ctx.fill(); ctx.stroke();
+                ctx.fillStyle = '#f0832a'; ctx.beginPath(); ctx.moveTo(-F * 14 * sc, 1); ctx.lineTo(-F * 26 * sc, 2.2); ctx.lineTo(-F * 22 * sc, 3.6); ctx.lineTo(-F * 13 * sc, 3); ctx.closePath(); ctx.fill(); ctx.stroke();
+                ctx.strokeStyle = '#111'; ctx.lineWidth = 2.2; ctx.beginPath(); ctx.moveTo(-7 * sc, -2); ctx.lineTo(-1 * sc, 0.5); ctx.moveTo(6 * sc, 1); ctx.lineTo(11 * sc, -1.5); ctx.stroke();
+                ctx.strokeStyle = '#efe9da'; ctx.lineWidth = 1; ctx.stroke();
+                ctx.fillStyle = '#fbf4dc'; ctx.strokeStyle = '#111'; ctx.lineWidth = .8;
+                for (const [fx, fy, fr] of [[-16, -3.5, .3], [12, 3, -.4], [4, -4.5, .1]]) { ctx.beginPath(); ctx.ellipse(fx * sc, fy * sc * .6, 3.4 * sc, 1, fr, 0, 7); ctx.fill(); ctx.stroke(); }
+                ctx.restore();
+            }
+        }
+
         function frame(now) {
 
 
@@ -16846,7 +17028,7 @@
             let dt = dt0;
             if (hitstop > 0) { hitstop -= dt0; dt = 0 }
 
-            update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); sgTick(dt); sgGroundTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); waterFXTick(dt); brainTick(dt); hzTick(dt); gibTick(dt); boneTick(dt); weatherTick(dt); horseTick(dt); mpkTick(dt); birdTick(dt); fowlTick(dt); frogTick(dt); duckTick(dt); ddTick(dt); ddSqueezeTick(dt); ddHalvesTick(dt); crocTick(dt); bgTick(dt); corpseTick(dt); dayTick(dt0); fireflyTick(dt0); stExtrasTick(dt0);
+            update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); sgTick(dt); sgGroundTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); waterFXTick(dt); brainTick(dt); hzTick(dt); gibTick(dt); boneTick(dt); weatherTick(dt); horseTick(dt); mpkTick(dt); birdTick(dt); fowlTick(dt); frogTick(dt); duckTick(dt); ddTick(dt); ddSqueezeTick(dt); ddHalvesTick(dt); stompTick(dt); crocTick(dt); bgTick(dt); corpseTick(dt); dayTick(dt0); fireflyTick(dt0); stExtrasTick(dt0);
             const hStop = MT_HORSE_STOP_X();
             const hGap = HRS.x - hStop;
             if (hGap < 350 && HRS.vx < 0) HRS.vx *= Math.max(0, 1 - dt * 6 * (1 - hGap / 350));
@@ -16890,6 +17072,7 @@
             drawSkid(gy);
             drawSplats(gy);
             drawGroundItems(gy);
+            drawStompRemains(gy);
             drawGroundKnives(gy);
             drawBGoreGround(gy);
             drawButts(gy);
