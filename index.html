@@ -3265,6 +3265,11 @@
                     const o = mpkArm(sh, F, S);
                     if (o && o[2] > .001) { ang += wrapA(o[0] - ang) * o[2]; flex = flex * (1 - o[2]) + o[1] * o[2]; }
                 }
+                if (P === PL && i === 0 && DD.cw > .01) {      // cradle the duckling at chest height
+                    const tx = sh[0] + F * (34 + Math.sin(now * 9) * .8), ty = sh[1] + 56 + Math.sin(now * 11) * .8;
+                    const [ca, cf] = ikTo(sh, tx, ty, F);
+                    ang += wrapA(ca - ang) * DD.cw; flex = flex * (1 - DD.cw) + cf * DD.cw;
+                }
                 if (P === PL && i === 0 && DD.g.on) {
                     const o = ddArm(sh, F, S);
                     if (o && o[2] > .001) { ang += wrapA(o[0] - ang) * o[2]; flex = flex * (1 - o[2]) + o[1] * o[2]; }
@@ -3427,6 +3432,7 @@
             if (P === PL && P.mSl > 0) mSlTrailPush(F, S);
             if (P === PL && P.gunK < .05 && P.sgK < .05 && (mk > .9 || (mpa && MP.dis && MP.t < 1.15) || (mpa && !MP.dis && MP.t > 2.9))) drawReins(F);
             if (P === PL && P.puHeld) drawHeldItem(F, S, now);
+            if (P === PL && DD.carry) drawCarriedKid(F, S, now);
             const grabHdOffX = isGrabbed ? F * 4 - F * hk * 10 + Math.sin(now * 23) * 1.5 : 0;
             const grabHdOffY = isGrabbed ? 6 - hk * 2 : 0;
             const fnn = (P !== PL && P.fst === 1 && PL.fin > 0) ? finK(PL.fin) : null;
@@ -15513,7 +15519,7 @@
         })();
 
         function puBlocked() {
-            return P.pu > 0 || P.mount || P.z < 0 || P.pk > 0 || P.stc > 0 || P.cs > 0 || P.fin > 0 || P.thw > 0 || P.tt > 0 ||
+            return P.pu > 0 || DD.carry || P.mount || P.z < 0 || P.pk > 0 || P.stc > 0 || P.cs > 0 || P.fin > 0 || P.thw > 0 || P.tt > 0 ||
                 P.stbk > 0 || P.fs > 0 || P.gu > 0 || P.yk > 0 || P.sgp > 0 || P.sm > 0 || P.ln > 0 || P.lb > 0 || P.ld > 0 ||
                 P.gun || P.gs === 2 || P.sg || P.kn !== 0 || P.kt > .05 || swim.on || TH_CL.on || P.dh > 0;
         }
@@ -15527,6 +15533,8 @@
         }
         function pressPickup() {
             if (P.mpk > 0) return;
+            if (DD.carry && P.pu === 0) { ddPutDown(); return; }   // NEW
+            if (ddKidPress()) return;                               // NEW
             if (ddPress()) return;
             if (P.mount === 2) { pressMountedPickup(); return; }
             if (puBlocked()) return;
@@ -15565,7 +15573,8 @@
             P.idle = 0; P.fid = 0; P.abuf = 0; P.jbuf = 0; P.grabbed = null; P.clast = 0;
         }
         function puCancel() {
-            if (P.puHeld) groundItems.push(P.puHeld);
+            if (P.puIt && P.puIt.kid) P.puIt.kid.cap = 0;                       // NEW
+            if (P.puHeld && P.puHeld.type !== 'duckling') groundItems.push(P.puHeld);   // CHANGED
             P.pu = 0; P.puM = 0; P.puIt = null; P.puHeld = null; P.puC = null;
         }
 
@@ -15587,15 +15596,18 @@
 
         function puGrab() {
             const it = P.puIt, k = groundItems.indexOf(it);
-            if (k >= 0) groundItems.splice(k, 1);               // gone from the ground...
-            P.puHeld = it; P.puM = 3; P.puT2 = 0;               // ...and now in the hand
+            if (k >= 0) groundItems.splice(k, 1);
+            P.puHeld = it; P.puM = 3; P.puT2 = 0;
+            if (it.type === 'duckling') { it.kid.cap = 0; it.kid.carried = 1; it.kid.noShadow = 1; DD.carry = it.kid; }   // NEW
             burst(it.x, -2, 4, 100, P.face);
         }
 
         function puTick(dt) {
             const S = CSc(), F = P.face, it = P.puIt;
+            if (it && it.type === 'duckling') it.x = it.kid.x;
             P.abuf = 0; P.jbuf = 0; P.idle = 0; P.fid = 0; P.vz = 0; P.z = 0;
-            if (swim.on || inPond(P.x, -10) || (P.puM < 3 && (!it || groundItems.indexOf(it) < 0))) { puCancel(); return }
+            if (swim.on || inPond(P.x, -10) || (P.puM < 3 && (!it ||
+                (it.type === 'duckling' ? (it.kid.dead || DD.g.on) : groundItems.indexOf(it) < 0)))) { puCancel(); return }
 
             if (P.puM === 1) {                                  // short walk (forward or a step back) to a comfortable distance
                 P.puT += dt;
@@ -15625,9 +15637,10 @@
             } else {
                 if (!P.puSent && P.puT2 >= .42) {
                     P.puSent = 1; const h = P.puHeld;
-                    if (h && h.type === 'knife') {
-                        hasKnife = true;
-                        banner.t = .8; banner.text = 'KNIFE RECOVERED';
+                    if (h && h.type === 'duckling') {
+                        banner.t = .8; banner.text = 'GOT THE DUCKLING';
+                    } else if (h && h.type === 'knife') {
+                        hasKnife = true; banner.t = .8; banner.text = 'KNIFE RECOVERED';
                     } else if (h) {
                         INV[h.type] = (INV[h.type] || 0) + 1;
                         banner.t = .8; banner.text = 'PICKED UP: ' + ITEM_DEFS[h.type].label;
@@ -15890,7 +15903,7 @@
 
         // ---------- REPLACES the existing drawHeldItem (adds the shotgun) ----------
         function drawHeldItem(F, S, now) {
-            const it = P.puHeld, A = P.armPts && P.armPts[0]; if (!it || !A) return;
+            const it = P.puHeld, A = P.armPts && P.armPts[0]; if (!it || !A || it.type === 'duckling') return;
             const el = A[0], wr = A[1]; let dx = wr[0] - el[0], dy = wr[1] - el[1]; const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
             if (it.type === 'shotgun') {                              // carried muzzle-down, swings up toward the aim pose as the torso rises
                 const u = P.mpkG ? P.mpk - P.mpkG : 0, ang = 1.5 * (1 - sm((u - .35) / .45));
@@ -15916,7 +15929,7 @@
         let DD_X1 = STH_WX + 650 * STH_SC;      // east end of their yard
         const DD_N = 4;                           // number of ducklings
         const DD_SIZE = 1.5;                      // overall size multiplier
-        const DD = { init: false, m: null, k: [], trail: [], tt: 0, clock: 0, dir: 1 };
+        const DD = { init: false, m: null, k: [], trail: [], tt: 0, clock: 0, dir: 1, carry: null, cw: 0 };
 
         function ddMk(mother, i, x) {
             const R = Math.random;
@@ -15945,6 +15958,11 @@
         }
 
         function ddMotherAI(m, dt, S) {
+            if (DD.carry) {
+                m.gx = m.x; m.maxV = 0; m.peck = 0; m.face = Math.sign(P.x - m.x) || m.face; m.hdT = 1;
+                m.flap = .3 + .3 * Math.max(0, Math.sin(performance.now() / 60));   // agitated wings
+                return;
+            } else if (m.flap) m.flap = 0;
             const R = Math.random, sc = S * DD_SIZE;
             m.t += dt; if (m.peck > 0) m.peck -= dt;
             if (m.st === 'walk') {
@@ -15967,6 +15985,7 @@
         }
 
         function ddKidAI(d, dt, S, m) {
+            if (d.cap) { d.gx = d.x; d.maxV = 0; d.face = Math.sign(P.x - d.x) || d.face; d.hdT = 1; return; }
             const R = Math.random, sc = S * DD_SIZE;
             if (DD.g.on) { ddKidReact(d, dt, S, m); return; }
             const sx = ddTrailAt(DD.clock - d.delay);
@@ -16019,6 +16038,8 @@
             if (!DD.init) ddInit();
             const S = CSc(), now = performance.now() / 1000, m = DD.m, g = DD.g;
             DD.clock += dt;
+            if (DD.carry && P.pu === 0 && (P.mount || swim.on || P.pk > 0 || P.stc > 0 || TH_CL.on)) ddPutDown(true);
+            DD.cw += (((DD.carry && P.pu === 0) ? 1 : 0) - DD.cw) * Math.min(1, dt * 6);
             DD.dir += (m.face - DD.dir) * Math.min(1, dt * .9);
             const pre = !g.on && P.mpk > 0 && P.mpkT && P.mpkT.kind === 'duck' && !P.mpkG;   // horseback: she notices you while you reach
             if (m.dead) ddDeadTick(m, dt, now);
@@ -16030,7 +16051,14 @@
             if (!m.dead && !g.on && m.cut > 0) m.cut = Math.max(0, m.cut - dt * .08);   // a scratch heals
             DD.tt += dt; if (DD.tt >= .033) { DD.tt = 0; DD.trail.push({ t: DD.clock, x: m.x }) }
             while (DD.trail.length > 2 && DD.trail[0].t < DD.clock - 10) DD.trail.shift();
-            for (const d of DD.k) { ddKidAI(d, dt, S, m); ddMove(d, dt, S) }
+            for (const d of DD.k) {
+                if (d.carried) {
+                    d.vx = 0; d.x = P.x; d.gx = P.x;
+                    d.hdTt -= dt; if (d.hdTt <= 0) { d.hdTt = .6 + Math.random() * 1.5; d.hdT = Math.random() < .6 ? 1 : -1; }
+                    continue;
+                }
+                ddKidAI(d, dt, S, m); ddMove(d, dt, S);
+            }
             for (const a of [m].concat(DD.k)) ddAnim(a, dt, S, now);
             if (g.on && g.ph === 'recover') {                 // shakes her feathers
                 const k = Math.max(0, 1 - g.rc / .55);
@@ -16079,6 +16107,55 @@
             m.cut = m.cut || 0;
         }
         function ddHoldBegin() { ddBegin('mount', .3) }       // called by mpkGrab when the fist reaches her neck
+
+        function ddKidPress() {
+            if (!DD.init || DD.g.on || DD.carry || P.mount || puBlocked()) return false;
+            const S = CSc(); let b = null, bd = PU_R * S;
+            for (const d of DD.k) {
+                if (d.carried || inPond(d.x, 0)) continue;
+                const dd = Math.abs(d.x - P.x); if (dd < bd) { bd = dd; b = d; }
+            }
+            if (!b) return false;
+            if (!DD.m.dead && Math.abs(ddNeck().x - P.x) < bd) return false;   // mother is closer: grab her instead
+            if (P.skid) endSkid(); P.skidK = 0;
+            b.cap = 1; b.gx = b.x; b.vx = 0;
+            const it = { id: ++itemSeq, type: 'duckling', kid: b, x: b.x, h: 12, seed: b.seed };
+            P.pu = .0001; P.puM = 1; P.puT = 0; P.puT2 = 0; P.puIt = it; P.puHeld = null; P.puSent = 0; P.puC = null;
+            if (Math.abs(it.x - P.x) > 2) P.face = it.x >= P.x ? 1 : -1;
+            P.idle = 0; P.fid = 0; P.abuf = 0; P.jbuf = 0; P.grabbed = null; P.clast = 0;
+            return true;
+        }
+
+        function ddPutDown(quiet) {
+            const d = DD.carry; if (!d) return;
+            const S = CSc(); let x = P.x + P.face * 46 * S;
+            if (inPond(x, 120)) x = P.x;
+            d.x = x; d.gx = x; d.vx = 0; d.carried = 0; d.noShadow = 0; d.bn = 16; d.face = P.face;
+            DD.carry = null;
+            burst(x, -2, 4, 100, P.face);
+            if (!quiet) { banner.t = .7; banner.text = 'PUT DOWN'; }
+        }
+
+        function drawCarriedKid(F, S, now) {          // called from drawChar
+            const d = DD.carry, A = P.armPts && P.armPts[0]; if (!d || !A) return;
+            const wr = A[1], sv = d.vx, sph = d.ph;
+            d.noShadow = 1; d.vx = 10; d.ph = now * 15 + d.seed;      // little legs kick
+            ctx.save();
+            ctx.translate(wr[0] + F * 3, wr[1] + 20);
+            ctx.rotate(Math.sin(now * 11) * .07 * F);                 // wriggle
+            const k = DD_SIZE * d.s * .85; ctx.scale(F * k, k);
+            ddShape(d, now);
+            ctx.restore();
+            d.vx = sv; d.ph = sph;
+            const f = P.fistInfo && P.fistInfo[0];                    // fist back on top, so it grips the duckling
+            if (f && FIST.complete) { ctx.save(); ctx.translate(f.x, f.y); ctx.scale(f.F, 1); ctx.rotate(f.a - Math.PI / 2); ctx.drawImage(FIST, -FIST.naturalWidth / 2, -4); ctx.restore(); }
+            const pk = (now * .7 + d.seed) % 3;                       // "peep!"
+            if (pk < .55) {
+                ctx.save(); ctx.globalAlpha = Math.sin(Math.PI * pk / .55); ctx.fillStyle = '#111';
+                ctx.font = 'italic bold 13px Georgia,serif'; ctx.textAlign = 'center';
+                ctx.fillText('peep!', wr[0] + F * 8, wr[1] - 48 - pk * 14); ctx.restore();
+            }
+        }
 
         function ddPress() {                                  // called first thing in pressPickup()
             const g = DD.g;
@@ -16665,7 +16742,7 @@
             ctx.lineJoin = 'round'; ctx.lineCap = 'round';
 
             // ground shadow
-            ctx.save(); ctx.globalAlpha *= .22; ctx.fillStyle = INK; ctx.beginPath(); ctx.ellipse(0, 1, 22, 2.6, 0, 0, 7); ctx.fill(); ctx.restore();
+            if (!a.noShadow) { ctx.save(); ctx.globalAlpha *= .22; ctx.fillStyle = INK; ctx.beginPath(); ctx.ellipse(0, 1, 22, 2.6, 0, 0, 7); ctx.fill(); ctx.restore(); }
 
             // legs (behind the body)
             for (let i = 0; i < 2; i++) {
@@ -16961,7 +17038,7 @@ function drawDuckHalves(gy) {
         function drawDomesticDucks(gy) {
             if (!DD.init) return;
             const S = CSc(), now = performance.now() / 1000;
-            const list = [DD.m].concat(DD.k).filter(a => Math.abs(a.x - P.x) < W / 2 + 200 && !(a === DD.m && DD.g.on) && !a.torn);
+            const list = [DD.m].concat(DD.k).filter(a => Math.abs(a.x - P.x) < W / 2 + 200 && !(a === DD.m && DD.g.on) && !a.torn && !a.carried);
             list.sort((p, q) => (p.mother ? 1 : 0) - (q.mother ? 1 : 0));
             for (const a of list) {
                 const sc = S * DD_SIZE * a.s, F = Math.abs(a.fv) < .15 ? .15 * (Math.sign(a.fv) || 1) : a.fv;
