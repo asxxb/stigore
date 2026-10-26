@@ -233,9 +233,9 @@
         const AUDIO_FILES = {
             step: 'player/step',
             pickup: 'player/pickup', jump: 'player/jump', splash: 'player/splash',
-            punch: 'combat/punch', stab: 'combat/knife_stab', revolver: 'guns/revolver_shot',
+            punch: 'combat/punch', stab: 'combat/knife_stab', revolver: 'guns/revolver_shot', revreload: 'guns/revolver_reload',
             shotgun: 'guns/shotgun_shot', pump: 'guns/shotgun_pump', splat: 'gore/blood_splat',
-            neigh: 'animals/horse_neigh'
+            neigh: 'animals/horse_neigh', sgreload: 'guns/shotgun_reload', gunempty: 'guns/click_empty',
             // add more: key: 'folder/filename'
         };
         const LOOPS = { wind: 'ambient/wind', crickets: 'ambient/crickets', fire: 'ambient/fire', water: 'ambient/water' };
@@ -6267,15 +6267,17 @@
             if (P.gs === 2) return;
             if (P.gs === 1) { P.gsEnd = 1; P.gsFast = 1; P.q = 2; P.qT = .5; return }
             P.rl = .0001; P.rlShell = 0; P.rlLoad = 0; P.rlSnap = 0;
+            playSfx('revreload', .85);
         }
         function pressFire() {
             if (P.sg) { pressSgFire(false); return }
             if (!P.gun || P.gunK < .8 || P.rl > 0 || P.fin > 0 || P.fireCd > 0 || P.pk > 0) return;
             if (P.gs === 2) return;
             if (P.gs === 1) { P.gsEnd = 1; P.gsFast = 1; P.q = 1; P.qT = .5; return }
-            if (P.ammo <= 0) { banner.t = .5; banner.text = 'CLICK! (R)'; P.fireCd = .3; return }
+            if (P.ammo <= 0) { banner.t = .5; banner.text = 'CLICK! (R)'; P.fireCd = .3; playSfx('gunempty', .8); return }
             const S = CSc(), F = P.face, m = P.muzzle || [P.x + F * 60 * S, -250 * S];
             P.ammo--; P.fireCd = FIRE_CD; P.recoil = 1; P.idle = 0; P.fid = 0;
+            playSfx('revolver', .9);
             bullets.push({ x: m[0], y: m[1], x0: m[0], F, th: P.gunA, age: 0, sp: BULLET_V });
             burst(m[0], m[1], 8, 260, F);
             if (typeof puff === 'function') puff(m[0], m[1], 5, F * 70, -12, 3, 10, 1.8, .28);
@@ -6521,10 +6523,11 @@
         function pressSgReload() {
             if (!P.sg || P.srl > 0 || P.sgPump > 0 || P.sAmmo >= 2 || P.fin > 0 || P.pk > 0) return;
             P.srl = .0001; P.srlE = 0; P.srlI1 = 0; P.srlI2 = 0; P.srlSnap = 0; P.idle = 0; P.fid = 0;
+            playSfx('sgreload', .85);
         }
         function pressSgFire(both) {
             if (!P.sg || P.sgK < .85 || P.srl > 0 || P.fin > 0 || P.pk > 0 || P.sgCd > 0) return;
-            if (P.sAmmo <= 0) { banner.t = .6; banner.text = 'CLICK! (R)'; P.sgCd = .3; return }
+            if (P.sAmmo <= 0) { banner.t = .6; banner.text = 'CLICK! (R)'; P.sgCd = .3; playSfx('gunempty', .8); return }
             const S = CSc(), F = P.face, before = P.sAmmo, n = both ? Math.min(2, before) : 1;
             const mm = P.sgMuz || [[P.x + F * 80 * S, -250 * S], [P.x + F * 80 * S, -244 * S]];
             const m = n === 2 ? [(mm[0][0] + mm[1][0]) / 2, (mm[0][1] + mm[1][1]) / 2] : mm[before === 2 ? 0 : 1];
