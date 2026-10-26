@@ -234,8 +234,8 @@
             step: 'player/step',
             pickup: 'player/pickup', jump: 'player/jump', splash: 'player/splash',
             punch: 'combat/punch', stab: 'combat/knife_stab', revolver: 'guns/revolver_shot', revreload: 'guns/revolver_reload',
-            shotgun: 'guns/shotgun_shot', pump: 'guns/shotgun_pump', splat: 'gore/blood_splat',
-            neigh: 'animals/horse_neigh', sgreload: 'guns/shotgun_reload', gunempty: 'guns/click_empty',
+            shotgun: 'guns/shotgun_shot', pump: 'guns/shotgun_pump', splat: 'gore/blood_splat', headburst: 'gore/head_burst', slash: 'combat/slash',
+            neigh: 'animals/horse_neigh', sgreload: 'guns/shotgun_reload', gunempty: 'guns/click_empty', squish: 'gore/squish', knifepull: 'combat/knife_pull', throw: 'combat/knife_throw',
             // add more: key: 'folder/filename'
         };
         const LOOPS = { wind: 'ambient/wind', crickets: 'ambient/crickets', fire: 'ambient/fire', water: 'ambient/water' };
@@ -991,7 +991,9 @@
 
                 // ---- damage ----
                 const dmg = STAB_DMG;
-                e.hp -= dmg; e.bar = 2.5; e.kdir = F; e.face = -F;
+                e.hp -= dmg;
+                playSfx('stab', 1);
+                e.bar = 2.5; e.kdir = F; e.face = -F;
                 e.hurt = Math.max(e.hurt, 0.5); e.vx = 0; e.wait = 1; e.fid = 0;
                 combo.n++; combo.dmg += dmg; combo.t = 1.8; combo.pop = 1.3;
 
@@ -1168,6 +1170,7 @@
                     hpK: 0, lmK: 0, fkK: 0, fkT: 0, tumble: 0, amp: 0, lean: 0, skidK: 0, gut: 0, rot: dir * Math.PI / 2
                 });
                 burst(n.x + dir * 110 * S, -4, 8, 200, dir); shake = Math.max(shake, 3);
+                playSfx('splat', .6);
             }
             if (!c.pool) c.pool = bgStain(n.x + (plain ? dir : (n.face || 1)) * 60 * S, 30 * S, true);
             CORPSES.push(c);
@@ -1197,6 +1200,7 @@
             if (!c.sk2) return false;
             const hw = headWorld(c), k = c.sk2; c.sk2 = null;
             if (toHand) {
+                playSfx('knifepull', .8);
                 hasKnife = true;
                 burst(hw[0], hw[1], 14, 260, -k.F); spray(hw[0], hw[1], 20, 360, -k.F);
                 impacts.push({ x: hw[0], y: hw[1], t: 0, life: .2, s: 60, seed: Math.random() * 50 });
@@ -1310,7 +1314,7 @@
                 hits++;
 
                 const dmg = Math.round(st.dmg * mul);
-                e.hp -= dmg; e.bar = 2.5; e.kdir = F; e.face = -F; e.hurt = Math.max(e.hurt, .38); e.vx = F * (st.name === 'grab' ? 120 : st.kb); e.wait = 1; e.fid = 0;
+                e.hp -= dmg; e.bar = 2.5; e.kdir = F; e.face = -F; playSfx('stab', 1); e.hurt = Math.max(e.hurt, .38); e.vx = F * (st.name === 'grab' ? 120 : st.kb); e.wait = 1; e.fid = 0;
                 if (st.up) { if (e.z >= 0) e.z = -1; e.vz = st.up }
                 if ((st.kb >= 350 && st.name !== 'kick_front') || st.up < -300) e.tumble = 1;
                 if (st.name === 'kick_front') e.hurt = Math.max(e.hurt, .5);
@@ -1451,6 +1455,7 @@
         }
         function guEnter(E) {
             P.guHit = 1;
+            playSfx('stab', .9);
             const S = CSc(), F = P.face;
             E.hp = Math.max(1, E.hp - GU_DMG); E.bar = 2.5; E.kdir = F; E.face = -F; E.hurt = .9; E.wait = 1;
             combo.n++; combo.dmg += GU_DMG; combo.t = 2; combo.pop = 1.3;
@@ -1463,6 +1468,7 @@
             banner.t = .8; banner.text = 'STABBED!';
         }
         function guExit(E) {
+            playSfx('splat', 1);
             P.guExit = 1;
             const S = CSc(), F = P.face, g = E.gutG || [0, -120];
             const x = E.x + g[0] * S, y = g[1] * S;
@@ -1756,7 +1762,7 @@
             if (!E || E.dead > 0 || E.dying > 0 || Math.abs(E.x - P.x) > FS_REACH * S) return;
             E.hp -= FS_DMG; E.bar = 2.5; E.kdir = F; E.face = -F;
             E.hurt = Math.max(E.hurt, .9); E.vx = 0; E.wait = 1; E.fid = 0;
-
+            playSfx('stab', .9);
             combo.n++; combo.dmg += FS_DMG; combo.t = 1.8; combo.pop = 1.3;
             const fx = E.x - F * 18 * S, fy = -6 * S;
             burst(fx, fy, 18, 240, F);
@@ -2501,7 +2507,8 @@
             }
             n.fk = null; n.fkT = 0; n.fkPend = false;
         }
-        function yankFootKnife(e) {            // press E next to him
+        function yankFootKnife(e) {
+            playSfx('knifepull', .9);         // press E next to him
             const S = CSc(), F = e.fk.F, w = footWound(e);
             e.fk = null; e.fkT = 0; e.fkPend = false;
             P.face = e.x >= P.x ? 1 : -1; if (P.skid) endSkid();
@@ -5219,6 +5226,7 @@
         }
         function releaseKnife() {
             P.thr = 1;
+            playSfx('throw', .9);
             const S = CSc(), F = P.face, A = P.armPts && P.armPts[0];
             const w = A ? A[1] : [F * 60, -T];
             const x0 = P.x + w[0] * S;
@@ -5276,6 +5284,7 @@
                         e.stomachStabbed = false;
                         const dmg = 22;
                         e.hp -= dmg; e.bar = 2.5; e.kdir = k.F; e.face = -k.F;
+                        playSfx('stab', 1);
                         e.hurt = Math.max(e.hurt, .38); e.vx = k.F * 140; e.wait = 1; e.fid = 0;
                         combo.n++; combo.dmg += dmg; combo.t = 1.8; combo.pop = 1.3;
                         burst(tx, ty, 18, 260, k.F);
@@ -5428,6 +5437,7 @@
         const HU_LEN = 105;   // how far up (px) the knife travels: stomach -> top of skull
 
         function headRip(e) {
+            playSfx('splat', 1);
             const S = CSc(), F = P.face;
             for (let i = knives.length - 1; i >= 0; i--) if (knives[i].st === e) knives.splice(i, 1);
             e.stab = 0; e.stoDrag = 0;
@@ -5789,6 +5799,7 @@
             if (!isSto && !P.finDone && held && P.fin >= .6) headPullFX(e, pu, dt, false);
             for (const k of knives) if (k.st === e) k.pull = pu * FIN_PULL;
             if (!P.finDone && P.fin >= FIN_POP) {
+                playSfx('knifepull', 1);
                 if (!isSto) headPullFX(e, 1, 0, true);
                 P.finDone = 1;
                 for (let i = knives.length - 1; i >= 0; i--) if (knives[i].st === e) knives.splice(i, 1);
@@ -6585,7 +6596,8 @@
             streaks.push({ x0: e.x + F * 20, x1: e.x + F * 190, off: 0, dy: 9, w: 13, live: false, t: .5, seed: Math.random() * 100 });
             hitstop = Math.max(hitstop, close ? .12 : .08); shake = Math.max(shake, close ? 14 : 10);
 
-            if (close) {                                   // torso blown open: intestines spill, he drops
+            if (close) {
+                playSfx('splat', 1);                               // torso blown open: intestines spill, he drops
                 for (let i = knives.length - 1; i >= 0; i--) if (knives[i].st === e) knives.splice(i, 1);
                 e.hp = 0; e.dying = 7; e.gutDead = true; e.gutT = 0; e.gutPop = 1; e.gutCut = 1;
                 e.stab = 0; e.kneelK = 0; if (P.grabbed === e) P.grabbed = null;
@@ -6997,6 +7009,7 @@
         }
 
         function headShatter(e, F, d) {
+            playSfx('headburst', .9);
             const S = CSc(), hw = headWorld(e);
             e.hp = 0; e.dying = 9; e.hsDead = 1; e.hsT = 0; e.bar = 0; e.hurt = 0; e.kdir = F; e.face = -F; e.wait = 1; e.fid = 0;
             e.vx = F * (d < 260 ? 400 : 230); e.stab = 0; e.kneelK = 0; e.brainOut = 1;
@@ -7062,6 +7075,7 @@
         }
 
         function headBlast(e, F) {
+            playSfx('headburst', .9);
             const S = CSc(), hw = headWorld(e);
             e.hp = 0; e.dying = 9; e.hsDead = 1; e.hsPart = 1; e.hsT = 0; e.bar = 0; e.hurt = 0;
             e.kdir = F; e.face = -F; e.wait = 1; e.fid = 0; e.vx = F * 320; e.stab = 0; e.kneelK = 0; e.brainOut = 1;
@@ -7263,6 +7277,7 @@
 
         // a loose head / skull piece bursts into smaller gore
         function headBurstGib(g, F, sg, x, y) {
+            if (g.k === 3) playSfx('headburst', .8);
             const S = CSc(), R = Math.random, head = g.k === 3, n = sg ? 1.5 : 1;
             // blood + brain
             spray(x, y, Math.round((head ? 70 : 30) * n), 680, F); spray(x, y, Math.round((head ? 34 : 14) * n), 460, -F); spray(x, y, 16, 300, 0);
@@ -9563,6 +9578,7 @@
             if (P.mSl > 0) { if (P.mSl > MS_REC0) P.mSlQ = .25; return true }      // buffer a follow-up swing
             if (P.kn === 0 || P.kt < .5 || P.gun || P.gs === 2 || P.sg || P.sm > 0 || P.tt > 0 || P.thw > 0) return false;
             P.mSl = .0001; P.mSlId++; P.mSlQ = 0; P.idle = 0; P.fid = 0; mTrail.length = 0;
+            P.mSlSfx = 0;
             return true;
         }
 
@@ -9652,6 +9668,7 @@
             if (!(P.mSl > 0)) return;
             if (P.mount !== 2) { P.mSl = 0; P.mSlA = null; P.mSlW = 0; return }
             P.mSl += dt; P.idle = 0; P.fid = 0; P.mSlQ = Math.max(0, P.mSlQ - dt);
+            if (!P.mSlSfx && P.mSl >= .28) { P.mSlSfx = 1; playSfx('slash', .9); }
             if (P.mSl >= MS_HIT0 && P.mSl <= MS_HIT1) {
                 const S = CSc(), F = P.face, reach = (200 + Math.abs(HRS.vx) * .1) * S;   // reach grows with speed
                 for (const e of ENEMIES) {
@@ -16864,8 +16881,8 @@
                 const k = q.k;
                 if (k > .02) shake = Math.max(shake, .6 + 4.5 * k * k);
                 if (prev < .08 && k >= .08) { banner.t = .7; banner.text = 'SQUEEZING...'; }
-                if (prev < .4 && k >= .4) { banner.t = .8; banner.text = 'IT CREAKS...'; sqSfx('peep'); }
-                if (prev < .62 && k >= .62) { banner.t = .8; banner.text = 'BONES GIVE...'; sqSfx('peep'); }
+                if (prev < .4 && k >= .4) { banner.t = .8; banner.text = 'IT CREAKS...'; playSfx('squish', .3); sqSfx('peep'); }
+                if (prev < .62 && k >= .62) { banner.t = .8; banner.text = 'BONES GIVE...'; playSfx('squish', .3); sqSfx('peep'); }
                 q.ft -= dt;
                 if (k > .35 && q.ft <= 0) {                                                  // feathers pop loose, blood weeps from the beak
                     q.ft = .24 - .17 * k;
@@ -16998,6 +17015,7 @@
         }
 
         function stompPop() {
+            playSfx('squish', 1);
             const k = P.stmK, S = CSc(), F = P.face, sc = S * DD_SIZE * k.s;
             P.stmPop = 1;
             stompGore(k.x, F, S, sc);
@@ -17040,6 +17058,7 @@
 
             if (!P.stmHit && t >= STM_HIT) {                               // contact: first crunch
                 P.stmHit = 1; shake = Math.max(shake, 2);
+                playSfx('squish', .8);
                 const x = k.x, y = -4 * S;
                 for (let i = 0; i < 4; i++) bgDrop(x, y, (Math.random() < .5 ? -1 : 1) * (40 + Math.random() * 120), -(10 + Math.random() * 60), .8 + Math.random() * .6);
                 boneBits.push({ k: 0, x, y, vx: F * 90, vy: -90, rot: 0, vr: 12, s: 2.4 * S, bn: 0, landed: false, t: 0, bl: 0 });
