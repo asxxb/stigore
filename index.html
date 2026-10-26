@@ -227,6 +227,40 @@
     </div>
     <script>
         const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+
+        // ================= AUDIO SYSTEM =================
+        const AUDIO = {};
+        const AUDIO_FILES = {
+            step: 'player/step',
+            pickup: 'player/pickup', jump: 'player/jump', splash: 'player/splash',
+            punch: 'combat/punch', stab: 'combat/knife_stab', revolver: 'guns/revolver_shot',
+            shotgun: 'guns/shotgun_shot', pump: 'guns/shotgun_pump', splat: 'gore/blood_splat',
+            neigh: 'animals/horse_neigh'
+            // add more: key: 'folder/filename'
+        };
+        const LOOPS = { wind: 'ambient/wind', crickets: 'ambient/crickets', fire: 'ambient/fire', water: 'ambient/water' };
+        let audioOn = false;
+
+        for (const k in AUDIO_FILES) AUDIO[k] = new Audio('audio/' + AUDIO_FILES[k] + '.mp3');
+        for (const k in LOOPS) { const a = new Audio('audio/' + LOOPS[k] + '.mp3'); a.loop = true; a.volume = 0; AUDIO['L_' + k] = a; }
+
+        function playSfx(name, vol = 1) {
+            if (!audioOn || !AUDIO[name]) return;
+            const a = AUDIO[name].cloneNode();      // allows overlapping sounds
+            a.volume = vol * (.9 + Math.random() * .1);
+            a.playbackRate = .95 + Math.random() * .1;
+            a.play().catch(() => {});
+        }
+        function setLoop(name, vol) {              // call each frame with 0..1
+            const a = AUDIO['L_' + name]; if (!a || !audioOn) return;
+            a.volume = Math.max(0, Math.min(1, vol));
+            if (vol > .01 && a.paused) a.play().catch(() => {});
+            else if (vol <= .01 && !a.paused) a.pause();
+        }
+        // browsers block audio until the first interaction
+        addEventListener('keydown', () => audioOn = true, { once: true });
+        addEventListener('pointerdown', () => audioOn = true, { once: true });
+
         let W, H, DPR, paper, vig;
         const BLD = 1.3;   // building size multiplier: 1 = current size, 1.3 = 30% bigger, 1.6 = much bigger
         const HOUSE_SHIFT = -5000;    // px to move the whole house area: + = right (away from the left edge), - = further left
@@ -611,6 +645,12 @@
             const sp = Math.abs(P.vx);
 
             if (P.z >= 0) P.phase += sp * dt / (((1 - Rf()) * 280 + Rf() * RUN_LC) * CSc()) * Math.PI * 2;
+            const stepN = Math.floor(P.phase / Math.PI);          // one footfall per half-cycle
+            if (stepN !== P.stepN) {
+                if (P.stepN !== undefined && P.z >= 0 && Math.abs(P.vx) > 40 && !swim.on && !P.mount && !inPond(P.x, 0))
+                    playSfx('step', Math.abs(P.vx) > 300 ? 1 : .55);  // quieter when walking, full volume when running
+                P.stepN = stepN;
+            }
             if (P.atk > 0) P.atk -= dt;
             P.kt = Math.max(0, Math.min(1, P.kt + (P.kn ? 1 : -1) * dt * 3.5));
             if (P.tt > 0) { P.tt += dt; if (P.tt >= TOSS_T) { P.tt = 0; P.kn = 2; P.rv = 1 } }
