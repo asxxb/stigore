@@ -419,7 +419,7 @@
                     ? Math.max(0, -((TH_CL.pose.hipAbs || -169.15) + 169.15) * CSc())
                     : 0;
                 const h = Math.max(P.dh || 0, climbH);
-                targetY = Math.max(0, h - H * 0.58);
+                targetY = Math.max(0, h - H * 0.38);
             }
 
             targetY = Math.max(targetY, (P.mh || 0) - H * 0.28);   // follow the player up the mountain
@@ -10112,11 +10112,11 @@
         // [centre x, centre y, radius] in treehouse image space
         const FOL_BACK = [
             [457, -297, 235], [274, -139, 190], [81, -148, 110], [673, -74, 180],   // crown + upper lobes
-            [15, 46, 140], [-32, 200, 100], [843, 168, 120],                        // side lobes
-            [-22, 362, 90], [805, 502, 120],                                        // beside the deck
+            [15, 46, 140], [800, 168, 120],                        // side lobes
+            [805, 502, 120],                                        // beside the deck
             [180, 577, 90], [640, 577, 95]                                          // under the deck, on the lower branches
         ];
-        const FOL_FRONT = [[30, 330, 70], [10, 420, 45], [760, 300, 60], [790, 400, 45]];   // overlap the cabin edges / railing
+        const FOL_FRONT = [[760, 300, 60], [790, 400, 45]];   // overlap the cabin edges / railing
 
         function thLeaf(g, x, y, a, s, ci, flip) {
             g.save(); g.translate(x, y); g.rotate(a); g.scale(s, flip ? -s : s);
@@ -17691,7 +17691,7 @@
         P.dh = -TH_DY * TH_SC;         // deck height
         P.thDeck = true;               // tells the game you're standing on the deck
         treehouseCamera = true;        // camera follows you vertically
-        camY = Math.max(0, P.dh - H * 0.58);   // snap the camera so there's no slide-up on load
+        camY = Math.max(0, P.dh - H * 0.38);   // snap the camera so there's no slide-up on load
 
         requestAnimationFrame(frame);
     </script>
