@@ -286,30 +286,29 @@
         let treehouseCamera = false;
         let ZOOM = 0.4;   // 1 = current size, 0.5 = same as browser zoom 50%, 0.75 = in between
         const TREEHOUSE_INSIDE_ZOOM = 0.48;
-        function resize() {
-            DPR = Math.min(devicePixelRatio || 1, 2);
-            const activeZoom = treehouseCamera
-                ? TREEHOUSE_INSIDE_ZOOM
-                : ZOOM;
+        const TH_HOUSE_ZOOM = 0.8;      // zoom while inside the house (bigger = closer). Try 0.7 to 1.0
+        let curZoom = ZOOM, zoomSnap = true;
 
-            W = innerWidth / activeZoom;
-            H = innerHeight / activeZoom;                    // game units: bigger world on screen
-            cv.width = innerWidth * DPR; cv.height = innerHeight * DPR;       // real pixels stay the same
-            ctx.setTransform(
-                DPR * activeZoom, 0,
-                0, DPR * activeZoom,
-                0, 0
-            );
+        function applyZoom(z) {
+            curZoom = z;
+            W = innerWidth / z;
+            H = innerHeight / z;
+            ctx.setTransform(DPR * z, 0, 0, DPR * z, 0, 0);
+            nctx.setTransform(DPR * z, 0, 0, DPR * z, 0, 0);
             vig = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * .35, W / 2, H / 2, Math.max(W, H) * .8);
             vig.addColorStop(0, 'rgba(0,0,0,0)'); vig.addColorStop(1, 'rgba(60,50,40,.28)');
-            nightC.width = innerWidth * DPR; nightC.height = innerHeight * DPR;
-            nctx.setTransform(
-                DPR * activeZoom, 0,
-                0, DPR * activeZoom,
-                0, 0
-            );
             vigN = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * .22, W / 2, H / 2, Math.max(W, H) * .75);
             vigN.addColorStop(0, 'rgba(0,0,0,0)'); vigN.addColorStop(1, 'rgba(4,5,12,.6)');
+        }
+        function zoomTarget() {
+            if (typeof TH_HS !== 'undefined' && TH_HS.in) return TH_HOUSE_ZOOM;
+            return treehouseCamera ? TREEHOUSE_INSIDE_ZOOM : ZOOM;
+        }
+        function resize() {
+            DPR = Math.min(devicePixelRatio || 1, 2);
+            cv.width = innerWidth * DPR; cv.height = innerHeight * DPR;     // real pixels don't depend on zoom
+            nightC.width = innerWidth * DPR; nightC.height = innerHeight * DPR;
+            applyZoom(curZoom);
         }
 
 
@@ -17750,6 +17749,12 @@
             const dt0 = Math.min(.033, (now - last) / 1000); last = now;
             let dt = dt0;
             if (hitstop > 0) { hitstop -= dt0; dt = 0 }
+
+            {
+                const zt = zoomTarget();
+                if (zoomSnap) { zoomSnap = false; applyZoom(zt); }
+                else if (Math.abs(zt - curZoom) > 0.0005) applyZoom(curZoom + (zt - curZoom) * (1 - Math.exp(-5 * dt0)));
+            }
 
             update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); sgTick(dt); sgGroundTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); waterFXTick(dt); brainTick(dt); hzTick(dt); gibTick(dt); boneTick(dt); weatherTick(dt); horseTick(dt); mpkTick(dt); birdTick(dt); fowlTick(dt); frogTick(dt); duckTick(dt); ddTick(dt); ddSqueezeTick(dt); sqHeldTick(dt); ddHalvesTick(dt); stompTick(dt); crocTick(dt); bgTick(dt); corpseTick(dt); dayTick(dt0); fireflyTick(dt0); stExtrasTick(dt0);
             const hStop = MT_HORSE_STOP_X();
