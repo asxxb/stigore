@@ -10487,26 +10487,65 @@
             R(383, 324, 12, 16, 'rgb(240,232,210)', 1.5); L([[385, 334], [388, 330], [391, 335]], 1, 'rgba(0,0,0,.5)');
             R(384, 346, 10, 8, 'rgb(240,232,210)', 1.3);
 
-            // shelf with jars/books + hanging pans
-            R(438, 340, 104, 5, WOOD, 1.8); L([[446, 345], [446, 353]], 1.8); L([[534, 345], [534, 353]], 1.8);
-            for (let x = 442, i = 0; x < 536; x += 7, i++) {
-                const h = 11 + hash(i * 2.3) * 8;
-                R(x, 340 - h, 5.5, h, ['rgb(96,96,100)', 'rgb(140,110,80)', 'rgb(214,212,204)', 'rgb(120,130,110)'][i % 4], 1.2);
+            // ---- weapon workbench ----
+            // pegboard wall
+            R(440, 318, 98, 84, 'rgb(168,120,70)', 2);
+            ctx.fillStyle = 'rgba(60,36,14,.45)';
+            for (let x = 450; x < 536; x += 12) for (let y = 328; y < 398; y += 12) { ctx.beginPath(); ctx.arc(x, y, .9, 0, 7); ctx.fill(); }
+
+            // shotgun on two hooks
+            L([[452, 336], [452, 342]], 2.2); L([[524, 336], [524, 342]], 2.2);
+            L([[452, 340], [536, 340]], 7, '#111'); L([[452, 340], [536, 340]], 4, 'rgb(96,100,108)');      // barrels
+            L([[454, 346], [532, 346]], 4, '#111');  L([[454, 346], [532, 346]], 2, 'rgb(80,84,90)');
+            ctx.beginPath(); ctx.moveTo(444, 336); ctx.lineTo(470, 338); ctx.lineTo(470, 348); ctx.lineTo(448, 352); ctx.closePath();
+            ctx.fillStyle = 'rgb(160,80,28)'; ctx.fill(); ctx.lineWidth = 1.8; ctx.strokeStyle = '#111'; ctx.stroke();   // stock
+
+            // revolver
+            L([[452, 364], [452, 368]], 2);
+            ctx.beginPath(); ctx.moveTo(452, 366); ctx.lineTo(480, 366); ctx.lineTo(480, 374); ctx.lineTo(462, 374); ctx.lineTo(458, 384); ctx.lineTo(450, 382); ctx.lineTo(454, 372); ctx.closePath();
+            ctx.fillStyle = 'rgb(108,112,120)'; ctx.fill(); ctx.lineWidth = 1.8; ctx.strokeStyle = '#111'; ctx.stroke();
+            R(452, 380, 7, 11, 'rgb(154,74,26)', 1.4);                                                          // grip
+            E(466, 370, 5, 4, 'rgb(88,92,100)', 1.4);                                                           // cylinder
+
+            // three knives, blades down
+            for (const [kx, kh] of [[498, 26], [512, 30], [526, 22]]) {
+                L([[kx, 352], [kx, 358]], 1.8);
+                R(kx - 2.5, 358, 5, 10, 'rgb(120,78,40)', 1.4);                                                 // handle
+                ctx.beginPath(); ctx.moveTo(kx - 3.4, 368); ctx.lineTo(kx + 3.4, 368); ctx.lineTo(kx, 368 + kh); ctx.closePath();
+                ctx.fillStyle = 'rgb(200,204,208)'; ctx.fill(); ctx.lineWidth = 1.4; ctx.strokeStyle = '#111'; ctx.stroke();
             }
-            for (const px of [462, 484, 506]) { L([[px, 346], [px, 358]], 1.4); E(px, 366, 8.5, 8.5, 'rgb(64,64,68)', 1.4); E(px - 2, 363, 3, 2, 'rgba(255,255,255,.25)', 0); }
-            R(519, 348, 20, 14, 'rgb(240,230,200)', 1.3); L([[522, 354], [530, 352], [536, 358]], 1, 'rgba(0,0,0,.45)');   // paper map
+
+            // hand axe
+            L([[484, 384], [484, 394]], 1.6);
+            ctx.beginPath(); ctx.moveTo(478, 376); ctx.lineTo(492, 376); ctx.lineTo(494, 384); ctx.lineTo(476, 384); ctx.closePath();
+            ctx.fillStyle = 'rgb(120,126,132)'; ctx.fill(); ctx.lineWidth = 1.6; ctx.strokeStyle = '#111'; ctx.stroke();
+
+            // workbench
+            R(436, 408, 106, 9, 'rgb(150,104,56)', 2.2);                                                        // top
+            R(442, 417, 7, 29, WOODD, 1.6); R(529, 417, 7, 29, WOODD, 1.6);                                     // legs
+            R(448, 435, 82, 5, WOOD, 1.6);                                                                      // lower shelf
+            L([[449, 417], [468, 435]], 1.4, 'rgba(60,36,14,.6)'); L([[529, 417], [510, 435]], 1.4, 'rgba(60,36,14,.6)');   // braces
+
+            // on the bench: vise, whetstone, ammo box, hammer, a knife
+            R(438, 394, 16, 14, 'rgb(90,92,98)', 1.8); L([[454, 398], [462, 398]], 2.4); E(463, 398, 2, 2, '#333', 1);
+            R(466, 402, 22, 6, 'rgb(160,160,152)', 1.5);                                                        // whetstone
+            ctx.beginPath(); ctx.moveTo(472, 400); ctx.lineTo(498, 398); ctx.lineTo(498, 401); ctx.lineTo(472, 402); ctx.closePath();
+            ctx.fillStyle = 'rgb(200,204,208)'; ctx.fill(); ctx.lineWidth = 1.2; ctx.strokeStyle = '#111'; ctx.stroke();   // knife lying on it
+            R(504, 398, 18, 10, 'rgb(150,40,30)', 1.6);                                                         // ammo box
+            ctx.fillStyle = 'rgb(201,154,58)';
+            for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.rect(506 + i * 4, 394, 2.6, 4.5); ctx.fill(); ctx.lineWidth = .8; ctx.stroke(); }
+            L([[526, 407], [532, 396]], 2.6, '#111'); L([[526, 407], [532, 396]], 1.4, 'rgb(150,104,56)');
+            R(528, 392, 10, 5, 'rgb(90,92,98)', 1.5);                                                           // hammer
+
+            // under the bench: crate and a box of shells
+            R(452, 421, 24, 14, WOOD, 1.6); L([[452, 421], [476, 435]], 1, 'rgba(60,36,14,.6)');
+            R(498, 424, 22, 11, 'rgb(180,60,40)', 1.5);
 
             // door (inside face)
             R(532, 306, 92, 11, WOOD, 2);
             R(543, 317, 77, 138, 'rgb(176,128,76)', 2.4);
             for (const x of [556, 569, 582, 595, 608]) L([[x, 319], [x, 453]], 1.4, 'rgba(100,66,30,.6)');
             ctx.beginPath(); ctx.arc(555, 392, 3.2, 0, 7); ctx.fillStyle = INK; ctx.fill();
-
-            // table, mugs, chair
-            R(448, 408, 92, 6, WOODD, 2); L([[456, 414], [452, 455]], 4); L([[532, 414], [536, 455]], 4);
-            R(466, 399, 7, 9, 'rgb(235,232,220)', 1.3); R(500, 394, 8, 14, 'rgb(205,214,190)', 1.3); E(486, 407, 10, 2.2, 'rgb(240,238,230)', 1.2);
-            R(538, 394, 8, 36, WOOD, 1.6); for (const y of [400, 410, 420]) L([[538, y], [546, y]], 1.2);
-            R(520, 429, 28, 5, WOOD, 1.6); L([[524, 434], [522, 455]], 3); L([[544, 434], [546, 455]], 3);
 
             // pendant lamp
             L([[491, 258], [491, 300]], 1.6);
