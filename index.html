@@ -10088,234 +10088,273 @@
 
 
 
+        // ================= OAK FOLIAGE (baked once, swayed as a whole) =================
+        const TH_LEAF_COL = ['rgb(58,84,36)', 'rgb(82,110,40)', 'rgb(106,136,44)', 'rgb(138,168,52)', 'rgb(176,200,70)']; // dark -> light
+        const FOL_LEAF = 0.8;     // leaf size knob (0.5 = tiny, 1 = big)
 
+        // lobed oak leaf, pointing +x, ~31 long
+        const TH_OAK = (() => {
+            const P0 = [[3, -1.5], [11.5, -4], [18.5, -5.5], [25, -3.5], [31, 0]];
+            const S = [[4, -7.5, 11, -8.5], [11, -10.5, 18, -11], [18, -9, 24, -9], [28, -4, 31, -2]];
+            const p = new Path2D(); p.moveTo(0, 0); p.lineTo(3, -1.5);
+            S.forEach((s, i) => p.bezierCurveTo(s[0], s[1], s[2], s[3], P0[i + 1][0], P0[i + 1][1]));               // top edge
+            for (let i = S.length - 1; i >= 0; i--) { const s = S[i]; p.bezierCurveTo(s[2], -s[3], s[0], -s[1], P0[i][0], -P0[i][1]); }   // mirrored bottom edge
+            p.closePath(); return p;
+        })();
+        const TH_OAK_V = (() => {
+            const p = new Path2D(); p.moveTo(0, 0); p.lineTo(28, 0);
+            for (const [x, dx, dy] of [[8, 3, 5], [15, 3, 7], [21, 3, 5]]) { p.moveTo(x, 0); p.lineTo(x + dx, -dy); p.moveTo(x, 0); p.lineTo(x + dx, dy); }
+            return p;
+        })();
 
+        const FOL = { x0: -170, y0: -560, w: 1160, h: 1300, R: 2, back: null, front: null };   // R 1.3 -> 2 (small leaves need the sharper bake)
+        const FOL_DENS = 24;   // was 200: leaves are much smaller now, so you need ~8x more of them
+        // [centre x, centre y, radius] in treehouse image space
+        const FOL_BACK = [
+            [457, -297, 235], [274, -139, 190], [81, -148, 110], [673, -74, 180],   // crown + upper lobes
+            [15, 46, 140], [-32, 200, 100], [843, 168, 120],                        // side lobes
+            [-22, 362, 90], [805, 502, 120],                                        // beside the deck
+            [180, 577, 90], [640, 577, 95]                                          // under the deck, on the lower branches
+        ];
+        const FOL_FRONT = [[30, 330, 70], [10, 420, 45], [760, 300, 60], [790, 400, 45]];   // overlap the cabin edges / railing
 
-        // =====================================================================
-        //  THE SCENE
-        // =====================================================================
-// ---------- oak leaves (drawn in treehouse image-space) ----------
-const TH_LEAVES = ['rgb(124,128,62)', 'rgb(104,112,54)', 'rgb(142,142,74)'];
-function thOak(x, y, a, s, col) {
-    ctx.save(); ctx.translate(x, y); ctx.rotate(a); ctx.scale(s, s);
-    const U = [[4, -3], [7, -7.5], [10, -4.5], [13, -9.5], [17, -5.5], [20, -8], [24, -3.5], [28, 0]];
-    ctx.beginPath(); ctx.moveTo(0, 0);
-    for (const p of U) ctx.lineTo(p[0], p[1]);
-    for (let i = U.length - 2; i >= 0; i--) ctx.lineTo(U[i][0], -U[i][1]);
-    ctx.closePath(); ctx.fillStyle = col; ctx.fill();
-    ctx.lineWidth = 2 / s; ctx.strokeStyle = '#111'; ctx.stroke();
-    ctx.lineWidth = 1.1 / s; ctx.strokeStyle = 'rgba(40,40,20,.7)';
-    ctx.beginPath(); ctx.moveTo(1, 0); ctx.lineTo(24, 0); ctx.stroke();
-    ctx.restore();
-}
-function thOakCluster(cx, cy, r, seed, now, n) {
-    const wk = wind.v / 300, it = [];
-    for (let j = 0; j < n; j++) {
-        const a = hash(seed + j * 3.1) * 6.283, rho = r * Math.sqrt(hash(seed + j * 5.7 + 1)) * .85;
-        it.push([cx + Math.cos(a) * rho, cy + Math.sin(a) * rho * .78, a, .75 + hash(seed + j * 7.3) * .5]);
-    }
-    ctx.strokeStyle = '#111'; ctx.lineWidth = 2;
-    for (const p of it) { ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(p[0], p[1]); ctx.stroke(); }
-    it.forEach((p, j) => thOak(p[0], p[1], p[2] + Math.sin(now * 1.3 + seed + j) * .07 + wk * .05 + (hash(seed + j * 9.1) - .5) * .8, p[3], TH_LEAVES[j % 3]));
-}
-
-function drawTreehouse(gy) {
-    const sc = TH_SC, sx = W / 2 + TH_WX - P.x;
-    if (sx + 340 * sc < -50 || sx - 640 * sc > W + 50) return;
-    const now = performance.now() / 1000, D = TH_DY, day = 1 - DN.d, K = .74;
-    bdBegin(sx, gy, sc);
-
-    // ---- ground ----
-    bdLine([[-640, 3], [-300, 6], [100, 5], [320, 3]], 2.2, 11, .25);
-    {
-        const top = [], bt = [];
-        for (let x = -640; x <= -40; x += 40) { top.push([x, 1 + (hash(x * .31) - .5) * 2]); bt.push([x, 8 + (hash(x * .57) - .5) * 2.5]); }
-        ctx.save(); bdPath(top.concat(bt.slice().reverse()), true, 3, 0); ctx.fillStyle = 'rgba(188,158,112,.30)'; ctx.fill(); ctx.restore();
-        bdLine(top, .9, 5, .35); bdLine(bt, .9, 9, .35);
-    }
-
-    // =====================================================================
-    //  THE TREEHOUSE, drawn in the reference image's pixel space
-    //  (image px -> local: x = (px-415)*K, y = D + (py-455)*K ; deck top = py 455)
-    // =====================================================================
-    ctx.save(); ctx.translate(-415 * K, D - 455 * K); ctx.scale(K, K);
-    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-
-    const WOOD = 'rgb(190,141,84)', WOODD = 'rgb(160,112,64)', CREAM = 'rgb(244,232,180)', ROOFC = 'rgb(72,68,66)',
-        METAL = 'rgb(154,156,160)', BARK = 'rgb(208,196,174)', LINE = 'rgba(130,105,56,.6)';
-    const ip = (pts, fill, lw) => {
-        ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath();
-        if (fill) { ctx.fillStyle = fill; ctx.fill(); }
-        ctx.lineWidth = lw || 2.4; ctx.strokeStyle = '#111'; ctx.stroke();
-    };
-    const rc = (x0, y0, x1, y1, fill, lw) => ip([[x0, y0], [x1, y0], [x1, y1], [x0, y1]], fill, lw);
-    const ln = (pts, w, col) => { ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.lineWidth = w; ctx.strokeStyle = col; ctx.stroke(); };
-    const rivet = (x, y) => { ctx.beginPath(); ctx.arc(x, y, 2.4, 0, 7); ctx.fillStyle = '#38383a'; ctx.fill(); };
-    const plate = (x0, y0, x1, y1) => { rc(x0, y0, x1, y1, METAL, 1.6); rivet(x0 + 4, y0 + 4); rivet(x1 - 4, y1 - 4); };
-
-    // ---- tree: trunk + branches share one silhouette (outlines first, fills second) ----
-    const LB = [];
-    const limb = (ctrl, w, seed) => {
-        const kk = 5, sp = thSpl(ctrl, kk), n = sp.length, L = [], R = [], NR = [], HW = [];
-        for (let i = 0; i < n; i++) {
-            const a = sp[Math.max(0, i - 1)], b = sp[Math.min(n - 1, i + 1)];
-            let tx = b[0] - a[0], ty = b[1] - a[1]; const tl = Math.hypot(tx, ty) || 1; tx /= tl; ty /= tl;
-            const u = Math.min(ctrl.length - 1.001, i / kk), i0 = Math.floor(u), hw = w[i0] + (w[i0 + 1] - w[i0]) * (u - i0);
-            L.push([sp[i][0] - ty * hw, sp[i][1] + tx * hw]); R.push([sp[i][0] + ty * hw, sp[i][1] - tx * hw]); NR.push([-ty, tx]); HW.push(hw);
+        function thLeaf(g, x, y, a, s, ci, flip) {
+            g.save(); g.translate(x, y); g.rotate(a); g.scale(s, flip ? -s : s);
+            g.fillStyle = TH_LEAF_COL[ci]; g.fill(TH_OAK);
+            if (ci >= 3) { g.fillStyle = 'rgba(235,240,120,.28)'; g.beginPath(); g.ellipse(14, -3, 10, 3.2, -.15, 0, 7); g.fill(); }   // lit half
+            g.lineJoin = 'round'; g.lineWidth = 1.1 / s; g.strokeStyle = 'rgba(18,22,8,.9)'; g.stroke(TH_OAK);
+            g.lineWidth = .7 / s; g.strokeStyle = 'rgba(28,40,12,.55)'; g.stroke(TH_OAK_V);
+            g.restore();
         }
-        LB.push({ poly: L.concat(R.slice().reverse()), sp, NR, HW, seed });
-    };
-    // trunk (very wide at the base, narrow where it passes through the cabin)
-    limb([[416, -210], [416, -60], [415, 60], [414, 200], [413, 330], [412, 470], [412, 620], [413, 780], [413, 901]], [28, 36, 41, 41, 38, 53, 63, 82, 100], 1);
-    limb([[390, 880], [340, 895], [280, 903], [220, 905]], [50, 30, 14, 4], 2);     // roots
-    limb([[436, 880], [490, 895], [550, 903], [610, 905]], [50, 30, 14, 4], 3);
-    // crown
-    limb([[400, 0], [360, -60], [320, -110], [290, -150]], [18, 13, 8, 3], 4);
-    limb([[432, 0], [470, -60], [510, -110], [545, -150]], [18, 13, 8, 3], 5);
-    // upper branches (behind the roof)
-    limb([[395, 105], [345, 70], [300, 45], [265, 20], [240, 0]], [18, 14, 9, 6, 3], 6);
-    limb([[452, 125], [480, 98], [525, 75], [570, 55], [620, 45]], [16, 12, 8, 5, 3], 7);
-    limb([[340, 175], [285, 170], [250, 150], [215, 105], [170, 92]], [14, 11, 8, 5, 3], 8);
-    limb([[250, 215], [200, 238], [155, 243], [105, 218], [55, 190]], [12, 10, 7, 5, 3], 9);
-    limb([[470, 215], [520, 190], [565, 178], [610, 170], [650, 160]], [10, 8, 6, 4, 3], 10);
-    // lower branches (under the deck)
-    limb([[395, 660], [362, 600], [318, 548], [270, 510], [225, 482]], [36, 30, 22, 14, 8], 11);
-    limb([[432, 665], [470, 610], [525, 555], [580, 510], [625, 482]], [36, 30, 22, 14, 8], 12);
-    limb([[285, 525], [245, 540], [205, 548], [170, 545]], [7, 5, 4, 2.5], 13);
-    limb([[545, 545], [595, 548], [640, 556], [685, 566]], [7, 5, 4, 2.5], 14);
 
-    ctx.strokeStyle = '#111'; ctx.lineWidth = 5;
-    for (const l of LB) { ctx.beginPath(); l.poly.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath(); ctx.stroke(); }
-    ctx.fillStyle = BARK;
-    for (const l of LB) { ctx.beginPath(); l.poly.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath(); ctx.fill(); }
-    ctx.strokeStyle = 'rgba(120,106,86,.6)'; ctx.lineWidth = 1.5;
-    for (const l of LB) {
-        const n = l.sp.length, big = l.HW[0] > 20;
-        for (let c = 0; c < (big ? 6 : 2); c++) {
-            const off = (hash(l.seed * 7 + c * 3.3) - .5) * 1.4, t0 = hash(l.seed + c * 5.1) * .5, t1 = Math.min(1, t0 + .25 + hash(l.seed + c * 2.7) * .35);
-            ctx.beginPath();
-            for (let i = Math.floor(t0 * (n - 1)); i <= Math.ceil(t1 * (n - 1)); i++) {
-                const x = l.sp[i][0] + l.NR[i][0] * l.HW[i] * off, y = l.sp[i][1] + l.NR[i][1] * l.HW[i] * off;
-                i === Math.floor(t0 * (n - 1)) ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+        function thBake(g, blobs, seed) {
+            for (let layer = 0; layer < 3; layer++) {                      // dark under-layer, mid, then light on top
+                blobs.forEach(([cx, cy, r], bi) => {
+                    const n = Math.round(r * r / FOL_DENS), m = Math.round(n * [.4, .35, .25][layer]);
+                    const w1 = hash(seed + bi * 7.1) * 6.283;
+                    for (let j = 0; j < m; j++) {
+                        const k = seed + bi * 131 + layer * 977 + j * 3.17;
+                        const a = hash(k) * 6.283, edge = 1 + .16 * Math.sin(3 * a + w1) + .1 * Math.sin(5 * a + w1 * 2);   // lumpy canopy edge
+                        const rho = r * edge * Math.sqrt(hash(k + 1.3)) * [1, .88, .72][layer];
+                        const x = cx + Math.cos(a) * rho * 1.08 - layer * r * .03, y = cy + Math.sin(a) * rho * .82 - layer * r * .06;   // light layers sit up-left
+                        const ci = [0, 2, 3][layer] + (hash(k + 2) < .5 ? 0 : 1);
+                        const s = FOL_LEAF * (.75 + hash(k + 4) * .5);
+                        thLeaf(g, x, y, a + (hash(k + 3) - .5) * 2.2, s, ci, hash(k + 5) < .5);
+                        if (ci === 4 && hash(k + 6) < .06) {                // tiny sparkle
+                            g.save(); g.strokeStyle = 'rgba(255,255,235,.9)'; g.lineWidth = .8; g.lineCap = 'round'; g.beginPath();
+                            g.moveTo(x - 3, y); g.lineTo(x + 3, y); g.moveTo(x, y - 3); g.lineTo(x, y + 3); g.stroke(); g.restore();
+                        }
+                    }
+                });
             }
-            ctx.stroke();
         }
-    }
-
-    // oak foliage
-    thOakCluster(285, 22, 58, 21, now, 16); thOakCluster(505, 18, 38, 22, now, 10);
-    thOakCluster(605, 50, 72, 23, now, 20); thOakCluster(650, 158, 52, 24, now, 14);
-    thOakCluster(160, 92, 72, 25, now, 20); thOakCluster(50, 185, 52, 26, now, 14);
-    thOakCluster(180, 545, 40, 27, now, 12); thOakCluster(662, 540, 46, 28, now, 14);
-    thOakCluster(300, -150, 70, 29, now, 18); thOakCluster(535, -150, 70, 30, now, 18); thOakCluster(418, -190, 80, 31, now, 22);
-
-    // braces under the deck
-    ip([[326, 474], [346, 474], [376, 527], [354, 529]], WOOD, 2.2);
-    ip([[500, 474], [524, 474], [470, 527], [454, 524]], WOOD, 2.2);
-
-    // ---- gable infill ----
-    const GL = [[400, 177], [400, 243], [236, 243]], GR = [[440, 174], [440, 243], [579, 243]];
-    ip(GL, CREAM, 2.2); ip(GR, CREAM, 2.2);
-    for (const g of [GL, GR]) thClip(g, () => { for (let y = 190; y < 243; y += 15) ln([[200, y], [620, y]], 1.2, LINE); });
-
-    // ---- walls (a gap is left for the trunk to show through) ----
-    const wall = (x0, x1) => { rc(x0, 258, x1, 455, CREAM, 2.2); thClip([[x0, 258], [x1, 258], [x1, 455], [x0, 455]], () => { for (let y = 275; y < 455; y += 17) ln([[x0, y], [x1, y]], 1.3, LINE); }); };
-    wall(176, 400); wall(432, 626);
-
-    // tie beams, ridge beam, plaque
-    rc(205, 243, 400, 258, WOOD, 2.2); rc(440, 243, 617, 258, WOOD, 2.2);
-    plate(361, 247, 402, 257); plate(436, 247, 470, 256);
-    rc(415, 160, 432, 258, WOOD, 2.2); ip([[415, 168], [424, 152], [433, 168]], WOOD, 2);
-    rc(418, 263, 450, 278, WOOD, 2); rivet(424, 270); rivet(444, 270);
-
-    // window
-    rc(232, 304, 372, 381, 'rgb(172,122,72)', 2.4);
-    for (const [a, b] of [[239, 300], [307, 365]]) {
-        rc(a, 311, b, 369, 'rgb(52,54,56)', 2);
-        ln([[a + 6, 340], [a + 34, 314]], 3, 'rgba(190,200,205,.45)'); ln([[a + 6, 360], [a + 50, 314]], 3, 'rgba(190,200,205,.35)');
-    }
-    rc(229, 370, 375, 381, WOOD, 2.2);
-
-    // door
-    rc(532, 306, 624, 317, WOOD, 2.2);
-    rc(543, 317, 620, 453, 'rgb(200,152,92)', 2.4);
-    for (const x of [556, 569, 582, 595, 608]) ln([[x, 319], [x, 451]], 1.4, 'rgba(100,66,30,.6)');
-    ctx.beginPath(); ctx.arc(606, 389, 3.2, 0, 7); ctx.fillStyle = '#111'; ctx.fill();
-
-    // corner posts + knee braces
-    rc(158, 266, 176, 455, WOOD, 2.2); rc(624, 262, 642, 452, WOOD, 2.2);
-    ln([[124, 285], [162, 324]], 11, '#111'); ln([[124, 285], [162, 324]], 6.5, WOOD);
-
-    // chimney (behind the roof)
-    rc(299, 138, 315, 192, 'rgb(122,120,120)', 2); rc(297, 165, 317, 171, METAL, 1.6); rc(295, 132, 319, 141, 'rgb(40,40,42)', 2);
-
-    // ---- roof: dark shingles over tan fascia boards ----
-    ip([[424, 153], [89, 288], [96, 298], [424, 168]], WOOD, 2.2);
-    ip([[426, 153], [697, 288], [690, 298], [426, 168]], WOOD, 2.2);
-    ip([[424, 140], [83, 278], [89, 289], [424, 153]], ROOFC, 2.4);
-    ip([[426, 140], [704, 278], [697, 289], [426, 153]], ROOFC, 2.4);
-    ln([[200, 215], [330, 163]], 1.2, 'rgba(255,255,255,.12)'); ln([[520, 175], [640, 232]], 1.2, 'rgba(255,255,255,.12)');
-
-    // lantern hanging from the right eave
-    ln([[642, 314], [668, 282]], 11, '#111'); ln([[642, 314], [668, 282]], 6.5, WOOD);
-    ln([[680, 289], [680, 306]], 2.4, '#111');
-    ip([[668, 315], [680, 304], [692, 315]], '#2a2a2c', 2);
-    {
-        const lit = DN.d > .15;
-        rc(671, 315, 689, 338, lit ? 'rgba(255,214,120,.95)' : 'rgb(206,200,170)', 2);
-        ln([[680, 315], [680, 338]], 1.2, 'rgba(0,0,0,.6)');
-        rc(669, 338, 691, 345, '#2a2a2c', 2);
-    }
-
-    // ---- deck beam ----
-    rc(20, 455, 704, 474, WOOD, 2.6);
-    ln([[22, 464.5], [702, 464.5]], 1.2, 'rgba(90,60,30,.5)');
-    for (let x = 80; x < 700; x += 70) ln([[x, 456], [x + (hash(x) - .5) * 4, 473]], 1, 'rgba(90,60,30,.35)');
-    plate(148, 458, 178, 472); plate(618, 458, 646, 472); rivet(28, 461); rivet(28, 469); rivet(696, 461); rivet(696, 469);
-
-    // ---- railings ----
-    const rails = (x0, x1, y0, y1) => { rc(x0, y0, x1, y0 + 8, WOOD, 2); rc(x0, y1, x1, y1 + 8, WOOD, 2); };
-    rails(22, 566, 394, 433); rails(640, 703, 394, 430);
-    const post = (x, w, top) => rc(x - w / 2, top, x + w / 2, 455, WOOD, 2.2);
-    for (const [x, w, t] of [[29, 14, 382], [61, 11, 392], [126, 12, 390], [161, 13, 388], [296, 13, 388], [456, 13, 388], [558, 14, 388], [661, 12, 392], [695, 12, 388]]) post(x, w, t);
-    for (const x of [161, 296, 456, 558]) plate(x - 8, 436, x + 8, 446);
-
-    ctx.restore();   // back to local space
-
-    // ---- ground details ----
-    for (let i = 0; i < 9; i++) {
-        const x = -380 + hash(i * 4.3) * 660; if (x > -70 && x < 55) continue;
-        const r = 3 + hash(i * 2.1) * 4; ctx.beginPath(); ctx.ellipse(x, -r * .35 + 4, r * 1.3, r * .8, 0, 0, 7); ctx.fillStyle = C_STONE; ctx.fill(); ctx.lineWidth = 1.1; ctx.stroke();
-    }
-    for (let i = 0; i < 34; i++) stGrass(-420 + hash(i * 5.7) * 740, i * 3.3, 9 + hash(i) * 8, now);
-    for (let i = 0; i < 13; i++) stFlower(-350 + hash(i * 8.3 + 2) * 640, 10 + hash(i) * 14, 3.6 + hash(i + 3) * 2.4, (hash(i + 5) - .5) * 10, i * 7 + 3, now);
-    for (let i = 0; i < 7; i++) thSprout(-300 + hash(i * 6.7 + 1) * 560, 9 + hash(i + 2) * 7, i * 5 + 1, now);
-    for (let i = 0; i < 14; i++) {
-        const x = -330 + hash(i * 6.1) * 600; ctx.save(); ctx.translate(x, 3 + hash(i * 3) * 3); ctx.rotate((hash(i * 9) - .5) * 1.2);
-        ctx.fillStyle = LEAF_COL[i % 3]; ctx.lineWidth = .5; ctx.beginPath(); ctx.ellipse(0, 0, 3.2, 1.2, 0, 0, 7); ctx.fill(); ctx.stroke(); ctx.restore();
-    }
-    [[3, 250], [2, 254.6], [1, 259.2]].forEach(([n, x0], r) => {
-        for (let k = 0; k < n; k++) {
-            const lx = x0 + 4.5 + k * 9.2, ly = -4.5 - r * 8.2;
-            ctx.beginPath(); ctx.arc(lx, ly, 4.4, 0, 7); ctx.fillStyle = C_WOOD; ctx.fill(); ctx.lineWidth = .9; ctx.stroke();
+        function thFoliage(which, now) {
+            const F = FOL;
+            if (!F[which]) {
+                const c = document.createElement('canvas'); c.width = Math.ceil(F.w * F.R); c.height = Math.ceil(F.h * F.R);
+                const g = c.getContext('2d'); g.scale(F.R, F.R); g.translate(-F.x0, -F.y0);
+                thBake(g, which === 'back' ? FOL_BACK : FOL_FRONT, which === 'back' ? 11 : 77);
+                F[which] = c;
+            }
+            const sw = (wind.v / 300 * .012 + Math.sin(now * .8 + (which === 'back' ? 0 : 1.3)) * .005) * (which === 'back' ? 1 : 1.5);
+            ctx.save(); ctx.transform(1, 0, -sw, 1, sw * 100, 0);       // lean the whole canopy about y = 100, top moves most
+            ctx.drawImage(F[which], F.x0, F.y0, F.w, F.h); ctx.restore();
         }
-    });
 
-    // squirrel + rope-ladder (now a wooden ladder) in front
-    thSqUpdate(now); thSquirrel(TH_SQ, now); thSqHalvesDraw(now);
-    thDrawRopeLadder(now);
 
-    // sunlight
-    if (day > .05) {
-        ctx.save();
-        for (const [x, w] of [[-130, 16], [-30, 22], [70, 14], [170, 18]]) {
-            ctx.beginPath(); ctx.moveTo(x, D - 420); ctx.lineTo(x + w, D - 420); ctx.lineTo(x + w + 70, 0); ctx.lineTo(x + 55, 0); ctx.closePath();
-            ctx.fillStyle = 'rgba(255,244,190,' + (.07 * day) + ')'; ctx.fill();
+
+        function drawTreehouse(gy) {
+            const sc = TH_SC, sx = W / 2 + TH_WX - P.x;
+            if (sx + 340 * sc < -50 || sx - 640 * sc > W + 50) return;
+            const now = performance.now() / 1000, D = TH_DY, day = 1 - DN.d, K = .74;
+            bdBegin(sx, gy, sc);
+
+            // ---- ground ----
+            bdLine([[-640, 3], [-300, 6], [100, 5], [320, 3]], 2.2, 11, .25);
+            {
+                const top = [], bt = [];
+                for (let x = -640; x <= -40; x += 40) { top.push([x, 1 + (hash(x * .31) - .5) * 2]); bt.push([x, 8 + (hash(x * .57) - .5) * 2.5]); }
+                ctx.save(); bdPath(top.concat(bt.slice().reverse()), true, 3, 0); ctx.fillStyle = 'rgba(188,158,112,.30)'; ctx.fill(); ctx.restore();
+                bdLine(top, .9, 5, .35); bdLine(bt, .9, 9, .35);
+            }
+
+            // =====================================================================
+            //  THE TREEHOUSE, drawn in the reference image's pixel space
+            //  (image px -> local: x = (px-415)*K, y = D + (py-455)*K ; deck top = py 455)
+            // =====================================================================
+            ctx.save(); ctx.translate(-415 * K, D - 455 * K); ctx.scale(K, K);
+            ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+
+            const WOOD = 'rgb(190,141,84)', WOODD = 'rgb(160,112,64)', CREAM = 'rgb(244,232,180)', ROOFC = 'rgb(72,68,66)',
+                METAL = 'rgb(154,156,160)', BARK = 'rgb(208,196,174)', LINE = 'rgba(130,105,56,.6)';
+            const ip = (pts, fill, lw) => {
+                ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath();
+                if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+                ctx.lineWidth = lw || 2.4; ctx.strokeStyle = '#111'; ctx.stroke();
+            };
+            const rc = (x0, y0, x1, y1, fill, lw) => ip([[x0, y0], [x1, y0], [x1, y1], [x0, y1]], fill, lw);
+            const ln = (pts, w, col) => { ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.lineWidth = w; ctx.strokeStyle = col; ctx.stroke(); };
+            const rivet = (x, y) => { ctx.beginPath(); ctx.arc(x, y, 2.4, 0, 7); ctx.fillStyle = '#38383a'; ctx.fill(); };
+            const plate = (x0, y0, x1, y1) => { rc(x0, y0, x1, y1, METAL, 1.6); rivet(x0 + 4, y0 + 4); rivet(x1 - 4, y1 - 4); };
+
+            // ---- tree: trunk + branches share one silhouette (outlines first, fills second) ----
+            const LB = [];
+            const limb = (ctrl, w, seed) => {
+                const kk = 5, sp = thSpl(ctrl, kk), n = sp.length, L = [], R = [], NR = [], HW = [];
+                for (let i = 0; i < n; i++) {
+                    const a = sp[Math.max(0, i - 1)], b = sp[Math.min(n - 1, i + 1)];
+                    let tx = b[0] - a[0], ty = b[1] - a[1]; const tl = Math.hypot(tx, ty) || 1; tx /= tl; ty /= tl;
+                    const u = Math.min(ctrl.length - 1.001, i / kk), i0 = Math.floor(u), hw = w[i0] + (w[i0 + 1] - w[i0]) * (u - i0);
+                    L.push([sp[i][0] - ty * hw, sp[i][1] + tx * hw]); R.push([sp[i][0] + ty * hw, sp[i][1] - tx * hw]); NR.push([-ty, tx]); HW.push(hw);
+                }
+                LB.push({ poly: L.concat(R.slice().reverse()), sp, NR, HW, seed });
+            };
+            // trunk (very wide at the base, narrow where it passes through the cabin)
+            limb([[416, -210], [416, -60], [415, 60], [414, 200], [413, 330], [412, 470], [412, 620], [413, 780], [413, 901]], [28, 36, 41, 41, 38, 53, 63, 82, 100], 1);
+            limb([[390, 880], [340, 895], [280, 903], [220, 905]], [50, 30, 14, 4], 2);     // roots
+            limb([[436, 880], [490, 895], [550, 903], [610, 905]], [50, 30, 14, 4], 3);
+            // crown
+            limb([[400, 0], [360, -60], [320, -110], [290, -150]], [18, 13, 8, 3], 4);
+            limb([[432, 0], [470, -60], [510, -110], [545, -150]], [18, 13, 8, 3], 5);
+            // upper branches (behind the roof)
+            limb([[395, 105], [345, 70], [300, 45], [265, 20], [240, 0]], [18, 14, 9, 6, 3], 6);
+            limb([[452, 125], [480, 98], [525, 75], [570, 55], [620, 45]], [16, 12, 8, 5, 3], 7);
+            limb([[340, 175], [285, 170], [250, 150], [215, 105], [170, 92]], [14, 11, 8, 5, 3], 8);
+            limb([[250, 215], [200, 238], [155, 243], [105, 218], [55, 190]], [12, 10, 7, 5, 3], 9);
+            limb([[470, 215], [520, 190], [565, 178], [610, 170], [650, 160]], [10, 8, 6, 4, 3], 10);
+            // lower branches (under the deck)
+            limb([[395, 660], [362, 600], [318, 548], [270, 510], [225, 482]], [36, 30, 22, 14, 8], 11);
+            limb([[432, 665], [470, 610], [525, 555], [580, 510], [625, 482]], [36, 30, 22, 14, 8], 12);
+            limb([[285, 525], [245, 540], [205, 548], [170, 545]], [7, 5, 4, 2.5], 13);
+            limb([[545, 545], [595, 548], [640, 556], [685, 566]], [7, 5, 4, 2.5], 14);
+
+            ctx.strokeStyle = '#111'; ctx.lineWidth = 5;
+            for (const l of LB) { ctx.beginPath(); l.poly.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath(); ctx.stroke(); }
+            ctx.fillStyle = BARK;
+            for (const l of LB) { ctx.beginPath(); l.poly.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath(); ctx.fill(); }
+            ctx.strokeStyle = 'rgba(120,106,86,.6)'; ctx.lineWidth = 1.5;
+            for (const l of LB) {
+                const n = l.sp.length, big = l.HW[0] > 20;
+                for (let c = 0; c < (big ? 6 : 2); c++) {
+                    const off = (hash(l.seed * 7 + c * 3.3) - .5) * 1.4, t0 = hash(l.seed + c * 5.1) * .5, t1 = Math.min(1, t0 + .25 + hash(l.seed + c * 2.7) * .35);
+                    ctx.beginPath();
+                    for (let i = Math.floor(t0 * (n - 1)); i <= Math.ceil(t1 * (n - 1)); i++) {
+                        const x = l.sp[i][0] + l.NR[i][0] * l.HW[i] * off, y = l.sp[i][1] + l.NR[i][1] * l.HW[i] * off;
+                        i === Math.floor(t0 * (n - 1)) ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+                    }
+                    ctx.stroke();
+                }
+            }
+
+            // oak foliage
+            thFoliage('back', now);
+            // braces under the deck
+            ip([[326, 474], [346, 474], [376, 527], [354, 529]], WOOD, 2.2);
+            ip([[500, 474], [524, 474], [470, 527], [454, 524]], WOOD, 2.2);
+
+            // ---- gable infill ----
+            const GL = [[400, 177], [400, 243], [236, 243]], GR = [[440, 174], [440, 243], [579, 243]];
+            ip(GL, CREAM, 2.2); ip(GR, CREAM, 2.2);
+            for (const g of [GL, GR]) thClip(g, () => { for (let y = 190; y < 243; y += 15) ln([[200, y], [620, y]], 1.2, LINE); });
+
+            // ---- walls (a gap is left for the trunk to show through) ----
+            const wall = (x0, x1) => { rc(x0, 258, x1, 455, CREAM, 2.2); thClip([[x0, 258], [x1, 258], [x1, 455], [x0, 455]], () => { for (let y = 275; y < 455; y += 17) ln([[x0, y], [x1, y]], 1.3, LINE); }); };
+            wall(176, 400); wall(432, 626);
+
+            // tie beams, ridge beam, plaque
+            rc(205, 243, 400, 258, WOOD, 2.2); rc(440, 243, 617, 258, WOOD, 2.2);
+            plate(361, 247, 402, 257); plate(436, 247, 470, 256);
+            rc(415, 160, 432, 258, WOOD, 2.2); ip([[415, 168], [424, 152], [433, 168]], WOOD, 2);
+            rc(418, 263, 450, 278, WOOD, 2); rivet(424, 270); rivet(444, 270);
+
+            // window
+            rc(232, 304, 372, 381, 'rgb(172,122,72)', 2.4);
+            for (const [a, b] of [[239, 300], [307, 365]]) {
+                rc(a, 311, b, 369, 'rgb(52,54,56)', 2);
+                ln([[a + 6, 340], [a + 34, 314]], 3, 'rgba(190,200,205,.45)'); ln([[a + 6, 360], [a + 50, 314]], 3, 'rgba(190,200,205,.35)');
+            }
+            rc(229, 370, 375, 381, WOOD, 2.2);
+
+            // door
+            rc(532, 306, 624, 317, WOOD, 2.2);
+            rc(543, 317, 620, 453, 'rgb(200,152,92)', 2.4);
+            for (const x of [556, 569, 582, 595, 608]) ln([[x, 319], [x, 451]], 1.4, 'rgba(100,66,30,.6)');
+            ctx.beginPath(); ctx.arc(606, 389, 3.2, 0, 7); ctx.fillStyle = '#111'; ctx.fill();
+
+            // corner posts + knee braces
+            rc(158, 266, 176, 455, WOOD, 2.2); rc(624, 262, 642, 452, WOOD, 2.2);
+            ln([[124, 285], [162, 324]], 11, '#111'); ln([[124, 285], [162, 324]], 6.5, WOOD);
+
+            // chimney (behind the roof)
+            rc(299, 138, 315, 192, 'rgb(122,120,120)', 2); rc(297, 165, 317, 171, METAL, 1.6); rc(295, 132, 319, 141, 'rgb(40,40,42)', 2);
+
+            // ---- roof: dark shingles over tan fascia boards ----
+            ip([[424, 153], [89, 288], [96, 298], [424, 168]], WOOD, 2.2);
+            ip([[426, 153], [697, 288], [690, 298], [426, 168]], WOOD, 2.2);
+            ip([[424, 140], [83, 278], [89, 289], [424, 153]], ROOFC, 2.4);
+            ip([[426, 140], [704, 278], [697, 289], [426, 153]], ROOFC, 2.4);
+            ln([[200, 215], [330, 163]], 1.2, 'rgba(255,255,255,.12)'); ln([[520, 175], [640, 232]], 1.2, 'rgba(255,255,255,.12)');
+
+            // lantern hanging from the right eave
+            ln([[642, 314], [668, 282]], 11, '#111'); ln([[642, 314], [668, 282]], 6.5, WOOD);
+            ln([[680, 289], [680, 306]], 2.4, '#111');
+            ip([[668, 315], [680, 304], [692, 315]], '#2a2a2c', 2);
+            {
+                const lit = DN.d > .15;
+                rc(671, 315, 689, 338, lit ? 'rgba(255,214,120,.95)' : 'rgb(206,200,170)', 2);
+                ln([[680, 315], [680, 338]], 1.2, 'rgba(0,0,0,.6)');
+                rc(669, 338, 691, 345, '#2a2a2c', 2);
+            }
+
+            // ---- deck beam ----
+            rc(20, 455, 704, 474, WOOD, 2.6);
+            ln([[22, 464.5], [702, 464.5]], 1.2, 'rgba(90,60,30,.5)');
+            for (let x = 80; x < 700; x += 70) ln([[x, 456], [x + (hash(x) - .5) * 4, 473]], 1, 'rgba(90,60,30,.35)');
+            plate(148, 458, 178, 472); plate(618, 458, 646, 472); rivet(28, 461); rivet(28, 469); rivet(696, 461); rivet(696, 469);
+
+            // ---- railings ----
+            const rails = (x0, x1, y0, y1) => { rc(x0, y0, x1, y0 + 8, WOOD, 2); rc(x0, y1, x1, y1 + 8, WOOD, 2); };
+            rails(22, 566, 394, 433); rails(640, 703, 394, 430);
+            const post = (x, w, top) => rc(x - w / 2, top, x + w / 2, 455, WOOD, 2.2);
+            for (const [x, w, t] of [[29, 14, 382], [61, 11, 392], [126, 12, 390], [161, 13, 388], [296, 13, 388], [456, 13, 388], [558, 14, 388], [661, 12, 392], [695, 12, 388]]) post(x, w, t);
+            for (const x of [161, 296, 456, 558]) plate(x - 8, 436, x + 8, 446);
+            thFoliage('front', now);
+            ctx.restore();   // back to local space
+
+            // ---- ground details ----
+            for (let i = 0; i < 9; i++) {
+                const x = -380 + hash(i * 4.3) * 660; if (x > -70 && x < 55) continue;
+                const r = 3 + hash(i * 2.1) * 4; ctx.beginPath(); ctx.ellipse(x, -r * .35 + 4, r * 1.3, r * .8, 0, 0, 7); ctx.fillStyle = C_STONE; ctx.fill(); ctx.lineWidth = 1.1; ctx.stroke();
+            }
+            for (let i = 0; i < 34; i++) stGrass(-420 + hash(i * 5.7) * 740, i * 3.3, 9 + hash(i) * 8, now);
+            for (let i = 0; i < 13; i++) stFlower(-350 + hash(i * 8.3 + 2) * 640, 10 + hash(i) * 14, 3.6 + hash(i + 3) * 2.4, (hash(i + 5) - .5) * 10, i * 7 + 3, now);
+            for (let i = 0; i < 7; i++) thSprout(-300 + hash(i * 6.7 + 1) * 560, 9 + hash(i + 2) * 7, i * 5 + 1, now);
+            for (let i = 0; i < 14; i++) {
+                const x = -330 + hash(i * 6.1) * 600; ctx.save(); ctx.translate(x, 3 + hash(i * 3) * 3); ctx.rotate((hash(i * 9) - .5) * 1.2);
+                ctx.fillStyle = LEAF_COL[i % 3]; ctx.lineWidth = .5; ctx.beginPath(); ctx.ellipse(0, 0, 3.2, 1.2, 0, 0, 7); ctx.fill(); ctx.stroke(); ctx.restore();
+            }
+            [[3, 250], [2, 254.6], [1, 259.2]].forEach(([n, x0], r) => {
+                for (let k = 0; k < n; k++) {
+                    const lx = x0 + 4.5 + k * 9.2, ly = -4.5 - r * 8.2;
+                    ctx.beginPath(); ctx.arc(lx, ly, 4.4, 0, 7); ctx.fillStyle = C_WOOD; ctx.fill(); ctx.lineWidth = .9; ctx.stroke();
+                }
+            });
+
+            // squirrel + rope-ladder (now a wooden ladder) in front
+            thSqUpdate(now); thSquirrel(TH_SQ, now); thSqHalvesDraw(now);
+            thDrawRopeLadder(now);
+
+            // sunlight
+            if (day > .05) {
+                ctx.save();
+                for (const [x, w] of [[-130, 16], [-30, 22], [70, 14], [170, 18]]) {
+                    ctx.beginPath(); ctx.moveTo(x, D - 420); ctx.lineTo(x + w, D - 420); ctx.lineTo(x + w + 70, 0); ctx.lineTo(x + 55, 0); ctx.closePath();
+                    ctx.fillStyle = 'rgba(255,244,190,' + (.07 * day) + ')'; ctx.fill();
+                }
+                ctx.restore();
+            }
+            ctx.restore();
         }
-        ctx.restore();
-    }
-    ctx.restore();
-}
 
         function drawLadderHint(gy) {
             if (typeof thClimbActive === 'function' && thClimbActive()) return;
