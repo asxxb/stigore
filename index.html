@@ -232,7 +232,7 @@
         const AUDIO = {};
         const AUDIO_FILES = {
             step: 'player/step',
-            pickup: 'player/pickup', jump: 'player/jump', splash: 'player/splash',
+            pickup: 'player/pickup', jump: 'player/jump', splash: 'player/splash', kick: 'combat/kick',
             punch: 'combat/punch', stab: 'combat/knife_stab', revolver: 'guns/revolver_shot', revreload: 'guns/revolver_reload',
             shotgun: 'guns/shotgun_shot', pump: 'guns/shotgun_pump', splat: 'gore/blood_splat', headburst: 'gore/head_burst', slash: 'combat/slash',
             neigh: 'animals/horse_neigh', sgreload: 'guns/shotgun_reload', gunempty: 'guns/click_empty', squish: 'gore/squish', knifepull: 'combat/knife_pull', throw: 'combat/knife_throw',
@@ -1314,7 +1314,7 @@
                 hits++;
 
                 const dmg = Math.round(st.dmg * mul);
-                e.hp -= dmg; e.bar = 2.5; e.kdir = F; e.face = -F; e.hurt = Math.max(e.hurt, .38); e.vx = F * (st.name === 'grab' ? 120 : st.kb); e.wait = 1; e.fid = 0;
+                e.hp -= dmg; e.bar = 2.5; e.kdir = F; e.face = -F; playSfx(st.name === 'kick_front' ? 'kick' : 'punch', 1); e.hurt = Math.max(e.hurt, .38); e.vx = F * (st.name === 'grab' ? 120 : st.kb); e.wait = 1; e.fid = 0;
                 if (st.up) { if (e.z >= 0) e.z = -1; e.vz = st.up }
                 if ((st.kb >= 350 && st.name !== 'kick_front') || st.up < -300) e.tumble = 1;
                 if (st.name === 'kick_front') e.hurt = Math.max(e.hurt, .5);
