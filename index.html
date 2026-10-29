@@ -10448,9 +10448,9 @@
             ctx.fillStyle = g; ctx.fillRect(176, 258, 450, 52);
             g = ctx.createLinearGradient(176, 0, 220, 0); g.addColorStop(0, 'rgba(70,50,20,.3)'); g.addColorStop(1, 'rgba(70,50,20,0)'); ctx.fillStyle = g; ctx.fillRect(176, 258, 44, 197);
             g = ctx.createLinearGradient(626, 0, 585, 0); g.addColorStop(0, 'rgba(70,50,20,.3)'); g.addColorStop(1, 'rgba(70,50,20,0)'); ctx.fillStyle = g; ctx.fillRect(585, 258, 41, 197);
-            g = ctx.createRadialGradient(491, 320, 0, 491, 320, 210); g.addColorStop(0, 'rgba(255,240,170,.6)'); g.addColorStop(1, 'rgba(255,240,170,0)');
+            g = ctx.createRadialGradient(491, 298, 0, 491, 298, 210); g.addColorStop(0, 'rgba(255,240,170,.6)'); g.addColorStop(1, 'rgba(255,240,170,0)');
             ctx.fillStyle = g; ctx.fillRect(176, 258, 450, 197);                       // lamp glow
-            ctx.beginPath(); ctx.moveTo(486, 320); ctx.lineTo(496, 320); ctx.lineTo(570, 446); ctx.lineTo(412, 446); ctx.closePath(); ctx.fillStyle = 'rgba(255,244,190,.13)'; ctx.fill();
+            ctx.beginPath(); ctx.moveTo(486, 298); ctx.lineTo(496, 298); ctx.lineTo(570, 446); ctx.lineTo(412, 446); ctx.closePath(); ctx.fillStyle = 'rgba(255,244,190,.13)'; ctx.fill();
 
             // floor
             ctx.fillStyle = 'rgb(158,110,62)'; ctx.fillRect(176, 446, 450, 9); L([[176, 446], [626, 446]], 2);
@@ -10547,10 +10547,10 @@
             for (const x of [556, 569, 582, 595, 608]) L([[x, 319], [x, 453]], 1.4, 'rgba(100,66,30,.6)');
             ctx.beginPath(); ctx.arc(555, 392, 3.2, 0, 7); ctx.fillStyle = INK; ctx.fill();
 
-            // pendant lamp
-            L([[491, 258], [491, 300]], 1.6);
-            ctx.beginPath(); ctx.moveTo(486, 300); ctx.lineTo(496, 300); ctx.lineTo(510, 318); ctx.lineTo(472, 318); ctx.closePath(); ctx.fillStyle = 'rgb(40,40,44)'; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = INK; ctx.stroke();
-            E(491, 320, 4.5, 3, 'rgb(255,246,200)', 1);
+            // pendant lamp (raised)
+            L([[491, 258], [491, 278]], 1.6);
+            ctx.beginPath(); ctx.moveTo(486, 278); ctx.lineTo(496, 278); ctx.lineTo(510, 296); ctx.lineTo(472, 296); ctx.closePath(); ctx.fillStyle = 'rgb(40,40,44)'; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = INK; ctx.stroke();
+            E(491, 298, 4.5, 3, 'rgb(255,246,200)', 1);
             ctx.restore();   // end clip
 
             // jars standing on the tie beams (above the wall, so outside the clip)
@@ -11080,7 +11080,7 @@
                 }
             }
             if (TH_HS.k > .02) {
-                const s = TH_SC, lx = W / 2 + TH_WX + 56 * s - P.x, ly = gy + (TH_DY - 107) * s;
+                const s = TH_SC, lx = W / 2 + TH_WX + 56 * s - P.x, ly = gy + (TH_DY - 123) * s;
                 lights.push([lx, ly, 230 * s, .95 * TH_HS.k, .3 * TH_HS.k]);
             }
             if (P.gunK > .3 && P.recoil > .45 && P.muzzle) lights.push([P.muzzle[0] - P.x + W / 2, gy + 4 + P.muzzle[1], 300 * S * P.recoil, .9, .3]);       // revolver flash
