@@ -283,15 +283,31 @@
 
 
 
+        let treehouseCamera = false;
         let ZOOM = 0.4;   // 1 = current size, 0.5 = same as browser zoom 50%, 0.75 = in between
+        const TREEHOUSE_INSIDE_ZOOM = 0.48;
         function resize() {
             DPR = Math.min(devicePixelRatio || 1, 2);
-            W = innerWidth / ZOOM; H = innerHeight / ZOOM;                    // game units: bigger world on screen
+            const activeZoom = treehouseCamera
+                ? TREEHOUSE_INSIDE_ZOOM
+                : ZOOM;
+
+            W = innerWidth / activeZoom;
+            H = innerHeight / activeZoom;                    // game units: bigger world on screen
             cv.width = innerWidth * DPR; cv.height = innerHeight * DPR;       // real pixels stay the same
-            ctx.setTransform(DPR * ZOOM, 0, 0, DPR * ZOOM, 0, 0);
+            ctx.setTransform(
+                DPR * activeZoom, 0,
+                0, DPR * activeZoom,
+                0, 0
+            );
             vig = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * .35, W / 2, H / 2, Math.max(W, H) * .8);
             vig.addColorStop(0, 'rgba(0,0,0,0)'); vig.addColorStop(1, 'rgba(60,50,40,.28)');
-            nightC.width = innerWidth * DPR; nightC.height = innerHeight * DPR; nctx.setTransform(DPR * ZOOM, 0, 0, DPR * ZOOM, 0, 0);
+            nightC.width = innerWidth * DPR; nightC.height = innerHeight * DPR;
+            nctx.setTransform(
+                DPR * activeZoom, 0,
+                0, DPR * activeZoom,
+                0, 0
+            );
             vigN = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * .22, W / 2, H / 2, Math.max(W, H) * .75);
             vigN.addColorStop(0, 'rgba(0,0,0,0)'); vigN.addColorStop(1, 'rgba(4,5,12,.6)');
         }
@@ -407,7 +423,7 @@
         }
 
         let last = performance.now();
-        let treehouseCamera = false;
+        treehouseCamera = false;
         let camY = 0;
 
         function updateCamera(dt) {
@@ -5089,11 +5105,28 @@
             ctx.restore();
 
             // ---- veranda: porch roof, posts, railing ----
-            bdLine([[70, -82], [70, -155]], 3.2, 90); bdLine([[134, -82], [134, -143]], 3.2, 91);
+            bdLine([[70, -82], [70, -155]], 3.2, 90);
+            bdLine([[134, -82], [134, -143]], 3.2, 91);
             bdShape([[50, -170], [148, -148], [153, -140], [50, -157]], C_ROOF, 1.7, 92);
-            for (let tx = 58; tx < 146; tx += 10) bdLine([[tx, -160 + (tx - 50) * .2], [tx + 3, -154 + (tx - 50) * .2]], .6, tx, .4);
-            for (let i = 0; i < 6; i++) bdLine([[56 + i * 15.5, -82], [56 + i * 15.5 + (hash(i) - .5) * 1.5, -108]], 2, 100 + i, .95);   // rail posts
-            bdLine([[54, -108], [136, -107]], 2.3, 110); bdLine([[54, -95], [136, -94]], 1.4, 111, .85);
+
+            for (let tx = 58; tx < 146; tx += 10) {
+                bdLine([[tx, -160 + (tx - 50) * .2],
+                [tx + 3, -154 + (tx - 50) * .2]], .6, tx, .4);
+            }
+
+            // Fade the deck railing as the player enters the house
+            ctx.save();
+            ctx.globalAlpha *= (1 - TH_HS.k);
+
+            for (let i = 0; i < 6; i++) {
+                bdLine([
+                    [56 + i * 15.5, -82],
+                    [56 + i * 15.5 + (hash(i) - .5) * 1.5, -108]
+                ], 2, 100 + i, .95);
+            }
+            bdLine([[54, -108], [136, -107]], 2.3, 110);
+            bdLine([[54, -95], [136, -94]], 1.4, 111, .85);
+            ctx.restore();
 
             // ---- staircase down to the ground ----
             bdLine([[136, -76], [190, 0]], 2.2, 120); bdLine([[142, -76], [196, 0]], 1.4, 121, .6);   // stringers
