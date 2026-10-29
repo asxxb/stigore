@@ -10350,12 +10350,18 @@
             for (let x = 80; x < 700; x += 70) ln([[x, 456], [x + (hash(x) - .5) * 4, 473]], 1, 'rgba(90,60,30,.35)');
             plate(148, 458, 178, 472); plate(618, 458, 646, 472); rivet(28, 461); rivet(28, 469); rivet(696, 461); rivet(696, 469);
 
-            // ---- railings ----
-            const rails = (x0, x1, y0, y1) => { rc(x0, y0, x1, y0 + 8, WOOD, 2); rc(x0, y1, x1, y1 + 8, WOOD, 2); };
-            rails(22, 566, 394, 433); rails(640, 703, 394, 430);
-            const post = (x, w, top) => rc(x - w / 2, top, x + w / 2, 455, WOOD, 2.2);
-            for (const [x, w, t] of [[29, 14, 382], [61, 11, 392], [126, 12, 390], [161, 13, 388], [296, 13, 388], [456, 13, 388], [558, 14, 388], [661, 12, 392], [695, 12, 388]]) post(x, w, t);
-            for (const x of [161, 296, 456, 558]) plate(x - 8, 436, x + 8, 446);
+            // ---- railings (fade out while inside the house) ----
+            const railA = 1 - TH_HS.k;
+            if (railA > 0.01) {
+                ctx.save();
+                ctx.globalAlpha *= railA;
+                const rails = (x0, x1, y0, y1) => { rc(x0, y0, x1, y0 + 8, WOOD, 2); rc(x0, y1, x1, y1 + 8, WOOD, 2); };
+                rails(22, 566, 394, 433); rails(640, 703, 394, 430);
+                const post = (x, w, top) => rc(x - w / 2, top, x + w / 2, 455, WOOD, 2.2);
+                for (const [x, w, t] of [[29, 14, 382], [61, 11, 392], [126, 12, 390], [161, 13, 388], [296, 13, 388], [456, 13, 388], [558, 14, 388], [661, 12, 392], [695, 12, 388]]) post(x, w, t);
+                for (const x of [161, 296, 456, 558]) plate(x - 8, 436, x + 8, 446);
+                ctx.restore();
+            }
             thFoliage('front', now);
             ctx.restore();   // back to local space
 
