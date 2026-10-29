@@ -1983,7 +1983,7 @@
         function deckLeapTick(dt) {
             const S = CSc(), D = P.pkDir;
             const tTO = PK_TO * PK_DUR, tTD = PK_TD * PK_DUR, tEX = PK_EXIT * PK_DUR;
-            const minX = TH_WX - 280 * TH_SC, maxX = TH_WX + 280 * TH_SC;
+            const minX = TH_WX - 285 * TH_SC, maxX = TH_WX + 205 * TH_SC;
             P.z = 0; P.vz = 0; P.rot = 0;
 
             // ---- 0: gather on the deck (existing crouch/launch frames), invisible walls still apply ----
@@ -5687,7 +5687,7 @@
             if (P.pkDeck) return;
             if (!(P.dh > 0) || P.stc > 0) return;
             if (P.thDeck) {
-                const minX = TH_WX - 280 * TH_SC, maxX = TH_WX + 280 * TH_SC;
+                const minX = TH_WX - 285 * TH_SC, maxX = TH_WX + 205 * TH_SC;
 
                 // airborne and past the edge: leave the deck and fall to the ground
                 if (P.z < 0 && (P.x > maxX || P.x < minX)) {
@@ -8886,13 +8886,13 @@
         const TH_DY = -330;                // deck height above ground (local units)
         const TH_HX = 50;   // extra cabin wall height (was 0)
         const TH_WO = 20;   // how far the windows rise, so they sit mid-wall
-        const TH_LANT = [214, -398];       // lantern centre (local units), used by the night light
+        const TH_LANT = [196, TH_DY - 96];
         const TH_BARK = 'rgba(150,120,85,.40)', TH_WOODL = 'rgba(196,160,108,.50)', TH_WOODD = 'rgba(140,104,66,.55)';
         const TH_LEAF = ['rgba(110,135,95,.26)', 'rgba(135,150,100,.24)', 'rgba(95,120,100,.24)'];
 
         // glowing cabin window at night + lantern perches for birds
-        NIGHT_LIGHTS.push({ wx: TH_WX, sc: TH_SC, r: [[52, TH_DY - 72 - TH_WO, 34, 30, 1, 1]] });
-        PERCH.push({ x: TH_WX + 14 * TH_SC, y: -335 * TH_SC, by: null }, { x: TH_WX + 92 * TH_SC, y: -241 * TH_SC, by: null }, { x: TH_WX + 214 * TH_SC, y: -398 * TH_SC, by: null });
+        NIGHT_LIGHTS.push({ wx: TH_WX, sc: TH_SC, r: [[-129, TH_DY - 108, 43, 45, 1, 0], [-80, TH_DY - 108, 43, 45, 1, 0]] });
+        PERCH.push({ x: TH_WX + 7 * TH_SC, y: -563 * TH_SC, by: null }, { x: TH_WX + 150 * TH_SC, y: -492 * TH_SC, by: null }, { x: TH_WX - 150 * TH_SC, y: -499 * TH_SC, by: null });
 
         // ---------- helpers ----------
         function thSolid(pts, col, lw, seed) {            // opaque paper under the wash, so things behind don't show through
@@ -9030,7 +9030,7 @@
         //  ROPE LADDER MODEL
         // =====================================================================
         const TH_NL = 32;
-        const TH_LD = { D: null, n: 0, y: [], x0: -258, w: 16, R: 24, dip: new Float32Array(TH_NL), vel: new Float32Array(TH_NL), load: new Float32Array(TH_NL), sw: 0, swv: 0, last: 0 };
+        const TH_LD = { D: null, n: 0, y: [], x0: -247, w: 34, R: 24, dip: new Float32Array(TH_NL), vel: new Float32Array(TH_NL), load: new Float32Array(TH_NL), sw: 0, swv: 0, last: 0 };
 
         function thLadderInit() {
             const D = TH_DY; if (TH_LD.D === D) return; TH_LD.D = D;
@@ -9069,73 +9069,22 @@
         }
         function thDrawRopeLadder(now) {
             thLadderInit(); thLadderStep(now);
-            const D = TH_DY, Y = TH_LD.y, d = TH_LD.dip, n = TH_LD.n, ROPE = '#3a2e22';
-            const DY = 6;                                   // depth: the far rope sits this much higher (seen from slightly above)
-            const topY = D + 14;
-
-            // near rope = right line, far rope = left line (shifted up for depth)
-            const jx = i => (hash(i * 3.7 + 1.3) - .5) * 1.6;                       // per-rung irregularity
-            const belly = i => 2.4 * Math.sin(Math.PI * (i + 1) / (n + 1));         // gentle outward sag in the middle
-            const nearP = i => { const x = thLadderX(i)[1]; return [x + belly(i) + jx(i), Y[i] + d[i]] };
-            const farP = i => { const x = thLadderX(i)[0]; return [x + belly(i) * .8 + jx(i + 9), Y[i] + d[i] - DY] };
-
-            const ropeSeg = (a, b, w, seed, al) => {
-                const mx = (a[0] + b[0]) / 2 + (hash(seed) - .5) * 1.6, my = (a[1] + b[1]) / 2;
-                bdLine([a, [mx, my], b], w, seed, al);
-                const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
-                for (let s = 3; s < len - 1; s += 4.4) {                              // twisted-strand ticks
-                    const t = s / len, x = lerp(a[0], b[0], t), y = lerp(a[1], b[1], t);
-                    bdLine([[x - 1.7, y - 1.1], [x + 1.7, y + 1.1]], .65, seed + s, .5 * al);
+            const D = TH_DY, Y = TH_LD.y, d = TH_LD.dip, n = TH_LD.n, WOODC = 'rgb(190,141,84)';
+            ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+            const rail = s => {
+                ctx.beginPath(); ctx.moveTo(thLadderX(0)[s], D - 12);
+                for (let i = 0; i < n; i++) ctx.lineTo(thLadderX(i)[s], Y[i] + d[i] * .5);
+                ctx.lineTo(thLadderX(n - 1)[s], 0);
+            };
+            for (const [w, col] of [[7.4, '#111'], [4.6, WOODC]]) { ctx.lineWidth = w; ctx.strokeStyle = col; rail(0); ctx.stroke(); rail(1); ctx.stroke(); }
+            for (const [w, col] of [[5.6, '#111'], [3.2, WOODC]]) {
+                ctx.lineWidth = w; ctx.strokeStyle = col;
+                for (let i = 0; i < n; i++) {
+                    const x = thLadderX(i), y = Y[i] + d[i];
+                    ctx.beginPath(); ctx.moveTo(x[0] - 2.5, y); ctx.lineTo(x[1] + 2.5, y); ctx.stroke();
                 }
-            };
-            const knot = (p, seed, r) => {
-                for (let k = 0; k < 2; k++) bdLine([[p[0] - 3, p[1] - 2.6 + k * 4.6], [p[0] + 3, p[1] - 1.6 + k * 4.6]], 1.4, seed + k, 1);   // wraps above/below the rung
-                ctx.fillStyle = ROPE; ctx.beginPath(); ctx.arc(p[0] + (hash(seed) - .5), p[1] + 1.2, r, 0, 7); ctx.fill(); ctx.lineWidth = .8; ctx.stroke();
-            };
-            const tail = (p, seed) => {                                              // free rope end with a little fray
-                const e = [p[0] + (hash(seed) - .5) * 3, p[1] + 13];
-                ropeSeg(p, e, 3, seed, 1);
-                bdLine([[e[0], e[1]], [e[0] - 1.3, e[1] + 3]], 1, seed + 1, .9); bdLine([[e[0], e[1]], [e[0] + 1.3, e[1] + 3]], 1, seed + 2, .9);
-            };
-
-            // ---- FAR rope (behind everything, slightly lighter and thinner) ----
-            {
-                let prev = [thLadderX(0)[0], D + 8 - DY * .4];
-                for (let i = 0; i < n; i++) { const cur = farP(i); ropeSeg(prev, cur, 2.5, 1200 + i * 7, .78); prev = cur }
-                tail(prev, 1290);
             }
-            // far rope tied round the back of the platform beam
-            for (let k = 0; k < 3; k++) bdLine([[thLadderX(0)[0] - 3.2, D + 6 + k * 2.2], [thLadderX(0)[0] + 3.2, D + 7.2 + k * 2.2]], 1.3, 1210 + k, .8);
-
-            // ---- RUNGS: narrow planks running from the near rope back to the far rope ----
-            for (let i = 0; i < n; i++) {
-                const N = nearP(i), F = farP(i), th = 4 + hash(i * 1.9) * 1.2;
-                const ux = N[0] - F[0], uy = N[1] - F[1], ul = Math.hypot(ux, uy) || 1, ex = ux / ul, ey = uy / ul;
-                const A = [F[0] - ex * 3.5, F[1] - ey * 3.5];                         // plank pokes a little past each rope
-                const B = [N[0] + ex * 4.5, N[1] + ey * 4.5];
-                bdShape([A, B, [B[0], B[1] + th], [A[0], A[1] + th]], TH_WOODL, 1.4, 1300 + i * 5);                                  // plank body
-                bdShape([[B[0], B[1]], [B[0] + 3.4, B[1] - 1.6], [B[0] + 3.4, B[1] + th - 1.6], [B[0], B[1] + th]], TH_WOODD, 1.1, 1330 + i);   // end grain = depth
-                bdLine([[A[0] + 2, A[1] + th * .45], [B[0] - 2, B[1] + th * .45]], .5, 1360 + i, .45);                               // grain
-                bdLine([[A[0] + 1, A[1] + .6], [B[0], B[1] + .6]], .6, 1380 + i, .4);                                                // lit top edge
-            }
-            // far knots (they sit behind the planks' near parts)
-            for (let i = 0; i < n; i++) knot(farP(i), 1400 + i * 4, 1.7);
-
-            // ---- NEAR rope (in front, thicker) ----
-            {
-                const a0 = [thLadderX(0)[1], topY];
-                let prev = a0;
-                ropeSeg([a0[0], D + 4], a0, 3.6, 1500, 1);                           // runs up behind the beam edge
-                for (let i = 0; i < n; i++) { const cur = nearP(i); ropeSeg(prev, cur, 3.6, 1510 + i * 7, 1); prev = cur }
-                tail(prev, 1590);
-            }
-            // near rope wrapped round the front beam
-            {
-                const x = thLadderX(0)[1];
-                for (let k = 0; k < 4; k++) bdLine([[x - 4.2, D + 8 + k * 2.3], [x + 4.2, D + 9.4 + k * 2.3]], 1.6, 1600 + k, 1);
-                ctx.fillStyle = ROPE; ctx.beginPath(); ctx.arc(x + 1, D + 8, 2.6, 0, 7); ctx.fill(); ctx.lineWidth = 1; ctx.stroke();
-            }
-            for (let i = 0; i < n; i++) knot(nearP(i), 1650 + i * 4, 2.2);
+            ctx.restore();
         }
 
         // =====================================================================
@@ -9743,7 +9692,7 @@
                 const x = h.cx + h.dx, y = h.cy + h.dy, wx = TH_WX + x * TH_SC, wy = y * TH_SC - 4;
                 if (!h.landed) {
                     h.vy += g * dt; h.dx += h.vx * dt; h.dy += h.vy * dt; h.rot += h.vr * dt;
-                    const fl = ((h.deck && Math.abs(x) < 288) ? TH_DY : 0) - 4;
+                    const fl = ((h.deck && x > -290 && x < 210) ? TH_DY : 0) - 4;
                     if (h.cy + h.dy >= fl) {
                         h.dy = fl - h.cy;
                         if (Math.abs(h.vy) * TH_SC > 260 && !h.bn) { h.vy *= -.25; h.vx *= .5; h.vr *= .5; h.bn = 1; burst(wx, fl * TH_SC - 4, 2, 140, Math.sign(h.vx) || 1); }
@@ -10145,229 +10094,228 @@
         // =====================================================================
         //  THE SCENE
         // =====================================================================
-        function drawTreehouse(gy) {
-            const sc = TH_SC, sx = W / 2 + TH_WX - P.x;
-            if (sx + 340 * sc < -50 || sx - 640 * sc > W + 50) return;
-            const now = performance.now() / 1000, D = TH_DY, day = 1 - DN.d, BY = D - 6;
-            const H = v => D - 120 - TH_HX - (v - 120) * .62;   // crown rises with the roof
-            const WT = D - 95 - TH_HX;                          // top of cabin walls
-            bdBegin(sx, gy, sc);
+// ---------- oak leaves (drawn in treehouse image-space) ----------
+const TH_LEAVES = ['rgb(124,128,62)', 'rgb(104,112,54)', 'rgb(142,142,74)'];
+function thOak(x, y, a, s, col) {
+    ctx.save(); ctx.translate(x, y); ctx.rotate(a); ctx.scale(s, s);
+    const U = [[4, -3], [7, -7.5], [10, -4.5], [13, -9.5], [17, -5.5], [20, -8], [24, -3.5], [28, 0]];
+    ctx.beginPath(); ctx.moveTo(0, 0);
+    for (const p of U) ctx.lineTo(p[0], p[1]);
+    for (let i = U.length - 2; i >= 0; i--) ctx.lineTo(U[i][0], -U[i][1]);
+    ctx.closePath(); ctx.fillStyle = col; ctx.fill();
+    ctx.lineWidth = 2 / s; ctx.strokeStyle = '#111'; ctx.stroke();
+    ctx.lineWidth = 1.1 / s; ctx.strokeStyle = 'rgba(40,40,20,.7)';
+    ctx.beginPath(); ctx.moveTo(1, 0); ctx.lineTo(24, 0); ctx.stroke();
+    ctx.restore();
+}
+function thOakCluster(cx, cy, r, seed, now, n) {
+    const wk = wind.v / 300, it = [];
+    for (let j = 0; j < n; j++) {
+        const a = hash(seed + j * 3.1) * 6.283, rho = r * Math.sqrt(hash(seed + j * 5.7 + 1)) * .85;
+        it.push([cx + Math.cos(a) * rho, cy + Math.sin(a) * rho * .78, a, .75 + hash(seed + j * 7.3) * .5]);
+    }
+    ctx.strokeStyle = '#111'; ctx.lineWidth = 2;
+    for (const p of it) { ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(p[0], p[1]); ctx.stroke(); }
+    it.forEach((p, j) => thOak(p[0], p[1], p[2] + Math.sin(now * 1.3 + seed + j) * .07 + wk * .05 + (hash(seed + j * 9.1) - .5) * .8, p[3], TH_LEAVES[j % 3]));
+}
 
-            // ---- A. ground, distant trees, path ----
-            bdLine([[-640, 3], [-300, 6], [100, 5], [320, 3]], 2.2, 11, .25);
+function drawTreehouse(gy) {
+    const sc = TH_SC, sx = W / 2 + TH_WX - P.x;
+    if (sx + 340 * sc < -50 || sx - 640 * sc > W + 50) return;
+    const now = performance.now() / 1000, D = TH_DY, day = 1 - DN.d, K = .74;
+    bdBegin(sx, gy, sc);
 
-            {
-                const top = [], bt = [];
-                for (let x = -640; x <= -40; x += 40) { top.push([x, 1 + (hash(x * .31) - .5) * 2]); bt.push([x, 8 + (hash(x * .57) - .5) * 2.5]); }
-                ctx.save(); bdPath(top.concat(bt.slice().reverse()), true, 3, 0); ctx.fillStyle = 'rgba(188,158,112,.30)'; ctx.fill(); ctx.restore();
-                bdLine(top, .9, 5, .35); bdLine(bt, .9, 9, .35);
-                for (let i = 0; i < 12; i++) { const x = -620 + hash(i * 3.7) * 560; ctx.beginPath(); ctx.ellipse(x, 5 + hash(i) * 2, 1.4 + hash(i * 2) * 1.6, .9, 0, 0, 7); ctx.fillStyle = C_STONE; ctx.fill(); ctx.lineWidth = .7; ctx.stroke(); }
-            }
-            for (let x = -70; x < 70; x += 8) bdLine([[x, 1], [x + 4 + hash(x) * 3, -5 - hash(x + 1) * 6]], .6, x, .16);
+    // ---- ground ----
+    bdLine([[-640, 3], [-300, 6], [100, 5], [320, 3]], 2.2, 11, .25);
+    {
+        const top = [], bt = [];
+        for (let x = -640; x <= -40; x += 40) { top.push([x, 1 + (hash(x * .31) - .5) * 2]); bt.push([x, 8 + (hash(x * .57) - .5) * 2.5]); }
+        ctx.save(); bdPath(top.concat(bt.slice().reverse()), true, 3, 0); ctx.fillStyle = 'rgba(188,158,112,.30)'; ctx.fill(); ctx.restore();
+        bdLine(top, .9, 5, .35); bdLine(bt, .9, 9, .35);
+    }
 
-            // ---- B. faint far branches ----
-            thLimb([[0, H(250)], [70, H(280)], [150, H(300)], [260, H(335)]], [16, 12, 8, 2], 21, 'rgba(140,112,80,.30)', 1.6, 3);
-            thLimb([[-5, H(255)], [-80, H(285)], [-170, H(305)], [-265, H(335)]], [15, 11, 7, 2], 22, 'rgba(140,112,80,.30)', 1.6, 3);
+    // =====================================================================
+    //  THE TREEHOUSE, drawn in the reference image's pixel space
+    //  (image px -> local: x = (px-415)*K, y = D + (py-455)*K ; deck top = py 455)
+    // =====================================================================
+    ctx.save(); ctx.translate(-415 * K, D - 455 * K); ctx.scale(K, K);
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
 
-            // ---- C. THE TREE: roots, tall tapering trunk, crown ----
-            const TRUNK_PTS = [[-8, 8], [-16, D * .2], [-5, D * .45], [-14, D * .7], [-8, D + 40], [-5, D], [1, D - 60], [-3, D - 120], [-1, H(180)], [2, H(235)], [4, H(265)]];
-            const TRUNK_W = [62, 58, 50, 48, 42, 41, 35, 32, 28, 23, 17];             // thickness changes, burl swellings
-            const trunk = () => {
-                thLimb(TRUNK_PTS, TRUNK_W, 40, null, 2.1, 16);
-                ctx.beginPath(); ctx.ellipse(-16, -62, 5, 8.5, .1, 0, 7); ctx.lineWidth = 1; ctx.stroke();
-                ctx.beginPath(); ctx.ellipse(-16, -62, 2, 4, .1, 0, 7); ctx.fillStyle = 'rgba(90,64,40,.35)'; ctx.fill();
-                for (let y = -34; y > H(200); y -= 40) { const x = -6 + (hash(y * .7) - .5) * 22; bdLine([[x, y], [x + (hash(y) - .5) * 4, y - 26]], .7, y, .4); }   // bark seams all the way up
-                thLimb([[0, D * .55], [30, D * .55 - 14], [58, D * .55 - 34]], [14, 9, 3], 46, null, 1.5, 1);
-            };
-            thLimb([[-28, -24], [-58, -6], [-98, 2], [-140, 5]], [18, 13, 7, 2], 31, null, 1.7, 2);
-            thLimb([[-20, -14], [-44, -2], [-70, 6]], [11, 7, 2], 32, null, 1.6, 1);
-            thLimb([[22, -24], [52, -8], [96, 2], [132, 5]], [17, 12, 6, 2], 33, null, 1.7, 2);
-            thLimb([[14, -14], [40, 0], [66, 7]], [10, 6, 2], 34, null, 1.6, 1);
-            // major limbs start LOW on the trunk at the trunk's own width and sweep out, so they read as the trunk splitting
-            thLimb([[-2, H(205)], [-22, H(238)], [-72, H(272)], [-142, H(292)], [-215, H(300)], [-285, H(296)]], [27, 22, 16, 10, 5, 2], 37, null, 1.7, 3);
-            thLimb([[0, H(207)], [24, H(242)], [76, H(274)], [146, H(298)], [220, H(310)], [290, H(306)]], [27, 22, 16, 10, 5, 2], 39, null, 1.7, 3);
-            thLimb([[-1, H(240)], [-20, H(285)], [-60, H(330)], [-115, H(362)]], [18, 12, 7, 2], 44, null, 1.7, 3);
-            thLimb([[3, H(242)], [28, H(290)], [80, H(335)], [145, H(364)]], [18, 12, 7, 2], 45, null, 1.7, 3);
-            thLimb([[4, H(265)], [0, H(320)], [8, H(380)], [24, H(415)]], [17, 13, 8, 2], 38, null, 1.7, 3);
-            trunk();
+    const WOOD = 'rgb(190,141,84)', WOODD = 'rgb(160,112,64)', CREAM = 'rgb(244,232,180)', ROOFC = 'rgb(72,68,66)',
+        METAL = 'rgb(154,156,160)', BARK = 'rgb(208,196,174)', LINE = 'rgba(130,105,56,.6)';
+    const ip = (pts, fill, lw) => {
+        ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath();
+        if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+        ctx.lineWidth = lw || 2.4; ctx.strokeStyle = '#111'; ctx.stroke();
+    };
+    const rc = (x0, y0, x1, y1, fill, lw) => ip([[x0, y0], [x1, y0], [x1, y1], [x0, y1]], fill, lw);
+    const ln = (pts, w, col) => { ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.lineWidth = w; ctx.strokeStyle = col; ctx.stroke(); };
+    const rivet = (x, y) => { ctx.beginPath(); ctx.arc(x, y, 2.4, 0, 7); ctx.fillStyle = '#38383a'; ctx.fill(); };
+    const plate = (x0, y0, x1, y1) => { rc(x0, y0, x1, y1, METAL, 1.6); rivet(x0 + 4, y0 + 4); rivet(x1 - 4, y1 - 4); };
 
-            // ---- D. platform: ONE wide continuous deck ----
-            bdShape([[-292, BY], [292, BY], [292, D], [-292, D]], TH_WOODL, 1.4, 60);
-            for (let x = -284; x < 286; x += 14 + hash(x) * 6) bdLine([[x, BY], [x + (hash(x * 2) - .5) * 5, D]], .6, x, .4);
-            thSolid([[-294, D], [294, D - .5], [295, D + 8], [-295, D + 8.5]], TH_WOODL, 1.9, 100);
-            for (let x = -286; x < 288; x += 12 + hash(x * 1.7) * 9) {
-                bdLine([[x, D], [x + (hash(x) - .5) * 2, D + 8]], .7, x, .6);
-                if (hash(x * 3.1) < .3) { ctx.fillStyle = 'rgba(30,20,10,.6)'; ctx.fillRect(x + 1.2, D + .5, 1.8, 7); }
-            }
-            thSolid([[-304, D + 8], [304, D + 8], [304, D + 17], [-304, D + 17]], TH_WOODD, 1.8, 110);   // heavy front beam (the ladder is tied around it)
-            bdLine([[-300, D + 12.5], [300, D + 12.5]], .6, 111, .4);
-            for (let x = -288; x < 290; x += 30) bdLine([[x, D + 17], [x + (hash(x) - .5) * 2, D + 24]], 1.4, x, .8);
-            for (const x of [-22, -8, 6]) { ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(x, D + 12.5, 1.3, 0, 7); ctx.fill(); }
-            ctx.save(); ctx.strokeStyle = '#111'; ctx.lineWidth = 1.4;
-            for (const dy of [30, 38]) { ctx.beginPath(); ctx.ellipse(-10, D + dy, 21, 3, 0, 0, Math.PI); ctx.stroke(); }
-            ctx.restore();
-            bdLine([[-30, D + 70], [-120, D + 17]], 3.4, 90); bdLine([[-24, D + 92], [-212, D + 17]], 2.6, 91, .9);   // beams trunk -> edges
-            bdLine([[10, D + 70], [120, D + 17]], 3.4, 92); bdLine([[14, D + 94], [212, D + 17]], 2.6, 93, .9);
-            for (const x of [-120, -212, 120, 212]) bdLine([[x, D + 17], [x + (x < 0 ? 16 : -16), D + 33]], 1.8, x, .85);
-            bdShape([[-324, D + 4], [-304, D + 4], [-304, D + 12], [-324, D + 12]], TH_WOODD, 1.3, 85);
-            bdShape([[304, D + 4], [322, D + 4], [322, D + 12], [304, D + 12]], TH_WOODD, 1.3, 86);
-
-            // ---- E. CABIN: large, tall, one uninterrupted wooden house (trunk hidden behind it) ----
-            const WALL = [[-130, BY], [-130, WT], [130, WT], [130, BY]];
-            thTint(WALL, 'rgb(236,228,200)');                                // opaque base so nothing behind shows through
-            thSolid(WALL, C_WALL, 1.8, 3); thPlankFill(WALL, -130, 130, BY, WT, 11);
-            for (let k = 0; k < 5; k++) {                                    // weathering
-                const wx = -110 + hash(k * 4.3) * 200, wy = WT + 8 + hash(k * 6.1) * 50;
-                ctx.fillStyle = 'rgba(190,160,100,.22)'; ctx.fillRect(wx, wy, 14 + hash(k) * 18, 5 + hash(k + 1) * 6);
-            }
-            const SIDE = [[130, BY], [130, WT], [152, WT - 11], [152, BY - 11]];     // visible side wall = depth
-            thTint(SIDE, 'rgb(226,216,184)'); thSolid(SIDE, C_WALL, 1.8, 5); thTint(SIDE, 'rgba(60,40,20,.2)');
-            thPlankFill(SIDE, 130, 152, BY, WT - 11, 19);
-            bdLine([[-130, BY], [-130, WT]], 3.2, 20); bdLine([[130, BY], [130, WT]], 3.2, 21);
-            bdRect(-134, BY - 3, 268, 4, TH_WOODD, 1.4, 25);                 // sill beam
-            bdShape([[-130, D - 90 - TH_HX], [130, D - 90.4 - TH_HX], [130, D - 86 - TH_HX], [-130, D - 85.6 - TH_HX]], TH_WOODD, 1.2, 28);   // belt course ties the whole facade together
-            thWin(-74, D - 66 - TH_WO, 22, 26, 45);
-            thWin(52, D - 72 - TH_WO, 34, 30, 43);                                   // glows at night
-            thWin(92, D - 72 - TH_WO, 28, 30, 47);
-            bdShape([[-112, BY], [-111.5, D - 72], [-82, D - 73], [-82, BY]], 'rgba(150,108,64,.62)', 1.7, 31);   // door (left of the tree bay)
-            bdPlanks(-112, -82, BY - 2, D - 71, 6, 32);
-            bdLine([[-112, D - 46], [-82, D - 45]], 1, 33, .6);
-            ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(-88, D - 38, 1.5, 0, 7); ctx.fill();
-            bdShape([[-120, D - 80], [-74, D - 80.5], [-70, D - 74], [-124, D - 73.5]], TH_WOODD, 1.3, 36);       // awning
-            bdLine([[-116, D - 74], [-116, D - 80]], 1.6, 37, .9); bdLine([[-78, D - 74], [-78, D - 80]], 1.6, 38, .9);
-            bdRect(-78, D - 40 - TH_WO, 30, 4, TH_WOODD, 1.1, 47); bdRect(48, D - 42 - TH_WO, 42, 4, TH_WOODD, 1.1, 48); bdRect(88, D - 42 - TH_WO, 36, 4, TH_WOODD, 1.1, 49);   // window sills
-
-            // THE TREE BAY: an intentional structural opening in the otherwise continuous front wall; the tree passes through the cabin here
-            {
-                const BX0 = -44, BX1 = 36, BT = D - 80 - TH_HX, BB = D - 11, cx = -5, bay = [[BX0, BT], [BX1, BT], [BX1, BB], [BX0, BB]];
-                thTint(bay, 'rgb(142,116,82)');                                                         // interior back wall
-                for (let y = BT + 7; y < BB - 10; y += 8 + hash(y) * 1.5) bdLine([[BX0 + 2, y], [BX1 - 2, y + (hash(y + 1) - .5)]], .6, y, .35);
-                thTint(bay, 'rgba(40,28,16,.22)');
-                bdShape([[BX0, BB - 12], [BX1, BB - 12], [BX1, BB], [BX0, BB]], TH_WOODL, 1.2, 50);     // interior floor
-                for (let x = BX0 + 5; x < BX1; x += 6 + hash(x) * 3) bdLine([[x, BB - 12], [x + (hash(x) - .5) * 2, BB]], .6, x, .55);
-                ctx.save(); ctx.beginPath(); ctx.ellipse(cx, BB - 6, 26, 4.8, 0, 0, 7); ctx.fillStyle = 'rgba(30,20,10,.65)'; ctx.fill(); ctx.lineWidth = 1.3; ctx.stroke(); ctx.restore();   // irregular hole in the floor
-                thClip([[BX0, BT], [BX1, BT], [BX1, BB - 6], [BX0, BB - 6]], trunk);                    // the living trunk rises out of the hole through the interior
-                ctx.save(); ctx.strokeStyle = '#111'; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.ellipse(cx, BB - 6, 26, 4.8, 0, 0, Math.PI); ctx.stroke(); ctx.restore();   // front lip of the hole
-                bdShape([[BX0, BB - 12], [cx - 30, BB - 12], [cx - 28, BB - 5], [cx - 33, BB], [BX0, BB]], TH_WOODL, 1.1, 51);   // floorboards end ragged against the hole
-                bdShape([[BX1, BB - 12], [cx + 30, BB - 12], [cx + 27, BB - 6], [cx + 32, BB], [BX1, BB]], TH_WOODL, 1.1, 52);
-                for (const [dx, k] of [[-26, 1], [24, 2]]) bdLine([[cx + dx, BB - 10], [cx + dx * .85, BB - 3]], .8, 53 + k, .8);
-                bdShape([[BX0, BT + 13], [cx - 16, BT + 12], [cx - 16, BT + 18], [BX0, BT + 19]], TH_WOODD, 1.3, 55);   // timber ties wall <-> trunk
-                bdShape([[cx + 16, BT + 12], [BX1, BT + 13], [BX1, BT + 19], [cx + 16, BT + 18]], TH_WOODD, 1.3, 56);
-                bdLine([[BX0 + 4, BT + 19], [cx - 18, BT + 40]], 1.8, 57, .85); bdLine([[BX1 - 4, BT + 19], [cx + 18, BT + 40]], 1.8, 58, .85);
-                bdLine([[BX0, BT], [BX0 - .5, BB]], 3.2, 59); bdLine([[BX1, BT], [BX1 + .5, BB]], 3.2, 62);               // heavy framing posts
-                bdShape([[BX0 - 6, BT - 5], [BX1 + 6, BT - 5.5], [BX1 + 6, BT + 1], [BX0 - 6, BT + 1.5]], TH_WOODD, 1.4, 63);   // lintel, joins the belt course
-                bdShape([[BX0 - 6, BB], [BX1 + 6, BB], [BX1 + 6, BB + 4], [BX0 - 6, BB + 4]], TH_WOODD, 1.3, 64);              // threshold
-                bdLine([[BX0, BT + 6], [BX0 - 11, BT + 18]], 1.7, 65, .9); bdLine([[BX1, BT + 6], [BX1 + 11, BT + 18]], 1.7, 66, .9);
-            }
-
-            // flat roof: thick rough boards, irregular edges, overhang, beams
-            {
-                const x0 = -150, x1 = 150, T = D - 108 - TH_HX, B = D - 94 - TH_HX, top = [], bot = [];
-                for (let x = x0; x <= x1; x += 37.5) { top.push([x, T + (hash(x * .3) - .5) * 1.8]); bot.push([x, B + (hash(x * .7) - .5) * 1.8]); }
-                thTint([[x0, T + 1], [x1, T], [x1 + 22, T - 11], [x1 + 22, B - 11], [x1, B], [x0, B]], 'rgb(236,228,200)');   // opaque underlay (covers trunk)
-                thSolid([[x0, T], [x1, T], [x1 + 22, T - 11], [x0 + 22, T - 11]], TH_WOODL, 1.8, 6);                         // top face (gives depth)
-                const rcx = -2, rcy = T - 5.5;                                                     // hole centre on the roof's top face
-                for (let x = x0 + 8; x < x1; x += 20 + hash(x) * 8) if (Math.abs(x + 11 - rcx) > 27) bdLine([[x, T], [x + 22, T - 11]], .6, x, .5);   // boards stop short of the opening
-                ctx.save(); ctx.beginPath(); ctx.ellipse(rcx, rcy, 21, 4.8, 0, 0, 7); ctx.fillStyle = 'rgba(30,20,10,.62)'; ctx.fill(); ctx.lineWidth = 1.3; ctx.stroke(); ctx.restore();
-                bdShape([[rcx - 36, T - 2.5], [rcx - 22, T - 3.5], [rcx - 21, T - 7], [rcx - 29, T - 9], [rcx - 37, T - 8]], TH_WOODL, 1.1, 160);   // cut roof boards fitted round the trunk
-                bdShape([[rcx + 22, T - 3.5], [rcx + 36, T - 2.5], [rcx + 38, T - 8], [rcx + 30, T - 9], [rcx + 21, T - 7]], TH_WOODL, 1.1, 161);
-                bdShape([[rcx - 14, T - .5], [rcx + 14, T - .2], [rcx + 18, T - 3], [rcx - 18, T - 3.4]], TH_WOODL, 1.1, 162);                 // front board with a scooped notch
-                thClip([[rcx - 60, H(440)], [rcx + 60, H(440)], [rcx + 60, rcy], [rcx - 60, rcy]], trunk);                                      // trunk continues up out of the roof
-                ctx.save(); ctx.strokeStyle = '#111'; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.ellipse(rcx, rcy, 21, 4.8, 0, 0, Math.PI); ctx.stroke(); ctx.restore();   // front lip of the roof opening
-                bdLine([[rcx - 21, rcy + 1], [rcx - 25, rcy - 5]], 1.1, 163, .8); bdLine([[rcx + 21, rcy + 1], [rcx + 25, rcy - 5]], 1.1, 164, .8);   // little wedge battens
-                thSolid([[x1, T], [x1 + 22, T - 11], [x1 + 22, B - 11], [x1, B]], C_ROOF, 1.9, 9);                           // right end face
-                thSolid(top.concat(bot.slice().reverse()), C_ROOF, 1.9, 7);                                                    // front face
-                for (let x = x0 + 14; x < x1; x += 18 + hash(x * 2) * 14) bdLine([[x, T + 1.5], [x + (hash(x) - .5) * 2, B - 1.5]], .6, x, .5);   // board seams
-                for (const x of [-124, -76, -28, 20, 68, 116]) bdRect(x, T + 2, 9, B - T - 4, TH_WOODD, 1.1, 120 + x);        // beam ends under the boards
-                bdRect(x0 - 8, B - 9, 11, 7, TH_WOODD, 1.2, 150); bdRect(x1 - 3, B - 9, 11, 7, TH_WOODD, 1.2, 151);          // beams projecting through the overhang
-                bdLine([[-126, WT + 16], [-142, B]], 2.2, 152); bdLine([[126, WT + 16], [142, B]], 2.2, 153);                 // brackets under the overhang
-                bdLine([[-100, WT], [-100, B]], 1.4, 154, .8); bdLine([[100, WT], [100, B]], 1.4, 155, .8);
-                ctx.save(); ctx.translate(90, T - 5); ctx.rotate(-.25); ctx.beginPath(); ctx.ellipse(0, 0, 11, 2.6, 0, 0, 7); ctx.fillStyle = 'rgba(110,135,95,.38)'; ctx.fill(); ctx.restore();   // moss
-            }
-
-            // ---- F. ground details ----
-            for (let i = 0; i < 9; i++) {
-                const x = -380 + hash(i * 4.3) * 660; if (x > -70 && x < 55) continue;
-                const r = 3 + hash(i * 2.1) * 4; ctx.beginPath(); ctx.ellipse(x, -r * .35 + 4, r * 1.3, r * .8, 0, 0, 7); ctx.fillStyle = C_STONE; ctx.fill(); ctx.lineWidth = 1.1; ctx.stroke();
-            }
-            for (let i = 0; i < 34; i++) stGrass(-420 + hash(i * 5.7) * 740, i * 3.3, 9 + hash(i) * 8, now);
-            for (let i = 0; i < 13; i++) stFlower(-350 + hash(i * 8.3 + 2) * 640, 10 + hash(i) * 14, 3.6 + hash(i + 3) * 2.4, (hash(i + 5) - .5) * 10, i * 7 + 3, now);
-            for (let i = 0; i < 7; i++) thSprout(-300 + hash(i * 6.7 + 1) * 560, 9 + hash(i + 2) * 7, i * 5 + 1, now);
-            for (let i = 0; i < 14; i++) {
-                const x = -330 + hash(i * 6.1) * 600; ctx.save(); ctx.translate(x, 3 + hash(i * 3) * 3); ctx.rotate((hash(i * 9) - .5) * 1.2);
-                ctx.fillStyle = LEAF_COL[i % 3]; ctx.lineWidth = .5; ctx.beginPath(); ctx.ellipse(0, 0, 3.2, 1.2, 0, 0, 7); ctx.fill(); ctx.stroke(); ctx.restore();
-            }
-            [[3, 250], [2, 254.6], [1, 259.2]].forEach(([n, x0], r) => {
-                for (let k = 0; k < n; k++) {
-                    const lx = x0 + 4.5 + k * 9.2, ly = -4.5 - r * 8.2;
-                    ctx.beginPath(); ctx.arc(lx, ly, 4.4, 0, 7); ctx.fillStyle = C_WOOD; ctx.fill(); ctx.lineWidth = .9; ctx.stroke();
-                    ctx.beginPath(); ctx.arc(lx, ly, 2, .4, 5); ctx.lineWidth = .5; ctx.stroke();
-                }
-            });
-            bdShape([[330, 0], [329, -7], [350, -8], [351, 0]], C_WOOD, 1.3, 281);
-            ctx.beginPath(); ctx.ellipse(350.5, -4, 1.8, 4, 0, 0, 7); ctx.stroke();
-
-            // ---- G. deck life: table + cup + steam, chair (left wing); lantern post, bench, crate (right wing) ----
-            bdLine([[-212, D - 20], [-213, D]], 2.2, 300); bdLine([[-188, D - 20], [-187, D]], 2.2, 301); bdLine([[-212, D - 9], [-188, D - 9]], 1.2, 302, .8);
-            bdShape([[-216, D - 24], [-184, D - 24.5], [-184, D - 20], [-216, D - 20.5]], TH_WOODL, 1.4, 303);
-            bdShape([[-204, D - 24], [-204.5, D - 30], [-199, D - 30], [-199.5, D - 24]], 'rgba(238,232,212,.9)', 1.1, 304);
-            ctx.beginPath(); ctx.arc(-198.5, D - 27, 2.2, -1.2, 1.2); ctx.lineWidth = .9; ctx.stroke();
-            for (let k = 0; k < 2; k++) { const t = (now * .4 + k * .5) % 1; ctx.save(); ctx.globalAlpha = .3 * (1 - t); ctx.lineWidth = .7; ctx.beginPath(); ctx.moveTo(-202 + k * 2, D - 31); ctx.quadraticCurveTo(-202 + k * 2 + Math.sin(now * 2 + k) * 2, D - 36 - t * 8, -202 + k * 2 + wind.v * .006 * t, D - 41 - t * 8); ctx.stroke(); ctx.restore(); }
-            bdLine([[-166, D - 16], [-167, D]], 2.2, 310); bdLine([[-148, D - 16], [-147, D]], 2.2, 311);
-            bdShape([[-170, D - 20], [-144, D - 20.5], [-145, D - 15], [-169, D - 15.5]], TH_WOODL, 1.4, 312);
-            bdShape([[-148, D - 20], [-150, D - 44], [-144, D - 44], [-143, D - 20]], TH_WOODL, 1.4, 313);
-            bdLine([[-149, D - 36], [-144, D - 36]], .8, 314, .7); bdLine([[-149, D - 29], [-143.5, D - 29]], .8, 315, .7);
-
-            bdLine([[240, D], [241, D - 84]], 3.4, 320);                                                       // lantern post
-            bdLine([[241, D - 82], [216, D - 78]], 2.6, 321); bdLine([[241, D - 66], [226, D - 79]], 1.6, 322, .8);
-            bdLine([[214, D - 78], [214, D - 74]], 1, 323);
-            {
-                const fl = 1 + Math.sin(now * 13) * .05 + Math.sin(now * 7.3 + 1) * .05;
-                bdShape([[209, D - 73], [214, D - 77], [219, D - 73]], 'rgba(60,60,60,.8)', 1.2, 324);
-                ctx.beginPath(); ctx.rect(210, D - 73, 8, 11);
-                ctx.fillStyle = DN.d > .15 ? 'rgba(255,214,120,' + Math.min(1, (.55 + .4 * DN.d) * fl) + ')' : 'rgba(225,215,170,.45)'; ctx.fill(); ctx.lineWidth = 1.2; ctx.stroke();
-                bdLine([[214, D - 73], [214, D - 62]], .6, 325, .5);
-                bdRect(209, D - 62, 10, 3, 'rgba(60,60,60,.8)', 1.1, 326);
-            }
-            bdShape([[150, D - 17], [208, D - 17.5], [208, D - 12.5], [150, D - 12]], TH_WOODL, 1.5, 260);        // bench
-            bdLine([[158, D - 12], [157, D]], 2.4, 261); bdLine([[200, D - 12], [201, D]], 2.4, 262);
-            bdLine([[154, D - 17], [153, D - 38]], 2.2, 263); bdLine([[204, D - 17], [205, D - 38]], 2.2, 264);
-            bdShape([[151, D - 38], [207, D - 38.5], [207, D - 33], [151, D - 32.5]], TH_WOODL, 1.4, 265);
-            bdRect(258, D - 20, 22, 20, TH_WOODD, 1.4, 270); bdLine([[258, D - 10], [280, D - 10]], .8, 271, .7); bdLine([[259, D - 19], [279, D - 1]], .7, 272, .5);
-
-            // ---- H. railings (left wing ends at the ladder gate, right wing runs to the edge) ----
-            {
-                const L = [-228, -200, -172, -146], R = [142, 170, 198, 226, 254, 282];
-                [...L, ...R].forEach((x, i) => bdLine([[x, D], [x + (hash(i) - .5), D - 27 + (hash(i * 3.3) - .5) * 2]], 2.4, 330 + i, 1));
-                bdLine([[-232, D - 27], [-134, D - 26]], 2.3, 340); bdLine([[-232, D - 14], [-134, D - 13.5]], 1.4, 341, .85);
-                bdLine([[138, D - 27], [288, D - 26]], 2.3, 342); bdLine([[138, D - 14], [288, D - 13.5]], 1.4, 343, .85);
-                for (const [a, b] of [[-200, -172], [-146, -134], [170, 198], [226, 254]]) bdLine([[a, D - 1], [b, D - 26]], .9, a, .7);
-            }
-
-            thSqUpdate(now); thSquirrel(TH_SQ, now); thSqHalvesDraw(now);
-            // ---- I. ROPE LADDER: gate posts at the deck edge, ladder tied round the front beam, hanging to the ground ----
-            bdLine([[-276, D], [-277, D - 38]], 3.4, 760); bdLine([[-240, D], [-239, D - 38]], 3.4, 761);
-            bdLine([[-281, D - 38], [-235, D - 37]], 2.8, 762);
-            bdLine([[-276, D - 18], [-262, D - 36]], 1.4, 763, .8); bdLine([[-240, D - 18], [-254, D - 36]], 1.4, 764, .8);
-            thDrawRopeLadder(now);
-
-            // ---- J. sunlight, airy crown, twigs ----
-            if (day > .05) {
-                ctx.save();
-                for (const [x, w] of [[-130, 16], [-30, 22], [70, 14], [170, 18]]) {
-                    ctx.beginPath(); ctx.moveTo(x, H(340)); ctx.lineTo(x + w, H(340)); ctx.lineTo(x + w + 70, 0); ctx.lineTo(x + 55, 0); ctx.closePath();
-                    ctx.fillStyle = 'rgba(255,244,190,' + (.09 * day) + ')'; ctx.fill();
-                }
-                for (const [x, w] of [[-120, 14], [-50, 10], [40, 12], [120, 9], [190, 12]]) { ctx.beginPath(); ctx.ellipse(x, 4, w, 2.4, 0, 0, 7); ctx.fillStyle = 'rgba(255,244,190,' + (.2 * day) + ')'; ctx.fill(); }
-                ctx.restore();
-            }
-            for (const [x, y, r, s] of [[-270, H(300), 26, 11], [-200, H(314), 32, 12], [-125, H(345), 30, 13], [-50, H(372), 26, 18], [24, H(420), 32, 14], [95, H(352), 30, 15], [155, H(372), 32, 16], [225, H(322), 30, 17], [285, H(310), 26, 19]])
-                thCloud(x, y, r, s, now);
-            thTwig(-280, H(296), Math.PI + .15, 22, 3, 401); thTwig(285, H(306), -.15, 24, 3, 402); thTwig(24, H(415), -1.5, 22, 3, 403);
-            thTwig(-120, H(362), Math.PI + .5, 18, 3, 404); thTwig(150, H(364), -.5, 18, 3, 405);
-
-            ctx.restore();
+    // ---- tree: trunk + branches share one silhouette (outlines first, fills second) ----
+    const LB = [];
+    const limb = (ctrl, w, seed) => {
+        const kk = 5, sp = thSpl(ctrl, kk), n = sp.length, L = [], R = [], NR = [], HW = [];
+        for (let i = 0; i < n; i++) {
+            const a = sp[Math.max(0, i - 1)], b = sp[Math.min(n - 1, i + 1)];
+            let tx = b[0] - a[0], ty = b[1] - a[1]; const tl = Math.hypot(tx, ty) || 1; tx /= tl; ty /= tl;
+            const u = Math.min(ctrl.length - 1.001, i / kk), i0 = Math.floor(u), hw = w[i0] + (w[i0 + 1] - w[i0]) * (u - i0);
+            L.push([sp[i][0] - ty * hw, sp[i][1] + tx * hw]); R.push([sp[i][0] + ty * hw, sp[i][1] - tx * hw]); NR.push([-ty, tx]); HW.push(hw);
         }
+        LB.push({ poly: L.concat(R.slice().reverse()), sp, NR, HW, seed });
+    };
+    // trunk (very wide at the base, narrow where it passes through the cabin)
+    limb([[416, -210], [416, -60], [415, 60], [414, 200], [413, 330], [412, 470], [412, 620], [413, 780], [413, 901]], [28, 36, 41, 41, 38, 53, 63, 82, 100], 1);
+    limb([[390, 880], [340, 895], [280, 903], [220, 905]], [50, 30, 14, 4], 2);     // roots
+    limb([[436, 880], [490, 895], [550, 903], [610, 905]], [50, 30, 14, 4], 3);
+    // crown
+    limb([[400, 0], [360, -60], [320, -110], [290, -150]], [18, 13, 8, 3], 4);
+    limb([[432, 0], [470, -60], [510, -110], [545, -150]], [18, 13, 8, 3], 5);
+    // upper branches (behind the roof)
+    limb([[395, 105], [345, 70], [300, 45], [265, 20], [240, 0]], [18, 14, 9, 6, 3], 6);
+    limb([[452, 125], [480, 98], [525, 75], [570, 55], [620, 45]], [16, 12, 8, 5, 3], 7);
+    limb([[340, 175], [285, 170], [250, 150], [215, 105], [170, 92]], [14, 11, 8, 5, 3], 8);
+    limb([[250, 215], [200, 238], [155, 243], [105, 218], [55, 190]], [12, 10, 7, 5, 3], 9);
+    limb([[470, 215], [520, 190], [565, 178], [610, 170], [650, 160]], [10, 8, 6, 4, 3], 10);
+    // lower branches (under the deck)
+    limb([[395, 660], [362, 600], [318, 548], [270, 510], [225, 482]], [36, 30, 22, 14, 8], 11);
+    limb([[432, 665], [470, 610], [525, 555], [580, 510], [625, 482]], [36, 30, 22, 14, 8], 12);
+    limb([[285, 525], [245, 540], [205, 548], [170, 545]], [7, 5, 4, 2.5], 13);
+    limb([[545, 545], [595, 548], [640, 556], [685, 566]], [7, 5, 4, 2.5], 14);
+
+    ctx.strokeStyle = '#111'; ctx.lineWidth = 5;
+    for (const l of LB) { ctx.beginPath(); l.poly.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath(); ctx.stroke(); }
+    ctx.fillStyle = BARK;
+    for (const l of LB) { ctx.beginPath(); l.poly.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath(); ctx.fill(); }
+    ctx.strokeStyle = 'rgba(120,106,86,.6)'; ctx.lineWidth = 1.5;
+    for (const l of LB) {
+        const n = l.sp.length, big = l.HW[0] > 20;
+        for (let c = 0; c < (big ? 6 : 2); c++) {
+            const off = (hash(l.seed * 7 + c * 3.3) - .5) * 1.4, t0 = hash(l.seed + c * 5.1) * .5, t1 = Math.min(1, t0 + .25 + hash(l.seed + c * 2.7) * .35);
+            ctx.beginPath();
+            for (let i = Math.floor(t0 * (n - 1)); i <= Math.ceil(t1 * (n - 1)); i++) {
+                const x = l.sp[i][0] + l.NR[i][0] * l.HW[i] * off, y = l.sp[i][1] + l.NR[i][1] * l.HW[i] * off;
+                i === Math.floor(t0 * (n - 1)) ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+        }
+    }
+
+    // oak foliage
+    thOakCluster(285, 22, 58, 21, now, 16); thOakCluster(505, 18, 38, 22, now, 10);
+    thOakCluster(605, 50, 72, 23, now, 20); thOakCluster(650, 158, 52, 24, now, 14);
+    thOakCluster(160, 92, 72, 25, now, 20); thOakCluster(50, 185, 52, 26, now, 14);
+    thOakCluster(180, 545, 40, 27, now, 12); thOakCluster(662, 540, 46, 28, now, 14);
+    thOakCluster(300, -150, 70, 29, now, 18); thOakCluster(535, -150, 70, 30, now, 18); thOakCluster(418, -190, 80, 31, now, 22);
+
+    // braces under the deck
+    ip([[326, 474], [346, 474], [376, 527], [354, 529]], WOOD, 2.2);
+    ip([[500, 474], [524, 474], [470, 527], [454, 524]], WOOD, 2.2);
+
+    // ---- gable infill ----
+    const GL = [[400, 177], [400, 243], [236, 243]], GR = [[440, 174], [440, 243], [579, 243]];
+    ip(GL, CREAM, 2.2); ip(GR, CREAM, 2.2);
+    for (const g of [GL, GR]) thClip(g, () => { for (let y = 190; y < 243; y += 15) ln([[200, y], [620, y]], 1.2, LINE); });
+
+    // ---- walls (a gap is left for the trunk to show through) ----
+    const wall = (x0, x1) => { rc(x0, 258, x1, 455, CREAM, 2.2); thClip([[x0, 258], [x1, 258], [x1, 455], [x0, 455]], () => { for (let y = 275; y < 455; y += 17) ln([[x0, y], [x1, y]], 1.3, LINE); }); };
+    wall(176, 400); wall(432, 626);
+
+    // tie beams, ridge beam, plaque
+    rc(205, 243, 400, 258, WOOD, 2.2); rc(440, 243, 617, 258, WOOD, 2.2);
+    plate(361, 247, 402, 257); plate(436, 247, 470, 256);
+    rc(415, 160, 432, 258, WOOD, 2.2); ip([[415, 168], [424, 152], [433, 168]], WOOD, 2);
+    rc(418, 263, 450, 278, WOOD, 2); rivet(424, 270); rivet(444, 270);
+
+    // window
+    rc(232, 304, 372, 381, 'rgb(172,122,72)', 2.4);
+    for (const [a, b] of [[239, 300], [307, 365]]) {
+        rc(a, 311, b, 369, 'rgb(52,54,56)', 2);
+        ln([[a + 6, 340], [a + 34, 314]], 3, 'rgba(190,200,205,.45)'); ln([[a + 6, 360], [a + 50, 314]], 3, 'rgba(190,200,205,.35)');
+    }
+    rc(229, 370, 375, 381, WOOD, 2.2);
+
+    // door
+    rc(532, 306, 624, 317, WOOD, 2.2);
+    rc(543, 317, 620, 453, 'rgb(200,152,92)', 2.4);
+    for (const x of [556, 569, 582, 595, 608]) ln([[x, 319], [x, 451]], 1.4, 'rgba(100,66,30,.6)');
+    ctx.beginPath(); ctx.arc(606, 389, 3.2, 0, 7); ctx.fillStyle = '#111'; ctx.fill();
+
+    // corner posts + knee braces
+    rc(158, 266, 176, 455, WOOD, 2.2); rc(624, 262, 642, 452, WOOD, 2.2);
+    ln([[124, 285], [162, 324]], 11, '#111'); ln([[124, 285], [162, 324]], 6.5, WOOD);
+
+    // chimney (behind the roof)
+    rc(299, 138, 315, 192, 'rgb(122,120,120)', 2); rc(297, 165, 317, 171, METAL, 1.6); rc(295, 132, 319, 141, 'rgb(40,40,42)', 2);
+
+    // ---- roof: dark shingles over tan fascia boards ----
+    ip([[424, 153], [89, 288], [96, 298], [424, 168]], WOOD, 2.2);
+    ip([[426, 153], [697, 288], [690, 298], [426, 168]], WOOD, 2.2);
+    ip([[424, 140], [83, 278], [89, 289], [424, 153]], ROOFC, 2.4);
+    ip([[426, 140], [704, 278], [697, 289], [426, 153]], ROOFC, 2.4);
+    ln([[200, 215], [330, 163]], 1.2, 'rgba(255,255,255,.12)'); ln([[520, 175], [640, 232]], 1.2, 'rgba(255,255,255,.12)');
+
+    // lantern hanging from the right eave
+    ln([[642, 314], [668, 282]], 11, '#111'); ln([[642, 314], [668, 282]], 6.5, WOOD);
+    ln([[680, 289], [680, 306]], 2.4, '#111');
+    ip([[668, 315], [680, 304], [692, 315]], '#2a2a2c', 2);
+    {
+        const lit = DN.d > .15;
+        rc(671, 315, 689, 338, lit ? 'rgba(255,214,120,.95)' : 'rgb(206,200,170)', 2);
+        ln([[680, 315], [680, 338]], 1.2, 'rgba(0,0,0,.6)');
+        rc(669, 338, 691, 345, '#2a2a2c', 2);
+    }
+
+    // ---- deck beam ----
+    rc(20, 455, 704, 474, WOOD, 2.6);
+    ln([[22, 464.5], [702, 464.5]], 1.2, 'rgba(90,60,30,.5)');
+    for (let x = 80; x < 700; x += 70) ln([[x, 456], [x + (hash(x) - .5) * 4, 473]], 1, 'rgba(90,60,30,.35)');
+    plate(148, 458, 178, 472); plate(618, 458, 646, 472); rivet(28, 461); rivet(28, 469); rivet(696, 461); rivet(696, 469);
+
+    // ---- railings ----
+    const rails = (x0, x1, y0, y1) => { rc(x0, y0, x1, y0 + 8, WOOD, 2); rc(x0, y1, x1, y1 + 8, WOOD, 2); };
+    rails(22, 566, 394, 433); rails(640, 703, 394, 430);
+    const post = (x, w, top) => rc(x - w / 2, top, x + w / 2, 455, WOOD, 2.2);
+    for (const [x, w, t] of [[29, 14, 382], [61, 11, 392], [126, 12, 390], [161, 13, 388], [296, 13, 388], [456, 13, 388], [558, 14, 388], [661, 12, 392], [695, 12, 388]]) post(x, w, t);
+    for (const x of [161, 296, 456, 558]) plate(x - 8, 436, x + 8, 446);
+
+    ctx.restore();   // back to local space
+
+    // ---- ground details ----
+    for (let i = 0; i < 9; i++) {
+        const x = -380 + hash(i * 4.3) * 660; if (x > -70 && x < 55) continue;
+        const r = 3 + hash(i * 2.1) * 4; ctx.beginPath(); ctx.ellipse(x, -r * .35 + 4, r * 1.3, r * .8, 0, 0, 7); ctx.fillStyle = C_STONE; ctx.fill(); ctx.lineWidth = 1.1; ctx.stroke();
+    }
+    for (let i = 0; i < 34; i++) stGrass(-420 + hash(i * 5.7) * 740, i * 3.3, 9 + hash(i) * 8, now);
+    for (let i = 0; i < 13; i++) stFlower(-350 + hash(i * 8.3 + 2) * 640, 10 + hash(i) * 14, 3.6 + hash(i + 3) * 2.4, (hash(i + 5) - .5) * 10, i * 7 + 3, now);
+    for (let i = 0; i < 7; i++) thSprout(-300 + hash(i * 6.7 + 1) * 560, 9 + hash(i + 2) * 7, i * 5 + 1, now);
+    for (let i = 0; i < 14; i++) {
+        const x = -330 + hash(i * 6.1) * 600; ctx.save(); ctx.translate(x, 3 + hash(i * 3) * 3); ctx.rotate((hash(i * 9) - .5) * 1.2);
+        ctx.fillStyle = LEAF_COL[i % 3]; ctx.lineWidth = .5; ctx.beginPath(); ctx.ellipse(0, 0, 3.2, 1.2, 0, 0, 7); ctx.fill(); ctx.stroke(); ctx.restore();
+    }
+    [[3, 250], [2, 254.6], [1, 259.2]].forEach(([n, x0], r) => {
+        for (let k = 0; k < n; k++) {
+            const lx = x0 + 4.5 + k * 9.2, ly = -4.5 - r * 8.2;
+            ctx.beginPath(); ctx.arc(lx, ly, 4.4, 0, 7); ctx.fillStyle = C_WOOD; ctx.fill(); ctx.lineWidth = .9; ctx.stroke();
+        }
+    });
+
+    // squirrel + rope-ladder (now a wooden ladder) in front
+    thSqUpdate(now); thSquirrel(TH_SQ, now); thSqHalvesDraw(now);
+    thDrawRopeLadder(now);
+
+    // sunlight
+    if (day > .05) {
+        ctx.save();
+        for (const [x, w] of [[-130, 16], [-30, 22], [70, 14], [170, 18]]) {
+            ctx.beginPath(); ctx.moveTo(x, D - 420); ctx.lineTo(x + w, D - 420); ctx.lineTo(x + w + 70, 0); ctx.lineTo(x + 55, 0); ctx.closePath();
+            ctx.fillStyle = 'rgba(255,244,190,' + (.07 * day) + ')'; ctx.fill();
+        }
+        ctx.restore();
+    }
+    ctx.restore();
+}
 
         function drawLadderHint(gy) {
             if (typeof thClimbActive === 'function' && thClimbActive()) return;
