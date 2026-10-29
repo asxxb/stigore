@@ -343,7 +343,7 @@
             if (e.code === 'KeyR') pressReload();
             if (e.code === 'KeyK') pressK();
             if (e.code === 'KeyL') pressThrow();
-            if (e.code === 'KeyE') pressFinish();
+            if (e.code === 'KeyE') { if (window.wbPressE && wbPressE()) return; pressFinish(); }
             if (e.code === 'Space') pressJump();
             if (e.code === 'KeyJ') pressAtk();
             if (e.code === 'KeyM') pressKick();
@@ -10557,6 +10557,8 @@
             const jars = (x0, x1) => { for (let x = x0; x < x1; x += 11) { const h = 10 + hash(x * .7) * 9; R(x, 243 - h, 7, h, ['rgb(222,224,218)', 'rgb(196,170,120)', 'rgb(214,210,196)'][((x * .1) | 0) % 3], 1.4); R(x + 1, 243 - h - 3, 5, 3, 'rgb(120,90,60)', 1.1); } };
             jars(236, 380); jars(452, 590);
 
+            if (window.wbDrawWall) wbDrawWall(k, now);
+
             ctx.restore();
         }
 
@@ -15221,6 +15223,7 @@
 
         // ---------- item art (centred on the origin, ink style) ----------
         function drawItemShape(it, now, inHand) {
+            if (window.wbDrawItem && wbDrawItem(it)) return;
             ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#111';
             if (it.type === 'knife') {
                 if (KN.complete && KN.naturalWidth) {
@@ -17798,6 +17801,7 @@
             }
 
             update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); sgTick(dt); sgGroundTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); waterFXTick(dt); brainTick(dt); hzTick(dt); gibTick(dt); boneTick(dt); weatherTick(dt); horseTick(dt); mpkTick(dt); birdTick(dt); fowlTick(dt); frogTick(dt); duckTick(dt); ddTick(dt); ddSqueezeTick(dt); sqHeldTick(dt); ddHalvesTick(dt); stompTick(dt); crocTick(dt); bgTick(dt); corpseTick(dt); dayTick(dt0); fireflyTick(dt0); stExtrasTick(dt0);
+            if (window.wbTick) wbTick(dt0);
             const hStop = MT_HORSE_STOP_X();
             const hGap = HRS.x - hStop;
             if (hGap < 350 && HRS.vx < 0) HRS.vx *= Math.max(0, 1 - dt * 6 * (1 - hGap / 350));
@@ -17886,6 +17890,7 @@
             drawSqGrabHint(gy);
             drawLadderHint(gy);
             drawDoorHint(gy);
+            if (window.wbDrawHint) wbDrawHint(gy);
             drawForest(gy, 1);
             drawSgProp(gy, true);
             drawSmoke(gy);
@@ -17901,6 +17906,7 @@
             drawShotgunHUD();
             drawBirdsHUD();
             drawInvHUD();
+            if (window.wbDrawOverlay) wbDrawOverlay();
             requestAnimationFrame(frame);
         }
         // ---- spawn on the treehouse deck ----
@@ -17913,6 +17919,7 @@
 
         requestAnimationFrame(frame);
     </script>
+    <script src="workbench.js"></script>
 </body>
 
 </html>
