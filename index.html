@@ -319,8 +319,7 @@
         const toggleHud = () => hudEl.classList.toggle('open');
         document.getElementById('hudBtn').addEventListener('click', toggleHud);
         addEventListener('keydown', e => { if (e.code === 'Tab') { e.preventDefault(); toggleHud(); } });
-        hudEl.classList.add('open');
-        setTimeout(() => hudEl.classList.remove('open'), 10000);   // starts open, hides itself
+
 
         const keys = {};
         addEventListener('keydown', e => {
@@ -426,7 +425,7 @@
         let camY = 0;
 
         const TH_CAM_LOW = 0.10;        // lower = camera sits higher (player lower on screen). Was 0.38
-        const TH_CAM_LOW_HOUSE = 0.56;  // same, but while inside the house
+        const TH_CAM_LOW_HOUSE = 0.10;  // same, but while inside the house
 
         function updateCamera(dt) {
             let targetY = 0;
