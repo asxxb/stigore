@@ -425,6 +425,9 @@
         treehouseCamera = false;
         let camY = 0;
 
+        const TH_CAM_LOW = 0.30;        // lower = camera sits higher (player lower on screen). Was 0.38
+        const TH_CAM_LOW_HOUSE = 0.26;  // same, but while inside the house
+
         function updateCamera(dt) {
             let targetY = 0;
 
@@ -434,7 +437,7 @@
                     ? Math.max(0, -((TH_CL.pose.hipAbs || -169.15) + 169.15) * CSc())
                     : 0;
                 const h = Math.max(P.dh || 0, climbH);
-                targetY = Math.max(0, h - H * 0.38);
+                targetY = Math.max(0, h - H * (typeof TH_HS !== 'undefined' && TH_HS.in ? TH_CAM_LOW_HOUSE : TH_CAM_LOW));
             }
 
             targetY = Math.max(targetY, (P.mh || 0) - H * 0.28);   // follow the player up the mountain
@@ -17868,7 +17871,7 @@
         P.dh = -TH_DY * TH_SC;         // deck height
         P.thDeck = true;               // tells the game you're standing on the deck
         treehouseCamera = true;        // camera follows you vertically
-        camY = Math.max(0, P.dh - H * 0.38);   // snap the camera so there's no slide-up on load
+        camY = Math.max(0, P.dh - H * (TH_HS.in ? TH_CAM_LOW_HOUSE : TH_CAM_LOW));   // snap the camera so there's no slide-up on load
 
         requestAnimationFrame(frame);
     </script>
