@@ -1314,7 +1314,7 @@
                 hits++;
 
                 const dmg = Math.round(st.dmg * mul);
-                e.hp -= dmg; e.bar = 2.5; e.kdir = F; e.face = -F; playSfx('stab', 1); e.hurt = Math.max(e.hurt, .38); e.vx = F * (st.name === 'grab' ? 120 : st.kb); e.wait = 1; e.fid = 0;
+                e.hp -= dmg; e.bar = 2.5; e.kdir = F; e.face = -F; e.hurt = Math.max(e.hurt, .38); e.vx = F * (st.name === 'grab' ? 120 : st.kb); e.wait = 1; e.fid = 0;
                 if (st.up) { if (e.z >= 0) e.z = -1; e.vz = st.up }
                 if ((st.kb >= 350 && st.name !== 'kick_front') || st.up < -300) e.tumble = 1;
                 if (st.name === 'kick_front') e.hurt = Math.max(e.hurt, .5);
@@ -16410,9 +16410,9 @@
                     }
                 }
                 ctx.lineWidth = 1; ctx.strokeStyle = '#3a0508';
-                let uu = u0 + hw * .5;  ctx.fillStyle = '#6e1a22'; ctx.beginPath(); ctx.ellipse(uu, E(uu) - s * 1.5, 7, 3.4, .1, 0, 7); ctx.fill(); ctx.stroke();
-                uu = u0 + hw * .95;     ctx.fillStyle = '#a8141c'; ctx.beginPath(); ctx.arc(uu, E(uu) - s * 2.2, 3.4, 0, 7); ctx.fill(); ctx.stroke();
-                uu = u0 + hw * 1.45;    ctx.fillStyle = '#8a4a4a'; ctx.beginPath(); ctx.ellipse(uu, E(uu) - s * 1.8, 4.2, 3.2, 0, 0, 7); ctx.fill(); ctx.stroke();
+                let uu = u0 + hw * .5; ctx.fillStyle = '#6e1a22'; ctx.beginPath(); ctx.ellipse(uu, E(uu) - s * 1.5, 7, 3.4, .1, 0, 7); ctx.fill(); ctx.stroke();
+                uu = u0 + hw * .95; ctx.fillStyle = '#a8141c'; ctx.beginPath(); ctx.arc(uu, E(uu) - s * 2.2, 3.4, 0, 7); ctx.fill(); ctx.stroke();
+                uu = u0 + hw * 1.45; ctx.fillStyle = '#8a4a4a'; ctx.beginPath(); ctx.ellipse(uu, E(uu) - s * 1.8, 4.2, 3.2, 0, 0, 7); ctx.fill(); ctx.stroke();
             }
 
             // blood soaking up into the white feathers (ragged lower edge)
@@ -16463,7 +16463,7 @@
                     vE = v;
                 }
                 let q = P2(Rr, vE + s * Rr); ctx.lineTo(q[0], q[1]);
-                q = P2(-Rr, vS + s * Rr);    ctx.lineTo(q[0], q[1]);
+                q = P2(-Rr, vS + s * Rr); ctx.lineTo(q[0], q[1]);
                 ctx.closePath(); ctx.clip();
                 if (h.snap.nohead) {
                     ctx.save(); ctx.beginPath(); ctx.rect(-200, -46, 400, 300); ctx.clip();
