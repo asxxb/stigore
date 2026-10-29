@@ -17698,6 +17698,14 @@
             drawInvHUD();
             requestAnimationFrame(frame);
         }
+        // ---- spawn on the treehouse deck ----
+        P.x = TH_WX + 100 * TH_SC;     // change the 100 to move left/right on the deck (valid range: -280 to +280)
+        P.face = -1;                   // which way you start facing
+        P.dh = -TH_DY * TH_SC;         // deck height
+        P.thDeck = true;               // tells the game you're standing on the deck
+        treehouseCamera = true;        // camera follows you vertically
+        camY = Math.max(0, P.dh - H * 0.58);   // snap the camera so there's no slide-up on load
+
         requestAnimationFrame(frame);
     </script>
 </body>
