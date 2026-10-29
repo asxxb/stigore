@@ -16190,7 +16190,8 @@
             const A = (DT_L[0] / rx) ** 2 + (DT_L[1] / ry) ** 2, B = 2 * (dx * DT_L[0] / rx ** 2 + dy * DT_L[1] / ry ** 2), Cc = (dx / rx) ** 2 + (dy / ry) ** 2 - 1;
             return [-B / (2 * A), Math.sqrt(Math.max(0, B * B - 4 * A * Cc)) / (2 * A)];
         })();
-        const DT_REST = { top: { y: -2, rot: .1 }, bot: { y: -18, rot: -.08 } };   // resting pose of each half (x duck scale). TUNE HERE
+        const DT_REST = { top: { y: -22, rot: 1.0 }, bot: { y: -17, rot: -.35 } };
+
         const dHalves = [], dLinks = [];
 
         function ddHandAt(i, gy) {                                           // fist position, screen space
@@ -16260,11 +16261,12 @@
             const T = ddTearMat(gy, sc, F, 1), c = ddTearCut();
             if (!T || !c) { g.tear = .95; return; }
             const base = Object.assign({}, m, { dead: 1, headless: 0, cut: 0, air: 0, dip: 0, tilt: 0, str: 0, gape: 0, flap: 0, swayR: 0, nb: 0, nkx: 0, vx: 0, bl: 0, noShadow: 1, lie: 0, conv: 0 });
+            const es = R() * 99;
             const mk = side => {
                 const top = side < 0, h = {
-                    side, F, snap: Object.assign({}, base), M: { a: T.a, b: T.b, c: T.c, d: T.d }, x: c[0], y: c[1], rot: 0, t: 0, bn: 0, bl: 0, landed: false, tl: 0, seed: R() * 99,
+                    side, F, es, snap: Object.assign({}, base), M: { a: T.a, b: T.b, c: T.c, d: T.d }, x: c[0], y: c[1], rot: 0, t: 0, bn: 0, bl: 0, landed: false, tl: 0, seed: R() * 99,
                     vx: top ? F * (130 + R() * 120) : -F * (70 + R() * 90), vy: top ? -(430 + R() * 180) : -(150 + R() * 100),
-                    vr: top ? F * (2 + R() * 2.5) : -F * (1.5 + R() * 2), restY: top ? DT_REST.top.y : DT_REST.bot.y, restRot: (top ? DT_REST.top.rot : DT_REST.bot.rot) * F, pool: null
+                    vr: top ? F * (2 + R() * 2.5) : -F * (1.5 + R() * 2), restY: top ? DT_REST.top.y : DT_REST.bot.y, restRot: (top ? DT_REST.top.rot : DT_REST.bot.rot) * F + (R() - .5) * .7, pool: null
                 };
                 dHalves.push(h); return h;
             };
@@ -16298,8 +16300,21 @@
             P.vx = -P.face * 180;                                             // you stagger back
         }
 
-        function ddHalfEnd(h, u) {                                            // world point on a half's cut face (u along the cut)
-            const lx = DT_L[0] * u, ly = DT_L[1] * u, px = h.M.a * lx + h.M.c * ly, py = h.M.b * lx + h.M.d * ly, c = Math.cos(h.rot), s = Math.sin(h.rot);
+        function ddEdgeV(u, es) {                       // offset of the tear edge along the cut normal, duck units
+            const x = u / 30;
+            let v = 5 * Math.sin(x * 1.7 + es * 1.3) + 3 * Math.sin(x * 3.9 + es * 2.7);      // big lazy waves
+            const t = u / 4.2 + es * 11, i = Math.floor(t), f = t - i;
+            const a = hash(i * 1.7 + es), b = hash((i + 1) * 1.7 + es);
+            v += ((a + (b - a) * f) - .5) * 7;                                                  // sharp teeth
+            const uc = DT_UC + (hash(es * 3.1) - .5) * 1.2 * DT_HW, sg = hash(es * 5.3) < .5 ? -1 : 1;
+            v += sg * 8 * Math.exp(-Math.pow((u - uc) / 6.5, 2));                               // one deep tongue / rip
+            return v;
+        }
+
+        function ddHalfEnd(h, u) {                      // world point on a half's JAGGED edge (u along the cut)
+            const v = ddEdgeV(u, h.es || 0);
+            const lx = DT_L[0] * u + DT_N[0] * v, ly = DT_L[1] * u + DT_N[1] * v;
+            const px = h.M.a * lx + h.M.c * ly, py = h.M.b * lx + h.M.d * ly, c = Math.cos(h.rot), s = Math.sin(h.rot);
             return [h.x + px * c - py * s, h.y + px * s + py * c];
         }
 
@@ -16320,6 +16335,7 @@
                         if (h.vy > 300 && !h.bn) { h.bn = 1; h.vy *= -.25; h.vx *= .55; h.vr *= .5; burst(h.x, -3, 8, 220, Math.sign(h.vx) || 1); shake = Math.max(shake, 4); }
                         else {
                             h.landed = true; h.tl = h.t; h.vy = 0; h.vr = 0; h.rot = wrapA(h.rot);
+                            h.sq = 1;   // NEW: jelly squash on impact
                             burst(h.x, -3, 10, 260, Math.sign(h.vx) || 1); shake = Math.max(shake, 5);
                             h.pool = bgStain(h.x, 26 * S * (h.sk || 1) * 1.3, true);
                         }
@@ -16327,6 +16343,15 @@
                 } else {
                     h.x += h.vx * dt; h.vx *= Math.exp(-7 * dt);
                     h.rot += wrapA(h.restRot - h.rot) * Math.min(1, dt * 6);
+                    // NEW: settle. Limp neck on the top half, legs flop out on the belly half, blood smears while it slides
+                    const sn = h.snap, lt0 = h.t - h.tl;
+                    h.sq = Math.max(0, (h.sq || 0) - dt * 3.2);
+                    if (h.side < 0) {
+                        sn.dip += (.5 - sn.dip) * Math.min(1, dt * 2.5);                 // head droops (kept above the cut line so it isn't clipped)
+                        sn.gape = (sn.gape || 0) + (.22 - (sn.gape || 0)) * Math.min(1, dt * 3);
+                    } else sn.lie += (1 - (sn.lie || 0)) * Math.min(1, dt * 2.5);        // legs splay out
+                    if (Math.abs(h.vx) > 12 && lt0 < .8 && splats.length < 160 && Math.random() < dt * 30)
+                        splats.push({ x: h.x + (Math.random() - .5) * 20 * hs, w: 3 + Math.random() * 5, h: 1.2 + Math.random() * 1.5, t: 0 });
                     const k = Math.min(1, dt * 4);                                       // stretched shape relaxes back to normal size
                     h.M.a += (hs * h.F - h.M.a) * k; h.M.b -= h.M.b * k; h.M.c -= h.M.c * k; h.M.d += (hs - h.M.d) * k;
                     const lt = h.t - h.tl, tw = Math.max(0, 1 - lt / 5);                    // dying twitches fade out
@@ -16349,36 +16374,69 @@
             }
         }
 
-        function ddCutFace(h, now) {                                          // exposed flesh, bone, ribs and organs on a half's cut edge
-            const s = h.side, hw = DT_HW * .94, sd = h.seed, N = 12, u0 = DT_UC - hw, du = 2 * hw / N, jag = i => (i % 2 ? 3.6 : 1.4) + hash(sd + i * 3.1) * 2.4;
-            ctx.save(); ctx.translate(DT_C[0], DT_C[1]); ctx.transform(DT_L[0], DT_L[1], DT_N[0], DT_N[1], 0, 0); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-            ctx.beginPath();
-            for (let i = 0; i <= N; i++) { const u = u0 + du * i, w = -s * jag(i); i ? ctx.lineTo(u, w) : ctx.moveTo(u, w); }
-            ctx.lineTo(u0 + 2 * hw, s * 6.5); ctx.lineTo(u0, s * 6.5); ctx.closePath();
-            ctx.fillStyle = '#7a0b11'; ctx.fill(); ctx.strokeStyle = '#3a0508'; ctx.lineWidth = 1.2; ctx.stroke();
-            ctx.beginPath();                                                      // wet muscle
-            for (let i = 1; i < N; i++) { const u = u0 + du * i, w = -s * (jag(i) - 1.3); i > 1 ? ctx.lineTo(u, w) : ctx.moveTo(u, w); }
-            ctx.lineTo(u0 + 2 * hw - du, s * 3.5); ctx.lineTo(u0 + du, s * 3.5); ctx.closePath(); ctx.fillStyle = '#d4443a'; ctx.fill();
-            ctx.strokeStyle = 'rgba(255,200,190,.6)'; ctx.lineWidth = .7; ctx.beginPath(); ctx.moveTo(u0 + du * 2, s * 1.5); ctx.lineTo(u0 + du * 7, s * 1.9); ctx.stroke();
-            if (s < 0) {                                                          // back half: snapped spine + stubs of ribs
+        function ddCutFace(h, now) {
+            const s = h.side, es = h.es || 0, sd = h.seed, hw = DT_HW * 1.05, N = 20, u0 = DT_UC - hw, du = 2 * hw / N;
+            const E = u => ddEdgeV(u, es), jag = i => (i % 2 ? 3.4 : 1.2) + hash(sd + i * 3.1) * 2.6;
+            ctx.save(); ctx.translate(DT_C[0], DT_C[1]); ctx.transform(DT_L[0], DT_L[1], DT_N[0], DT_N[1], 0, 0);
+            ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+
+            // torn flesh band that follows the jagged edge
+            const band = (lip, depth, col, lw, strk) => {
+                ctx.beginPath();
+                for (let i = 0; i <= N; i++) { const u = u0 + du * i, w = E(u) - s * jag(i) * lip; i ? ctx.lineTo(u, w) : ctx.moveTo(u, w); }
+                for (let i = N; i >= 0; i--) { const u = u0 + du * i; ctx.lineTo(u, E(u) + s * (depth + 1.5 * hash(sd + i * 4.3))); }
+                ctx.closePath(); ctx.fillStyle = col; ctx.fill();
+                if (strk) { ctx.strokeStyle = strk; ctx.lineWidth = lw; ctx.stroke(); }
+            };
+            band(1, 5.5, '#6a0a12', 1.2, '#2e0307');       // dark torn rim
+            band(.55, 3.2, '#d4443a', 0);                   // wet muscle
+            ctx.strokeStyle = 'rgba(255,200,190,.55)'; ctx.lineWidth = .7;
+            ctx.beginPath(); for (let i = 2; i < 8; i++) { const u = u0 + du * i; i > 2 ? ctx.lineTo(u, E(u) + s * 1.6) : ctx.moveTo(u, E(u) + s * 1.6); } ctx.stroke();
+
+            if (s < 0) {                                    // BACK half: snapped spine with uneven stubs
                 for (let i = 0; i < 9; i++) {
-                    const u = u0 + hw * .25 + i * (hw * 1.5 / 8);
-                    ctx.beginPath(); ctx.ellipse(u, s * 2.2, 2.3, 2.9, 0, 0, 7); ctx.fillStyle = '#efe9da'; ctx.fill(); ctx.strokeStyle = '#111'; ctx.lineWidth = .9; ctx.stroke();
-                    ctx.beginPath(); ctx.arc(u, s * 2.2, .8, 0, 7); ctx.fillStyle = '#5a2a2a'; ctx.fill();
+                    const u = u0 + hw * .25 + i * (hw * 1.5 / 8), y = E(u) + s * (1.6 + 1.6 * hash(sd + i * 7.1));
+                    ctx.beginPath(); ctx.ellipse(u, y, 2.3, 2.9, 0, 0, 7); ctx.fillStyle = '#efe9da'; ctx.fill(); ctx.strokeStyle = '#111'; ctx.lineWidth = .9; ctx.stroke();
+                    ctx.beginPath(); ctx.arc(u, y, .8, 0, 7); ctx.fillStyle = '#5a2a2a'; ctx.fill();
                 }
-                ctx.fillStyle = '#e98c92'; ctx.strokeStyle = '#a84a52'; ctx.lineWidth = .8;                                  // a lung strip
-                ctx.beginPath(); ctx.ellipse(u0 + hw * 1.3, s * 1.2, 7, 2, 0, 0, 7); ctx.fill(); ctx.stroke();
-            } else {                                                              // belly half: ribs torn open like a zipper
+                const ul = u0 + hw * 1.3; ctx.fillStyle = '#e98c92'; ctx.strokeStyle = '#a84a52'; ctx.lineWidth = .8;
+                ctx.beginPath(); ctx.ellipse(ul, E(ul) + s * 1.2, 7, 2, 0, 0, 7); ctx.fill(); ctx.stroke();
+            } else {                                        // BELLY half: ribs sticking out unevenly + organs
                 for (let i = 0; i < 6; i++) {
-                    const u = u0 + hw * .25 + i * (hw * 1.5 / 5), Lr = 8 + hash(sd + i * 5.3) * 6, ln = (hash(sd + i * 2.7) - .5) * 5;
+                    const u = u0 + hw * .25 + i * (hw * 1.5 / 5), Lr = 8 + hash(sd + i * 5.3) * 8, ln = (hash(sd + i * 2.7) - .5) * 6, b = E(u);
                     for (const [lw, col] of [[3.6, '#111'], [2, '#efe9da']]) {
-                        ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.beginPath(); ctx.moveTo(u, s * 4); ctx.quadraticCurveTo(u + ln * .4, -s * Lr * .5, u + ln, -s * Lr); ctx.stroke();
+                        ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.beginPath(); ctx.moveTo(u, b + s * 4);
+                        ctx.quadraticCurveTo(u + ln * .4, b - s * Lr * .5, u + ln, b - s * Lr); ctx.stroke();
                     }
                 }
                 ctx.lineWidth = 1; ctx.strokeStyle = '#3a0508';
-                ctx.fillStyle = '#6e1a22'; ctx.beginPath(); ctx.ellipse(u0 + hw * .5, -s * 1.5, 7, 3.4, .1, 0, 7); ctx.fill(); ctx.stroke();    // liver
-                ctx.fillStyle = '#a8141c'; ctx.beginPath(); ctx.arc(u0 + hw * .95, -s * 2.2, 3.4, 0, 7); ctx.fill(); ctx.stroke();               // heart
-                ctx.fillStyle = '#8a4a4a'; ctx.beginPath(); ctx.ellipse(u0 + hw * 1.45, -s * 1.8, 4.2, 3.2, 0, 0, 7); ctx.fill(); ctx.stroke();  // gizzard
+                let uu = u0 + hw * .5;  ctx.fillStyle = '#6e1a22'; ctx.beginPath(); ctx.ellipse(uu, E(uu) - s * 1.5, 7, 3.4, .1, 0, 7); ctx.fill(); ctx.stroke();
+                uu = u0 + hw * .95;     ctx.fillStyle = '#a8141c'; ctx.beginPath(); ctx.arc(uu, E(uu) - s * 2.2, 3.4, 0, 7); ctx.fill(); ctx.stroke();
+                uu = u0 + hw * 1.45;    ctx.fillStyle = '#8a4a4a'; ctx.beginPath(); ctx.ellipse(uu, E(uu) - s * 1.8, 4.2, 3.2, 0, 0, 7); ctx.fill(); ctx.stroke();
+            }
+
+            // blood soaking up into the white feathers (ragged lower edge)
+            ctx.fillStyle = 'rgba(122,11,17,.5)'; ctx.beginPath();
+            for (let i = 0; i <= N * 2; i++) { const u = u0 + du * i / 2, w = E(u) + s * (4 + 4 * hash(sd + i * 7.7)); i ? ctx.lineTo(u, w) : ctx.moveTo(u, w); }
+            for (let i = N * 2; i >= 0; i--) { const u = u0 + du * i / 2; ctx.lineTo(u, E(u) + s * 2); }
+            ctx.closePath(); ctx.fill();
+
+            // torn skin flaps hanging off the edge, swaying like loose ragdoll flesh
+            for (let k = 0; k < 6; k++) {
+                const u = u0 + 2 * hw * (.06 + .88 * hash(sd + k * 6.7)), len = 6 + 10 * hash(sd + k * 2.2), wd = 2 + 2.4 * hash(sd + k * 8.1);
+                const sw = Math.sin(now * 2.6 + k * 1.9 + sd) * 2.4 + (h.wr || 0) * 40, b = E(u);
+                ctx.beginPath(); ctx.moveTo(u - wd, b);
+                ctx.quadraticCurveTo(u - wd * .4 + sw * .5, b - s * len * .6, u + sw, b - s * len);
+                ctx.quadraticCurveTo(u + wd * .4 + sw * .5, b - s * len * .5, u + wd, b); ctx.closePath();
+                ctx.fillStyle = '#fdfdf8'; ctx.fill(); ctx.strokeStyle = '#111'; ctx.lineWidth = .8; ctx.stroke();
+                ctx.fillStyle = 'rgba(150,15,25,.65)'; ctx.beginPath(); ctx.ellipse(u + sw * .1, b - s * 1.2, wd * .9, 1.6, 0, 0, 7); ctx.fill();
+            }
+            // feather tufts curling over the edge
+            for (let i = 0; i <= N * 2; i++) {
+                const r = hash(sd + i * 3.3), u = u0 + 2 * hw * i / (N * 2), b = E(u) + s * (2 + r * 2), o = (r - .5) * 1.6;
+                ctx.beginPath(); ctx.moveTo(u, b); ctx.quadraticCurveTo(u + o * 2, b - s * 1.2, u + o * 3.5, b - s * (1.4 + r * 2));
+                ctx.strokeStyle = '#111'; ctx.lineWidth = .5; ctx.stroke();
+                ctx.strokeStyle = r < .5 ? '#b3262c' : '#f4efe0'; ctx.lineWidth = .3; ctx.stroke();
             }
             ctx.restore();
         }
@@ -16389,13 +16447,24 @@
             for (const h of dHalves) {
                 const sx = h.x - P.x + W / 2; if (sx < -300 || sx > W + 300) continue;
                 ctx.save(); ctx.globalAlpha = Math.min(1, (45 - h.t) / 6);
-                ctx.beginPath(); ctx.rect(sx - 500, gy - 3000, 1000, 3006); ctx.clip();                       // sinks into the ground like corpses
+                ctx.beginPath(); ctx.rect(sx - 500, gy - 3000, 1000, 3006); ctx.clip();
                 ctx.translate(sx, gy + 4 + h.y); ctx.rotate(h.rot + (h.twr || 0));
+                if (h.sq) { const jl = Math.cos((h.t - h.tl) * 26) * h.sq; ctx.scale(1 + .16 * jl, 1 - .22 * jl); }
                 ctx.transform(h.M.a, h.M.b, h.M.c, h.M.d, 0, 0); ctx.translate(-DT_C[0], -DT_C[1]);
-                ctx.save();                                                       // keep only this half of the duck
-                const Rr = 140, s = h.side, p0 = [DT_C[0] - DT_L[0] * Rr, DT_C[1] - DT_L[1] * Rr], p1 = [DT_C[0] + DT_L[0] * Rr, DT_C[1] + DT_L[1] * Rr];
-                ctx.beginPath(); ctx.moveTo(p0[0], p0[1]); ctx.lineTo(p1[0], p1[1]);
-                ctx.lineTo(p1[0] + s * DT_N[0] * Rr, p1[1] + s * DT_N[1] * Rr); ctx.lineTo(p0[0] + s * DT_N[0] * Rr, p0[1] + s * DT_N[1] * Rr); ctx.closePath(); ctx.clip();
+                ctx.save();
+                // keep only this half: clip along the JAGGED tear edge (same edge for both halves)
+                const Rr = 150, s = h.side, es = h.es || 0;
+                const P2 = (u, v) => [DT_C[0] + DT_L[0] * u + DT_N[0] * v, DT_C[1] + DT_L[1] * u + DT_N[1] * v];
+                ctx.beginPath();
+                let first = true, vS = 0, vE = 0;
+                for (let u = -Rr; u <= Rr; u += 2) {
+                    const v = ddEdgeV(u, es), p = P2(u, v);
+                    if (first) { ctx.moveTo(p[0], p[1]); vS = v; first = false; } else ctx.lineTo(p[0], p[1]);
+                    vE = v;
+                }
+                let q = P2(Rr, vE + s * Rr); ctx.lineTo(q[0], q[1]);
+                q = P2(-Rr, vS + s * Rr);    ctx.lineTo(q[0], q[1]);
+                ctx.closePath(); ctx.clip();
                 if (h.snap.nohead) {
                     ctx.save(); ctx.beginPath(); ctx.rect(-200, -46, 400, 300); ctx.clip();
                     ddShape(h.snap, now);
@@ -16558,10 +16627,11 @@
         function ddKidSplit() {
             const f = DD.fly, d = f.d, S = CSc(), sc = S * DD_SIZE * d.s, F = f.F, R = Math.random;
             const base = Object.assign({}, d, { dead: 1, headless: 0, cut: 0, air: 0, dip: 0, tilt: 0, str: 0, gape: 0, flap: 0, swayR: 0, nb: 0, nkx: 0, vx: 10, bl: 0, noShadow: 1, lie: 0, conv: 0, carried: 0, wing: .4 });
+            const es = R() * 99;
             const mk = side => {
                 const top = side < 0, h = {
-                    side, F, sk: d.s, hwK: .7, snap: Object.assign({}, base), M: { a: sc * F, b: 0, c: 0, d: sc }, x: f.x, y: f.y, rot: f.rot, t: 0, bn: 0, bl: 0, landed: false, tl: 0, seed: R() * 99,
-                    vx: f.vx, vy: f.vy, vr: f.vr, restY: top ? DT_REST.top.y : DT_REST.bot.y, restRot: (top ? DT_REST.top.rot : DT_REST.bot.rot) * F, pool: null,
+                    side, F, es, sk: d.s, hwK: .7, snap: Object.assign({}, base), M: { a: sc * F, b: 0, c: 0, d: sc }, x: f.x, y: f.y, rot: f.rot, t: 0, bn: 0, bl: 0, landed: false, tl: 0, seed: R() * 99,
+                    vx: f.vx, vy: f.vy, vr: f.vr, restY: top ? DT_REST.top.y : DT_REST.bot.y, restRot: (top ? DT_REST.top.rot : DT_REST.bot.rot) * F + (R() - .5) * .7, pool: null,
                     hold: .11, hold0: .11, bu: 0
                 };
                 dHalves.push(h); return h;
@@ -16809,9 +16879,10 @@
             const S = CSc(), F = P.face, R = Math.random, sc = S * DD_SIZE * d.s, c = ddSqPt(DT_C[0], DT_C[1]);
             const hand = i => { const f = P.fistInfo && P.fistInfo[i]; return f ? [P.x + f.x * S, f.y * S + 8 * S - (P.dh || 0) - (P.mh || 0)] : c; };
             const base = Object.assign({}, d, { dead: 1, headless: 0, cut: 0, air: 0, dip: 0, tilt: 0, str: 0, gape: 0, flap: 0, swayR: 0, nb: 0, nkx: 0, vx: 10, bl: 0, noShadow: 1, lie: 0, conv: 0, carried: 0, wing: .4, nohead: q.cracked ? 1 : 0 });
+            const es = R() * 99;
             const mk = side => {
                 const top = side < 0, h = {
-                    side, F, sk: d.s, hwK: .7, snap: Object.assign({}, base), M: { a: sc * F * 1.15, b: 0, c: 0, d: sc * .78 }, x: c[0], y: c[1], rot: 0, t: 0, bn: 0, bl: 0, landed: false, tl: 0, seed: R() * 99,
+                    side, F, es, sk: d.s, hwK: .7, snap: Object.assign({}, base), M: { a: sc * F * 1.15, b: 0, c: 0, d: sc * .78 }, x: c[0], y: c[1], rot: 0, t: 0, bn: 0, bl: 0, landed: false, tl: 0, seed: R() * 99,
                     vx: top ? F * (50 + R() * 110) + (R() - .5) * 60 : -F * (20 + R() * 60), vy: top ? -(240 + R() * 200) : -(60 + R() * 120),
                     vr: top ? F * (3 + R() * 3) : -F * (1.5 + R() * 2), restY: top ? DT_REST.top.y : DT_REST.bot.y, restRot: (top ? DT_REST.top.rot : DT_REST.bot.rot) * F, pool: null
                 };
