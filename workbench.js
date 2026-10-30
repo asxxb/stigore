@@ -21,6 +21,8 @@
   const MATLABEL = { stick: 'stick', stone: 'stone', plant: 'cord/herb', scrap: 'scrap metal' };
 
   const WEAP = {
+    // Existing in-game sidearm: displayed in the Guns row, never crafted.
+    revolver: { name: 'Revolver', mats: {}, stages: [] },
     slingshot: {
       name: 'Slingshot', mats: { stick: 1, plant: 1 }, stages: [
         { id: 'carve', kind: 'hold', tool: 'knife', label: 'CARVE THE FORK', help: 'SHIFT grips the stick · hold CLICK and drag DOWN to cut · lift, repeat', dur: 2.8 },
@@ -39,7 +41,7 @@
     }
   };
   // 6 slots: index 0-2 = first row, 3-5 = second row. null = empty slot for a future blueprint.
-  const ORDER = ['bowie', 'slingshot', null, null, null, null];
+  const ORDER = ['bowie', 'slingshot', null, 'revolver', null, null];
   const SECTIONS = [{ name: 'WEAPONS', row: 0 }, { name: 'Guns', row: 1 }];
 
   /* ---------------- slingshot sprite (your exact artwork, split into layers) ---------------- */
@@ -205,6 +207,13 @@
     WB.s = { held: 0, holdT: 0, pauses: 0, hits: 0, misses: 0, vals: [], g: 0, bending: 0, soft: 0, fx: .5, fm: 0, fmT: 0, fails: 0, fitScore: 0, lastN: -1, swing: 0, sfxT: 0, shot: null, aim: 0, fl: 0, cut: 0, lx: null, ly: null, slips: 0, draw: 0, gripMsg: 0, cutting: 0 };
   }
   function startBuild(id) {
+    // The revolver already exists in the main game; selecting it must not
+    // consume materials or enter the crafting-stage system.
+    if (id === 'revolver') {
+      say('REVOLVER ALREADY OWNED · G DRAW / F FIRE / R RELOAD');
+      SFX.click();
+      return;
+    }
     const w = WEAP[id];
     if (!w) { say('EMPTY SLOT: no blueprint yet'); SFX.thud(); return; }
     for (const k in w.mats) if ((INV[k] || 0) < w.mats[k]) { say('MISSING: ' + MATLABEL[k] + ' x' + w.mats[k]); return; }
@@ -521,7 +530,18 @@
   // finished weapon as an icon (also trophy rail / tag)
   function drawIcon(id, q, s) {
     const sv = WB.jit, sj = JU; WB.jit = (1 - q) * 2.2 + .1; JU = s; ctx.save();
-    if (id === 'slingshot' && slOK()) { const sc = 3.7 * s / SLING.h; ctx.translate(-SLING.w / 2 * sc, -SLING.h / 2 * sc); ctx.scale(sc, sc); ctx.drawImage(SLI.full, 0, 0); }
+    if (id === 'revolver') {
+      // Simple ink-style side-view icon matching the game's existing revolver.
+      ctx.rotate(-.12);
+      thick([[-1.15 * s, -.12 * s], [.95 * s, -.12 * s]], .22 * s, 'rgb(108,112,120)', 201);
+      poly([[-.45 * s, -.25 * s], [.75 * s, -.25 * s], [.85 * s, .12 * s], [.1 * s, .2 * s], [-.2 * s, .95 * s], [-.72 * s, .82 * s], [-.48 * s, .12 * s]], 'rgb(108,112,120)', null, 202);
+      ctx.beginPath(); ctx.ellipse(.15 * s, -.02 * s, .32 * s, .27 * s, 0, 0, 7);
+      ctx.fillStyle = 'rgb(88,92,100)'; ctx.fill(); ctx.lineWidth = Math.max(1.2, s * .035); ctx.strokeStyle = INK; ctx.stroke();
+      poly([[-.65 * s, .42 * s], [-.18 * s, .5 * s], [-.42 * s, 1.35 * s], [-.92 * s, 1.2 * s]], 'rgb(154,74,26)', null, 203);
+      ctx.beginPath(); ctx.arc(-.08 * s, .3 * s, .34 * s, .1, 1.25);
+      ctx.strokeStyle = INK; ctx.lineWidth = Math.max(1.2, s * .045); ctx.stroke();
+    }
+    else if (id === 'slingshot' && slOK()) { const sc = 3.7 * s / SLING.h; ctx.translate(-SLING.w / 2 * sc, -SLING.h / 2 * sc); ctx.scale(sc, sc); ctx.drawImage(SLI.full, 0, 0); }
     else if (id === 'slingshot') drawSling(s * .8, { pp: 1, spread: .8, bark: 0, wraps: 9, bands: 1, pouchX: 0, pull: 0, fresh: 0 });
     else { ctx.rotate(-.35); drawBowie(s * .7, { shape: 1, heat: 0, edge: 1, tang: 1, handle: 1, guard: 1, ox: 0 }); }
     if (q > .8) { ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = Math.max(1, s * .03); ctx.beginPath(); ctx.moveTo(-s * .2, -s * .6); ctx.lineTo(s * .1, -s * .75); ctx.stroke(); }
@@ -720,13 +740,20 @@
       if (!w) ctx.setLineDash([6, 5]);
       ctx.strokeRect(-r.w / 2, -r.h / 2, r.w, r.h); ctx.setLineDash([]);
       if (w) {
-        ctx.fillStyle = '#b3261e'; ctx.beginPath(); ctx.arc(0, -r.h / 2 + 6, 4.5, 0, 7); ctx.fill(); ctx.lineWidth = 1.4; ctx.strokeStyle = INK; ctx.stroke();
+        const isExistingGun = id === 'revolver';
+        ctx.fillStyle = isExistingGun ? 'rgb(55,105,65)' : '#b3261e';
+        ctx.beginPath(); ctx.arc(0, -r.h / 2 + 6, 4.5, 0, 7); ctx.fill(); ctx.lineWidth = 1.4; ctx.strokeStyle = INK; ctx.stroke();
         txt(w.name.toUpperCase(), 0, -r.h / 2 + fs * 2.1, fs * 1.1, 'center', true);
-        ctx.save(); ctx.translate(0, -r.h * .02); drawIcon(id, .6, G.u * .36); ctx.restore();
-        let n = 0; const keys_ = Object.keys(w.mats), y0 = r.h / 2 - fs * 1.1 - (keys_.length - 1) * fs * 1.15;
-        for (const m of keys_) {
-          const have = INV[m] || 0, ok = have >= w.mats[m];
-          txt(MATLABEL[m] + '  ' + have + '/' + w.mats[m], 0, y0 + n * fs * 1.15, fs * .95, 'center', false, ok ? INK : '#b3261e'); n++;
+        ctx.save(); ctx.translate(0, -r.h * .02); drawIcon(id, .9, G.u * .36); ctx.restore();
+        if (isExistingGun) {
+          txt('ALREADY OWNED', 0, r.h / 2 - fs * 1.65, fs * .95, 'center', true, 'rgb(55,105,65)');
+          txt('G draw · F fire · R reload', 0, r.h / 2 - fs * .55, fs * .82, 'center');
+        } else {
+          let n = 0; const keys_ = Object.keys(w.mats), y0 = r.h / 2 - fs * 1.1 - (keys_.length - 1) * fs * 1.15;
+          for (const m of keys_) {
+            const have = INV[m] || 0, ok = have >= w.mats[m];
+            txt(MATLABEL[m] + '  ' + have + '/' + w.mats[m], 0, y0 + n * fs * 1.15, fs * .95, 'center', false, ok ? INK : '#b3261e'); n++;
+          }
         }
       } else {
         txt('?', 0, fs * .6, fs * 3.2, 'center', true, 'rgba(17,17,17,.25)');
