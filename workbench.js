@@ -527,20 +527,68 @@
     if (o.handle) { ctx.save(); ctx.translate((o.ox || 0) / sc, 0); ctx.drawImage(BLI.handle, 0, 0); ctx.restore(); }
     ctx.restore();
   }
+  // Colt Single Action Army drawn from the reference image.
+  // Drawn in the image's own pixel space (muzzle toward +x), then scaled to the icon size s.
+  // Same footprint as the Bowie icon (about 4.2*s wide), centred on (0,0).
+  function drawRevolverIcon(s) {
+    const K = 4.2 * s / 1145, lw = Math.max(1.2, s * .035) / K, ld = lw * .55;     // outline widths, in image px
+    const fs = (col, w) => { ctx.fillStyle = col; ctx.lineWidth = w || lw; ctx.fill(); ctx.stroke() };
+    const tube = (w, col) => { ctx.strokeStyle = INK; ctx.lineWidth = w + lw * 1.2; ctx.stroke(); ctx.strokeStyle = col; ctx.lineWidth = w; ctx.stroke(); ctx.strokeStyle = INK };
+    ctx.save(); ctx.scale(K, K); ctx.translate(-822, -542);
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.strokeStyle = INK;
+
+    // wooden grip + grain
+    ctx.beginPath(); ctx.moveTo(410, 515); ctx.lineTo(500, 512); ctx.lineTo(503, 578);
+    ctx.quadraticCurveTo(468, 622, 447, 680); ctx.quadraticCurveTo(436, 725, 442, 775);
+    ctx.lineTo(255, 775); ctx.quadraticCurveTo(300, 690, 340, 625); ctx.quadraticCurveTo(375, 570, 410, 515); ctx.closePath();
+    fs('#85552d');
+    ctx.save(); ctx.strokeStyle = '#5c3a1c'; ctx.lineWidth = ld; ctx.globalAlpha *= .7;
+    for (const g of [[330, 730, 360, 675], [375, 745, 395, 690], [395, 600, 420, 545], [345, 650, 375, 610], [405, 720, 425, 660]]) { ctx.beginPath(); ctx.moveTo(g[0], g[1]); ctx.lineTo(g[2], g[3]); ctx.stroke() }
+    ctx.restore();
+
+    // trigger guard + trigger
+    ctx.beginPath(); ctx.moveTo(548, 556); ctx.bezierCurveTo(528, 625, 578, 660, 625, 648); ctx.bezierCurveTo(668, 636, 678, 590, 668, 548); tube(18, '#7a766e');
+    ctx.beginPath(); ctx.moveTo(578, 560); ctx.quadraticCurveTo(566, 612, 604, 620); tube(12, '#6a665f');
+
+    // frame, with the lighter rounded lump and two screws
+    ctx.beginPath();
+    ctx.moveTo(505, 582); ctx.lineTo(500, 515); ctx.lineTo(478, 490); ctx.lineTo(500, 462); ctx.lineTo(498, 440); ctx.lineTo(520, 418);
+    ctx.lineTo(555, 372); ctx.lineTo(580, 330); ctx.lineTo(790, 326); ctx.lineTo(798, 432); ctx.lineTo(822, 436); ctx.lineTo(826, 446);
+    ctx.lineTo(792, 454); ctx.lineTo(772, 486); ctx.lineTo(768, 505); ctx.lineTo(752, 528); ctx.lineTo(600, 552); ctx.closePath();
+    fs('#8b877f');
+    ctx.save(); ctx.globalAlpha *= .45; ctx.fillStyle = '#b4b0a8'; ctx.beginPath(); ctx.ellipse(560, 445, 42, 58, 0, 0, 7); ctx.fill(); ctx.restore();
+    ctx.fillStyle = '#6a665f'; ctx.lineWidth = ld;
+    for (const p of [[530, 505], [590, 531]]) { ctx.beginPath(); ctx.arc(p[0], p[1], 9, 0, 7); ctx.fill(); ctx.stroke() }
+
+    // barrel: shaded underside, highlight, front sight
+    ctx.beginPath(); ctx.rect(795, 338, 600, 72); fs('#8a867e');
+    ctx.fillStyle = '#6d6963'; ctx.fillRect(797, 392, 596, 16);
+    ctx.save(); ctx.globalAlpha *= .5; ctx.strokeStyle = '#c9c5bc'; ctx.lineWidth = ld; ctx.beginPath(); ctx.moveTo(840, 352); ctx.lineTo(1380, 352); ctx.stroke(); ctx.restore();
+    ctx.beginPath(); ctx.rect(795, 338, 600, 72); ctx.lineWidth = lw; ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(1310, 338); ctx.lineTo(1326, 312); ctx.lineTo(1356, 305); ctx.lineTo(1362, 338); ctx.closePath(); fs('#4d4943');
+
+    // ejector rod and its head
+    ctx.beginPath(); ctx.rect(810, 396, 232, 36); fs('#76726a');
+    ctx.beginPath(); ctx.rect(1048, 394, 38, 44); fs('#85817a');
+
+    // hammer
+    ctx.beginPath(); ctx.moveTo(445, 327); ctx.quadraticCurveTo(470, 330, 488, 348); ctx.quadraticCurveTo(510, 366, 532, 365);
+    ctx.lineTo(556, 346); ctx.lineTo(572, 372); ctx.lineTo(560, 404); ctx.lineTo(538, 430); ctx.lineTo(506, 430); ctx.lineTo(500, 400);
+    ctx.quadraticCurveTo(508, 382, 478, 366); ctx.quadraticCurveTo(452, 352, 445, 327); ctx.closePath(); fs('#58534c');
+
+    // fluted cylinder
+    ctx.beginPath(); ctx.rect(595, 345, 135, 160); fs('#938f87');
+    ctx.save(); ctx.globalAlpha *= .5; ctx.lineWidth = ld; ctx.beginPath(); ctx.moveTo(640, 350); ctx.lineTo(640, 500); ctx.stroke(); ctx.restore();
+    for (const y of [392, 437, 484]) { ctx.beginPath(); ctx.roundRect ? ctx.roundRect(648, y - 13, 66, 26, 13) : ctx.rect(648, y - 13, 66, 26); fs('#77736b', ld) }
+    ctx.beginPath(); ctx.rect(595, 345, 135, 160); ctx.lineWidth = lw; ctx.stroke();
+
+    ctx.restore();
+  }
+
   // finished weapon as an icon (also trophy rail / tag)
   function drawIcon(id, q, s) {
     const sv = WB.jit, sj = JU; WB.jit = (1 - q) * 2.2 + .1; JU = s; ctx.save();
-    if (id === 'revolver') {
-      // Simple ink-style side-view icon matching the game's existing revolver.
-      ctx.rotate(-.12);
-      thick([[-1.15 * s, -.12 * s], [.95 * s, -.12 * s]], .22 * s, 'rgb(108,112,120)', 201);
-      poly([[-.45 * s, -.25 * s], [.75 * s, -.25 * s], [.85 * s, .12 * s], [.1 * s, .2 * s], [-.2 * s, .95 * s], [-.72 * s, .82 * s], [-.48 * s, .12 * s]], 'rgb(108,112,120)', null, 202);
-      ctx.beginPath(); ctx.ellipse(.15 * s, -.02 * s, .32 * s, .27 * s, 0, 0, 7);
-      ctx.fillStyle = 'rgb(88,92,100)'; ctx.fill(); ctx.lineWidth = Math.max(1.2, s * .035); ctx.strokeStyle = INK; ctx.stroke();
-      poly([[-.65 * s, .42 * s], [-.18 * s, .5 * s], [-.42 * s, 1.35 * s], [-.92 * s, 1.2 * s]], 'rgb(154,74,26)', null, 203);
-      ctx.beginPath(); ctx.arc(-.08 * s, .3 * s, .34 * s, .1, 1.25);
-      ctx.strokeStyle = INK; ctx.lineWidth = Math.max(1.2, s * .045); ctx.stroke();
-    }
+    if (id === 'revolver') drawRevolverIcon(s);
     else if (id === 'slingshot' && slOK()) { const sc = 3.7 * s / SLING.h; ctx.translate(-SLING.w / 2 * sc, -SLING.h / 2 * sc); ctx.scale(sc, sc); ctx.drawImage(SLI.full, 0, 0); }
     else if (id === 'slingshot') drawSling(s * .8, { pp: 1, spread: .8, bark: 0, wraps: 9, bands: 1, pouchX: 0, pull: 0, fresh: 0 });
     else { ctx.rotate(-.35); drawBowie(s * .7, { shape: 1, heat: 0, edge: 1, tang: 1, handle: 1, guard: 1, ox: 0 }); }
