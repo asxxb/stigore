@@ -6730,7 +6730,7 @@
         const SG_RELOAD_T = 2.1, SG_KICK = .32, SG_BODY = 8, SG_HEAD = 15, SG_RANGE = 720;
         const SG_PUMP_T = .75, SG_SLIDE = 12;      // rack duration (s), how far the forend slides back (px)
         const pellets = []; let sgId = 0;
-        P.sg = 0; P.sgK = 0; P.sAmmo = 2; P.sgRec = 0; P.sgCd = 0; P.sgFlash = 0; P.sgBig = 1; P.sgSmoke = 0; P.sgWisp = 0;
+        P.sg = 0; P.sgK = 0; P.sAmmo = 2; P.sgRec = 0; P.sgCd = 0; P.sgFlash = 0; P.sgFB = 3; P.sgBig = 1; P.sgSmoke = 0; P.sgWisp = 0;
         P.srl = 0; P.srlE = 0; P.srlI1 = 0; P.srlI2 = 0; P.srlSnap = 0;
         P.sgPump = 0; P.sgPumpE = 0; P.sgPumpC = 0; P.sgPumpN = 0; P.sgOut = 0;   // timer, eject/clack flags, shells fired, shells already ejected
         function sgPumpSlide(u) { return u < .2 ? 0 : u < .5 ? sm((u - .2) / .3) : u < .82 ? 1 - sm((u - .5) / .32) : 0 }
@@ -6750,7 +6750,7 @@
             const m = n === 2 ? [(mm[0][0] + mm[1][0]) / 2, (mm[0][1] + mm[1][1]) / 2] : mm[before === 2 ? 0 : 1];
             P.sAmmo -= n; P.sgCd = Math.max(n === 2 ? .55 : .24, SG_PUMP_T + .05);
             playSfx('shotgun', n === 2 ? 1 : .8);
-            P.sgFlash = 1; P.sgBig = n === 2 ? 1.5 : 1; P.sgSmoke = 2.4; P.idle = 0; P.fid = 0;
+            P.sgFlash = 1; P.sgFB = n === 2 ? 3 : (before === 2 ? 1 : 2); P.sgBig = n === 2 ? 1.5 : 1; P.sgSmoke = 2.4; P.idle = 0; P.fid = 0;
             P.sgRec = Math.min(1.6, P.sgRec + (n === 2 ? 1.25 : .85));
             P.sgPump = .0001; P.sgPumpE = 0; P.sgPumpC = 0; P.sgPumpN = n;
             const per = n === 2 ? 15 : 8, spread = n === 2 ? .2 : .13, id = ++sgId;
@@ -6866,7 +6866,7 @@
             P.sgK += ((P.sg ? 1 : 0) - P.sgK) * Math.min(1, dt * 9);
             if (!P.sg && P.sgK < .01) P.sgK = 0;
             P.sgRec = Math.max(0, P.sgRec - dt * (1.1 + 2.6 * Math.min(1, P.sgRec)));
-            P.sgCd = Math.max(0, P.sgCd - dt); P.sgFlash = Math.max(0, P.sgFlash - dt * 12);
+            P.sgCd = Math.max(0, P.sgCd - dt); P.sgFlash = Math.max(0, P.sgFlash - dt * 7);
             if (!P.sg) { P.srl = 0; P.sgPump = 0 }
             if (P.sgPump > 0) {
                 P.sgPump += dt; const u = P.sgPump / SG_PUMP_T;
@@ -7015,12 +7015,51 @@
             for (const y of [-0.1, 3.4, 6.9]) { ctx.beginPath(); ctx.moveTo(4.2, y); ctx.lineTo(8.2, y); ctx.stroke() }
             ctx.restore();
 
-            // ---- muzzle flash ----
-            if (P.sgFlash > .15) {
-                const f = P.sgFlash, big = P.sgBig, n = Math.floor(now * 30);
-                ctx.save(); ctx.translate(MZ + 2, -16.3); ctx.globalAlpha = Math.min(1, f * 1.4); ctx.fillStyle = '#ffb02e'; ctx.strokeStyle = '#111'; ctx.lineWidth = 1.8; ctx.beginPath();
-                for (let i = 0; i < 14; i++) { const rr = i % 2 ? 8 * big : (28 + 14 * hash(i + n)) * big * (.6 + .4 * f), t = i / 14 * Math.PI * 2, x = Math.cos(t) * rr * 1.5, y = Math.sin(t) * rr; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y) }
-                ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.fillStyle = '#fff3c4'; ctx.beginPath(); ctx.arc(0, 0, 8 * big, 0, 7); ctx.fill(); ctx.restore();
+            // ---- muzzle blast: fire spitting out of the barrel(s), no outlines ----
+            if (P.sgFlash > .04) {
+                const f = P.sgFlash, big = P.sgBig, n = Math.floor(now * 40), age = 1 - f;
+                ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.lineJoin = 'round';
+                const mzs = [[108.9, -19.8], [109.8, -12.9]];
+                for (let k = 0; k < 2; k++) {
+                    if (!((P.sgFB || 3) & (1 << k))) continue;
+                    const ox = mzs[k][0] + 1, oy = mzs[k][1];
+                    const L = (70 + 55 * hash(n + k * 7)) * big * Math.min(1, f * 1.5 + .25) * (.55 + .45 * Math.min(1, age * 5 + .4));   // flame length
+                    const Wd = 11 * big * (.7 + .3 * f);
+                    // outer orange plume: ragged tongue, spreading then tapering
+                    const tongue = (len, wid, seed, col0, col1, col2, alpha) => {
+                        const pts = 9, up = [], dn = [];
+                        for (let i = 0; i <= pts; i++) {
+                            const t = i / pts, x = len * t, env = Math.sin(Math.min(1, t * 1.15) * Math.PI) * (1 - t * .35) * wid * (1 + .35 * Math.sin(t * 6 + now * 50 + seed));
+                            const j1 = (hash(seed + i * 3.1 + n) - .5) * wid * .55, j2 = (hash(seed + i * 5.7 + n) - .5) * wid * .55, drift = t * t * wid * .8 * (hash(seed + n) - .5);
+                            up.push([x, -env + j1 + drift]); dn.push([x, env + j2 + drift]);
+                        }
+                        ctx.beginPath(); ctx.moveTo(0, 0);
+                        up.forEach(p => ctx.lineTo(p[0], p[1])); ctx.lineTo(len * 1.05, 0);
+                        for (let i = dn.length - 1; i >= 0; i--) ctx.lineTo(dn[i][0], dn[i][1]);
+                        ctx.closePath();
+                        const g = ctx.createLinearGradient(0, 0, len, 0); g.addColorStop(0, col0); g.addColorStop(.45, col1); g.addColorStop(1, col2);
+                        ctx.globalAlpha = alpha; ctx.fillStyle = g; ctx.fill();
+                    };
+                    ctx.save(); ctx.translate(ox, oy);
+                    // soft glow around the muzzle
+                    const gl = ctx.createRadialGradient(0, 0, 0, 0, 0, 46 * big);
+                    gl.addColorStop(0, 'rgba(255,214,140,.75)'); gl.addColorStop(.35, 'rgba(255,140,40,.35)'); gl.addColorStop(1, 'rgba(255,90,10,0)');
+                    ctx.globalAlpha = Math.min(1, f * 1.3); ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(0, 0, 46 * big, 0, 7); ctx.fill();
+                    tongue(L, Wd * 1.5, 1 + k, 'rgba(255,170,60,.95)', 'rgba(255,100,20,.7)', 'rgba(160,30,0,0)', Math.min(1, f * 1.6));       // orange outer flame
+                    for (let q = -1; q <= 1; q += 2) { ctx.save(); ctx.rotate(q * (.14 + .1 * hash(n + q + k))); tongue(L * .6, Wd * .8, 11 + q + k, 'rgba(255,190,80,.9)', 'rgba(255,120,30,.55)', 'rgba(200,50,0,0)', Math.min(1, f * 1.4)); ctx.restore() }   // side licks
+                    tongue(L * .62, Wd * .85, 5 + k, 'rgba(255,248,215,1)', 'rgba(255,214,120,.85)', 'rgba(255,150,40,0)', Math.min(1, f * 1.8));  // yellow-white core
+                    const cg = ctx.createRadialGradient(0, 0, 0, 0, 0, 15 * big); cg.addColorStop(0, 'rgba(255,255,245,1)'); cg.addColorStop(1, 'rgba(255,230,160,0)');
+                    ctx.globalAlpha = Math.min(1, f * 2); ctx.fillStyle = cg; ctx.beginPath(); ctx.arc(2, 0, 15 * big, 0, 7); ctx.fill();   // white-hot flash at the bore
+                    // burning powder embers streaking out
+                    ctx.globalCompositeOperation = 'source-over'; ctx.lineCap = 'round';
+                    for (let i = 0; i < 9; i++) {
+                        const a = (hash(i * 4.3 + k * 2 + 3) - .5) * .7, d0 = (14 + 70 * hash(i * 2.1 + 1)) * (1 + age * 1.6) * big, l2 = 4 + 9 * hash(i + 9);
+                        ctx.globalAlpha = Math.max(0, f * 1.3 - .1) * .9; ctx.strokeStyle = hash(i + n * .1) < .5 ? '#ffd27a' : '#ff8a2a'; ctx.lineWidth = 1.1;
+                        ctx.beginPath(); ctx.moveTo(Math.cos(a) * d0, Math.sin(a) * d0); ctx.lineTo(Math.cos(a) * (d0 + l2), Math.sin(a) * (d0 + l2)); ctx.stroke();
+                    }
+                    ctx.restore();
+                }
+                ctx.restore();
             }
             ctx.restore();
 
