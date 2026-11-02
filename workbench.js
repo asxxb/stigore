@@ -210,8 +210,7 @@
     // The revolver already exists in the main game; selecting it must not
     // consume materials or enter the crafting-stage system.
     if (id === 'revolver') {
-      say('REVOLVER ALREADY OWNED · G DRAW / F FIRE / R RELOAD');
-      SFX.click();
+      window.location.href = 'revolver-workbench.html';
       return;
     }
     const w = WEAP[id];
