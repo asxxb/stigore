@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Single-Action Army — Assembly Bench</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--bg:#D7BC95;--ui:rgba(34,26,18,.88);--ut:#f7ecd9;--ua:#D9AC43}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--ui:rgba(247,236,217,.93);--ut:#2b2016;--ua:#8a5a1e}}
+:root[data-theme="dark"]{--ui:rgba(247,236,217,.93);--ut:#2b2016;--ua:#8a5a1e}
+html,body{height:100%;margin:0;background:var(--bg);overflow:hidden;font:600 14px ui-sans-serif,system-ui,sans-serif}
+canvas{display:block;width:100%;height:100%;touch-action:none}
+#bar{position:fixed;top:calc(env(safe-area-inset-top,0px) + 8px);left:8px;right:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;pointer-events:none}
+#bar>*{pointer-events:auto;background:var(--ui);color:var(--ut);border-radius:10px;padding:7px 12px}
+#bar>#sp{flex:1;background:none;padding:0;pointer-events:none}
+button{font:inherit;border:0;cursor:pointer}
+button:hover,button:focus-visible{outline:2px solid var(--ua)}
+#pb{width:80px;height:6px;border-radius:3px;background:rgba(128,128,128,.4);display:inline-block;vertical-align:middle;margin-left:8px;overflow:hidden}
+#pf{display:block;height:100%;width:0;background:var(--ua)}
+</style></head><body>
+<canvas id="c"></canvas>
+<div id="bar"><div>Single-Action Army bench</div><div id="cn"></div><span id="sp"></span><button id="bs">Scatter parts</button><button id="bm">Sound on</button></div>
+<script>
+(()=>{
+const W=1280,H=720,FX=560,FY=300,LW=4,K=3,SNAP=58;
+const OL='#16161b',ST='#8a8a87',STD='#56575a',HI='#cfcec8',WD='#965C34',WDD='#6c3f20',BR='#D9AC43',BRD='#a37a26';
+const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+let S=1,OX=0,OY=0,DPR=1;
+function resize(){DPR=Math.min(devicePixelRatio||1,2);const r=cv.getBoundingClientRect();cv.width=r.width*DPR;cv.height=r.height*DPR;S=Math.min(r.width/W,r.height/H);OX=(r.width-W*S)/2;OY=(r.height-H*S)/2}
+addEventListener('resize',resize);
+const wrap=a=>{a%=6.2832;if(a>3.1416)a-=6.2832;if(a<-3.1416)a+=6.2832;return a};
+function rr(g,x,y,w,h,r){g.moveTo(x+r,y);g.arcTo(x+w,y,x+w,y+h,r);g.arcTo(x+w,y+h,x,y+h,r);g.arcTo(x,y+h,x,y,r);g.arcTo(x,y,x+w,y,r);g.closePath()}
+function fs(g,f,lw){g.fillStyle=f;g.fill();g.lineWidth=lw||LW;g.strokeStyle=OL;g.lineJoin='round';g.lineCap='round';g.stroke()}
+function line(g,x1,y1,x2,y2,c,w){g.beginPath();g.moveTo(x1,y1);g.lineTo(x2,y2);g.lineWidth=w;g.strokeStyle=c;g.lineCap='round';g.stroke()}
+function hole(g,x,y,r){g.beginPath();g.arc(x,y,r,0,7);fs(g,STD,2)}
+
+/* ---------- part artwork: traced from the reference revolver (image units * Q) ---------- */
+const Q=.5,RX=x=>(x-900)*Q,RY=y=>(y-230)*Q,OW=9;
+function vg(g,y0,y1,c){const k=g.createLinearGradient(0,y0,0,y1);c.forEach((s,i)=>k.addColorStop(i/(c.length-1),s));return k}
+function vg2(g,y0,y1,c){const k=g.createLinearGradient(0,y0,0,y1);c.forEach(s=>k.addColorStop(s[0],s[1]));return k}
+function rivet(g,x,y,r,lw){g.beginPath();g.arc(x,y,r,0,7);fs(g,'#a3a39f',lw||2);g.beginPath();g.arc(x-r*.3,y-r*.3,r*.38,0,7);g.fillStyle='#ecebe5';g.fill()}
+function irivet(g,x,y,r){g.beginPath();g.arc(x,y,r,0,7);fs(g,'#a3a39f',6);g.beginPath();g.arc(x-r*.3,y-r*.3,r*.38,0,7);g.fillStyle='#ecebe5';g.fill()}
+function poly(g,pts){g.beginPath();pts.forEach((q,i)=>i?g.lineTo(q[0],q[1]):g.moveTo(q[0],q[1]));g.closePath()}
+
+const FRAME_BODY=[[792,100],[1072,93],[1090,104],[1122,111],[1124,246],[1098,268],[1070,298],[1058,352],[1042,370],[942,378],[832,394],[702,414],[688,330],[652,297],[664,262],[692,240],[748,162],[770,122]];
+function iFrame(g){
+ // body with the cylinder window cut out
+ poly(g,FRAME_BODY);rr(g,805,118,235,212,24);
+ g.fillStyle=vg2(g,92,420,[[0,'#a09f9b'],[.5,'#8d8c89'],[1,'#7b7b7a']]);g.fill('evenodd');
+ g.lineWidth=OW;g.strokeStyle=OL;g.lineJoin='round';g.stroke();
+ g.save();poly(g,FRAME_BODY);g.clip();
+ poly(g,[[640,300],[650,255],[700,232],[715,306]]);g.fillStyle='rgba(255,255,255,.28)';g.fill();
+ g.fillStyle='rgba(255,255,255,.12)';g.fillRect(1042,90,90,170);
+ g.restore();
+ g.beginPath();rr(g,805,118,235,212,24);g.lineWidth=12;g.strokeStyle=OL;g.stroke();
+ line(g,818,106,1062,106,'#d9d8d2',5);
+ line(g,1043,114,1043,250,STD,4);line(g,1051,116,1051,250,'#dedcd6',3);
+ line(g,712,404,1040,364,'rgba(0,0,0,.25)',5);
+ line(g,672,296,690,262,'rgba(255,255,255,.35)',4);
+}
+function iGuard(g){
+ g.beginPath();g.arc(835,425,94,0,7);g.lineWidth=38;g.strokeStyle=OL;g.lineCap='round';g.stroke();
+ g.lineWidth=20;g.strokeStyle=ST;g.stroke();
+ g.beginPath();g.arc(835,425,94,1.9,2.9);g.lineWidth=7;g.strokeStyle='#d6d5cf';g.stroke();
+ g.beginPath();g.arc(835,425,94,.2,1.3);g.lineWidth=7;g.strokeStyle=STD;g.stroke();
+}
+function iCyl(g,p){
+ g.beginPath();rr(g,792,112,256,224,26);fs(g,vg(g,112,336,['#a8a7a2','#8f8f8d','#77787a','#5f6063']),OW);
+ g.beginPath();rr(g,806,150,46,150,22);g.fillStyle='rgba(225,224,218,.55)';g.fill();
+ line(g,852,134,852,316,'rgba(0,0,0,.35)',4);
+ line(g,860,130,1030,130,'#d8d7d1',4);
+ for(let k=0;k<6;k++){const a=p.ang+k*Math.PI/3,c=Math.cos(a);if(c<=0)continue;
+  const h=30+5*c,y=224+Math.sin(a)*77,xr=1030-50*(1-c);
+  g.beginPath();rr(g,878,y-h/2,xr-878,h,Math.min(h/2,17));fs(g,'#4a4b4e',5);
+  line(g,892,y+h/2-6,xr-14,y+h/2-6,'rgba(255,255,255,.2)',3)}
+}
+function iSight(g){
+ poly(g,[[1640,116],[1672,84],[1720,70],[1732,76],[1732,116]]);fs(g,'#4b4b4e',OW);
+ g.beginPath();g.arc(1702,98,5,0,7);g.fillStyle='#d9d8d2';g.fill();
+}
+function iBarrel(g){
+ g.beginPath();rr(g,1124,114,652,102,10);
+ fs(g,vg2(g,114,216,[[0,'#9b9a96'],[.2,'#c3c2bd'],[.32,'#b0afab'],[.55,'#8a8a88'],[.8,'#6e6f71'],[1,'#5a5b5e']]),OW);
+ line(g,1144,150,1756,150,'rgba(0,0,0,.18)',3);
+}
+function iHousing(g){
+ g.beginPath();rr(g,1124,214,270,36,8);fs(g,vg2(g,214,250,[[0,'#b9b8b3'],[.45,'#a1a09c'],[1,'#7c7d7f']]),OW);
+}
+function iClamp(g){
+ g.beginPath();rr(g,1390,196,66,66,10);fs(g,vg(g,196,262,['#c7c6c1','#a1a09c','#7e7f81']),OW);
+ irivet(g,1422,230,10);
+}
+function iHammer(g){
+ g.beginPath();g.moveTo(590,101);g.quadraticCurveTo(604,92,622,98);g.quadraticCurveTo(652,110,672,134);g.quadraticCurveTo(702,152,744,130);
+ g.lineTo(756,134);g.quadraticCurveTo(748,160,726,192);g.quadraticCurveTo(710,216,698,240);g.lineTo(690,232);g.quadraticCurveTo(686,208,682,196);
+ g.quadraticCurveTo(650,172,622,144);g.quadraticCurveTo(600,120,590,101);g.closePath();
+ const k=g.createLinearGradient(590,95,740,240);k.addColorStop(0,'#85858a');k.addColorStop(.5,'#58585b');k.addColorStop(1,'#3f4044');
+ fs(g,k,OW);
+ line(g,608,104,664,130,'rgba(255,255,255,.35)',4);
+ line(g,748,140,730,184,'rgba(255,255,255,.3)',4);
+}
+function iTrig(g){
+ g.beginPath();g.moveTo(792,392);g.lineTo(820,388);g.quadraticCurveTo(826,420,820,442);g.quadraticCurveTo(820,464,840,470);g.lineTo(834,482);
+ g.quadraticCurveTo(800,474,796,436);g.quadraticCurveTo(794,414,792,392);g.closePath();
+ fs(g,vg(g,388,482,['#a9a8a3',ST,STD]),OW);
+ line(g,804,400,808,436,'#e4e3dd',3);
+}
+function iGrip(g,p){
+ const path=()=>{g.beginPath();g.moveTo(600,296);g.lineTo(688,304);g.lineTo(688,418);g.quadraticCurveTo(650,448,642,500);g.quadraticCurveTo(633,563,635.34,626);
+  g.lineTo(398.57,626);g.lineTo(536,340);g.closePath()};
+ path();const k=g.createLinearGradient(390,0,690,0);k.addColorStop(0,'#7c4522');k.addColorStop(.55,'#8f5429');k.addColorStop(1,'#a2622f');
+ g.fillStyle=k;g.fill();
+ if(p.dark){g.fillStyle='rgba(0,0,0,.22)';g.fill()}
+ g.lineWidth=OW;g.strokeStyle=OL;g.lineJoin='round';g.stroke();
+ line(g,610,306,682,312,'rgba(255,220,170,.35)',5);
+ line(g,679,324,679,412,'rgba(255,215,160,.3)',6);
+}
+function iInlay(g){
+ poly(g,[[546,410],[584,382],[614,398],[622,432],[578,578],[540,606],[498,604],[470,556]]);
+ g.fillStyle='#6e4020';g.fill();g.lineWidth=5;g.strokeStyle=OL;g.lineJoin='round';g.stroke();
+}
+function iButt(g,p){
+ // same wood + gradient as the grips, so the finished gun reads as one piece; only a faint seam shows once fitted
+ const path=()=>{g.beginPath();g.moveTo(635.15,620);g.lineTo(636,640);g.quadraticCurveTo(636,662,614,664);g.lineTo(400,666);g.quadraticCurveTo(380,666,388,648);g.lineTo(401.45,620)};
+ const k=g.createLinearGradient(390,0,690,0);k.addColorStop(0,'#7c4522');k.addColorStop(.55,'#8f5429');k.addColorStop(1,'#a2622f');
+ path();g.closePath();g.fillStyle=k;g.fill();
+ g.lineWidth=OW;g.strokeStyle=OL;g.lineJoin='round';g.lineCap='round';
+ if(p.inst){path();g.stroke();line(g,404,626,632,626,'rgba(22,22,27,.5)',3)}
+ else{path();g.closePath();g.stroke()}
+}
+// internal parts (drawn in game units; hidden once covered, as in the reference)
+function dSpring(g,p){
+ if(p.hid)return;
+ const L=p.L*(1+.18*p.wob*Math.sin(p.wt));
+ if(p.head){g.beginPath();rr(g,-L/2-16,-9,14,18,3);fs(g,ST);line(g,-L/2-2,0,L/2+6,0,OL,7);line(g,-L/2-2,0,L/2+6,0,HI,3)}
+ for(let i=0;i<p.n;i++){const x=-L/2+L*i/(p.n-1);g.beginPath();g.ellipse(x,0,3.2,p.cr||9,.28,0,7);g.lineWidth=5.5;g.strokeStyle=OL;g.stroke();g.lineWidth=2.4;g.strokeStyle='#a3abb6';g.stroke()}
+}
+function dScrew(g,p){
+ if(p.inst){rivet(g,0,0,5.5,p.rl)}  // installed screws read as frame rivets
+ else{const l=p.len;g.beginPath();rr(g,-l/2,-4.5,l,9,2);fs(g,ST);for(let x=-l/2+6;x<l/2-2;x+=4.5)line(g,x,-4,x+2,4,OL,1.6);g.beginPath();rr(g,-l/2-9,-8,9,16,3);fs(g,'#6a727c')}
+}
+
+/* ---------- parts ---------- */
+const parts=[],P={};
+function D(id,name,o){
+ const p=Object.assign({id,name,x:0,y:0,r:0,vx:0,vy:0,vr:0,z:0,inst:false,dirty:true,deps:[],ex:0,wob:0,wt:0,t:0,margin:8,ang:0,angT:0,av:0},o);
+ p.tx=FX+o.rx;p.ty=FY+o.ry;p.tr=o.rot||0;p.x=o.sx;p.y=o.sy;p.r=o.sr||0;
+ p.rad=Math.max(p.b[2]-p.b[0],p.b[3]-p.b[1])*.35;P[id]=p;parts.push(p);return p;
+}
+// image-space part: org = pivot/anchor in reference px, ib = image bounds, fn draws in reference px
+function IP(id,name,org,ib,fn,o){
+ const pad=10,b=[(ib[0]-pad-org[0])*Q,(ib[1]-pad-org[1])*Q,(ib[2]+pad-org[0])*Q,(ib[3]+pad-org[1])*Q];
+ return D(id,name,Object.assign({b,rx:RX(org[0]),ry:RY(org[1]),draw:(g,p)=>{g.save();g.scale(Q,Q);g.translate(-org[0],-org[1]);fn(g,p);g.restore()}},o));
+}
+IP('frame','Frame',[900,230],[640,85,1130,535],iFrame,{fixed:1,inst:true,sx:FX,sy:FY});
+IP('guard','Trigger guard',[835,425],[722,312,948,538],iGuard,{sx:105,sy:612,sr:.4,deps:['frame'],hb:[-56,-12,56,56],tip:'Fit the trigger guard under the frame.'});
+IP('barrel','Barrel',[1450,165],[1124,114,1776,216],iBarrel,{sx:880,sy:95,sr:.05,deps:['frame'],tip:'Slide the barrel onto the front of the frame.'});
+IP('sight','Front sight',[1686,100],[1640,70,1732,116],iSight,{sx:240,sy:660,sr:-.35,deps:['barrel'],tip:'The front sight seats on top of the barrel.'});
+IP('ejHousing','Ejector housing',[1260,230],[1124,214,1394,250],iHousing,{sx:880,sy:158,sr:-.04,deps:['barrel'],tip:'The ejector housing sits under the barrel.'});
+IP('ejClamp','Ejector clamp',[1423,229],[1390,196,1456,262],iClamp,{sx:1215,sy:100,sr:.5,deps:['ejHousing'],tip:'The clamp locks the housing to the barrel.'});
+IP('cyl','Cylinder',[920,224],[792,112,1048,336],iCyl,{sx:1130,sy:410,deps:['frame'],tip:'Drop the cylinder into the open window. Tap it to spin.'});
+IP('hammer','Hammer',[728,195],[590,92,768,240],iHammer,{sx:110,sy:130,sr:.5,deps:['frame'],tip:'The hammer pivots at the rear of the frame.'});
+D('sHammer','Hammer screw',{b:[-30,-14,22,14],rx:RX(757),ry:RY(257),sx:900,sy:650,sr:.3,len:30,hr:8,screw:1,margin:12,draw:dScrew,deps:['hammer'],tip:'Pin the hammer at its pivot hole.'});
+D('mainspring','Mainspring & guide',{b:[-90,-20,84,20],rx:RX(655),ry:RY(365),rot:1.3,sx:150,sy:360,sr:.3,L:120,n:9,draw:dSpring,head:1,deps:['hammer','sHammer'],tip:'The mainspring runs down the back of the frame.'});
+IP('trigger','Trigger',[806,396],[792,388,840,482],iTrig,{sx:215,sy:250,sr:-.5,deps:['frame'],tip:'The trigger hangs inside the trigger guard.'});
+D('sTrigger','Trigger screw',{b:[-30,-14,22,14],rx:RX(798),ry:RY(346),sx:980,sy:665,sr:-.2,len:26,hr:7,screw:1,margin:12,draw:dScrew,deps:['trigger'],tip:'Pin the trigger at its pivot hole.'});
+D('spring','Trigger spring',{b:[-34,-16,34,16],rx:RX(872),ry:RY(440),rot:.4,sx:150,sy:470,sr:.6,L:40,n:6,draw:dSpring,deps:['trigger'],tip:'The small spring rests behind the trigger.'});
+IP('gripL','Left grip',[540,480],[386,296,688,630],iGrip,{sx:1130,sy:560,sr:1.35,dark:1,deps:['mainspring'],tip:'The left grip goes on the back of the frame.'});
+IP('gripR','Right grip',[540,480],[386,296,688,630],iGrip,{sx:1140,sy:228,sr:-1.2,deps:['gripL'],tip:'The right grip covers the other side.'});
+IP('inlay','Grip inlay',[546,494],[470,382,622,606],iInlay,{sx:770,sy:640,sr:1.2,margin:-4,deps:['gripR'],tip:'Set the inlay into the right grip.'});
+IP('cap','Butt cap',[514,646],[380,616,642,672],iButt,{sx:355,sy:655,sr:-.08,deps:['gripR'],tip:'The butt cap closes the base of the grips.'});
+D('sGrip','Grip screw',{b:[-34,-14,26,14],rx:RX(720),ry:RY(272),sx:1060,sy:650,sr:.15,len:38,hr:9,screw:1,margin:12,draw:dScrew,deps:['gripR'],tip:'Screw through the grip hole to hold both grips.'});
+// the five frame screws: installed they read as the original frame rivets
+function SCR(id,name,ix,iy,o){const l=o.len||26;return D(id,name,Object.assign({b:[-l/2-15,-13,l/2+7,13],rx:RX(ix),ry:RY(iy),len:l,hr:7,screw:1,margin:4,flat:1,rl:3,hb:[-9,-9,9,9],draw:dScrew},o))}
+SCR('sF1','Frame screw (top rear)',798,123,{sx:270,sy:82,sr:.25,len:24,deps:['frame'],tip:'Fasten the top rear frame screw.'});
+SCR('sF2','Frame screw (top front)',1063,120,{sx:350,sy:84,sr:-.3,len:24,deps:['barrel'],tip:'This screw ties the barrel to the frame.'});
+SCR('sF3','Frame screw (front)',1083,246,{sx:430,sy:80,sr:.12,len:28,deps:['barrel'],tip:'This screw ties the barrel to the frame.'});
+SCR('sF4','Frame screw (guard front)',1035,338,{sx:510,sy:84,sr:-.18,len:28,deps:['guard'],tip:'This screw holds the front of the trigger guard.'});
+SCR('sF5','Frame screw (guard rear)',727,360,{sx:590,sy:80,sr:.35,len:26,deps:['guard'],tip:'This screw holds the rear of the trigger guard.'});
+P.frame.x=FX;P.frame.y=FY;
+const Z=['gripL','mainspring','spring','cyl','guard','frame','sight','barrel','ejHousing','ejClamp','trigger','hammer','gripR','inlay','cap','sHammer','sTrigger','sGrip','sF1','sF2','sF3','sF4','sF5'];
+
+function render(p){
+ const[b0,b1,b2,b3]=p.b;
+ if(!p.cv){p.cv=document.createElement('canvas');p.cv.width=Math.ceil((b2-b0)*K);p.cv.height=Math.ceil((b3-b1)*K)}
+ const g=p.cv.getContext('2d');g.setTransform(K,0,0,K,-b0*K,-b1*K);g.clearRect(b0,b1,b2-b0,b3-b1);p.draw(g,p);p.dirty=false;
+}
+
+/* ---------- state ---------- */
+let held=null,down=null,ptr={x:0,y:0},counter=1,complete=false,started=false,t0=0,tEnd=0;
+let cocked=false,hc=0,hcT=0,tp=0,shake=0,lastTick=0;
+const parts2=[],sparks=[],toastS={s:'',t:0};
+const say=(s,t=2.6)=>{toastS.s=s;toastS.t=t};
+const depsOk=p=>p.deps.every(d=>P[d].inst);
+const removable=p=>!parts.some(q=>q.inst&&q.deps.includes(p.id));
+const names=p=>p.deps.filter(d=>!P[d].inst).map(d=>P[d].name).join(' and ');
+
+/* audio */
+let AC=null,mute=false;
+function tone(f,d,ty,v,f2){if(mute||!AC)return;const n=AC.currentTime,o=AC.createOscillator(),g=AC.createGain();o.type=ty||'square';o.frequency.setValueAtTime(f,n);if(f2)o.frequency.exponentialRampToValueAtTime(f2,n+d);g.gain.setValueAtTime(v||.06,n);g.gain.exponentialRampToValueAtTime(.0001,n+d);o.connect(g);g.connect(AC.destination);o.start(n);o.stop(n+d)}
+const later=(f,ms)=>setTimeout(f,ms);
+const sndSnap=()=>{tone(1300,.04,'square',.05,700);tone(240,.12,'triangle',.1,90)};
+const sndErr=()=>tone(150,.18,'sawtooth',.05,90);
+
+function spark(x,y,n,c){for(let i=0;i<n;i++){const a=Math.random()*6.28,s=60+Math.random()*180;sparks.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s-60,l:.5+Math.random()*.4,c:c||(Math.random()<.5?BR:'#fff3c9')})}}
+function refresh(){const t=parts.filter(p=>!p.fixed);document.getElementById('cn').textContent=t.filter(p=>p.inst).length+' / '+t.length+' parts'}
+function resetMech(){cocked=false;hc=0;hcT=0;tp=0;P.hammer.ex=0;P.trigger.ex=0;complete=false}
+
+function grab(p){
+ held=p;p.held=true;p.snap=null;p.ox=p.x-ptr.x;p.oy=p.y-ptr.y;p.hrot=p.r;p.t=++counter;
+ started=true;
+ if(p.L){p.wob=.9;p.wt=0}
+ tone(320,.06,'triangle',.05);
+}
+function release(p){
+ p.held=false;held=null;
+ p.vr=Math.max(-8,Math.min(8,p.vx*.006));
+ const d=Math.hypot(p.x-p.tx,p.y-p.ty);
+ if(d<SNAP){
+  if(depsOk(p)){p.snap={t:0,x0:p.x,y0:p.y,r0:p.r};p.vx=p.vy=p.vr=0;p.t=++counter}
+  else{say('Install the '+names(p)+' first.');sndErr();p.vx=(p.x-p.tx)*5+(Math.random()-.5)*60;p.vy=(p.y-p.ty)*5-60}
+ }else tone(170,.08,'triangle',.06,90);
+ if(p.L){p.wob=.8;p.wt=0}
+}
+function finish(p){
+ p.snap=null;p.inst=true;p.x=p.tx;p.y=p.ty;p.r=p.tr;p.z=0;p.dirty=true;
+ if(p.L){p.wob=1;p.wt=0}
+ spark(p.tx,p.ty,10);sndSnap();shake=2;refresh();
+ if(parts.every(q=>q.inst)){complete=true;
+  say('Assembled! Cock the hammer, then pull the trigger.',6);
+  for(let i=0;i<5;i++)later(()=>{spark(300+Math.random()*700,150+Math.random()*300,14);tone(600+i*160,.12,'triangle',.07)},i*110)}
+}
+function cock(){
+ if(cocked){say('Hammer is already cocked.');return}
+ cocked=true;hcT=1;P.cyl.angT+=Math.PI/3;
+ [0,70,140].forEach(ms=>later(()=>tone(1500+ms*3,.025,'square',.05),ms));later(()=>tone(700,.06,'square',.06),210);
+}
+function pull(){
+ if(!cocked){say('Cock the hammer first.');sndErr();return}
+ cocked=false;hcT=0;tp=1;shake=7;tone(2400,.03,'square',.09);tone(210,.14,'triangle',.12,70);
+ say('Click! Dry fire, nothing is loaded.');
+}
+function scatter(){
+ resetMech();complete=false;started=false;held=null;
+ for(const p of parts){
+  if(p.fixed)continue;
+  p.inst=false;p.held=false;p.snap=null;p.dirty=true;p.ex=0;
+  const sx=p.sx+(Math.random()-.5)*30,sy=p.sy+(Math.random()-.5)*20;
+  p.x=p.tx;p.y=p.ty;p.r=p.tr;p.vx=(sx-p.tx)*4;p.vy=(sy-p.ty)*4;p.vr=(Math.random()-.5)*14;p.t=++counter;
+  p.angT=p.ang=0;
+ }
+ refresh();tone(120,.3,'sawtooth',.06,60);shake=8;
+}
+
+/* ---------- input ---------- */
+function toW(e){const r=cv.getBoundingClientRect();return{x:(e.clientX-r.left-OX)/S,y:(e.clientY-r.top-OY)/S}}
+function order(){
+ const a=Z.map(id=>P[id]).filter(p=>p.inst);
+ const b=parts.filter(p=>!p.inst).sort((m,n)=>m.t-n.t);
+ return a.concat(b);
+}
+function hit(x,y){
+ const l=order();
+ for(let i=l.length-1;i>=0;i--){
+  const p=l[i];if(p.fixed)continue;
+  const dx=x-p.x,dy=y-p.y,a=-(p.r+p.ex),c=Math.cos(a),s=Math.sin(a),lx=dx*c-dy*s,ly=dx*s+dy*c,m=p.margin;
+  const bb=(p.inst&&p.hb)||p.b;
+  if(lx>bb[0]-m&&lx<bb[2]+m&&ly>bb[1]-m&&ly<bb[3]+m)return p;
+ }
+ return null;
+}
+cv.addEventListener('pointerdown',e=>{
+ if(!AC){try{AC=new(window.AudioContext||window.webkitAudioContext)()}catch(_){}}
+ ptr=toW(e);const p=hit(ptr.x,ptr.y);if(!p)return;
+ cv.setPointerCapture(e.pointerId);down={p,sx:ptr.x,sy:ptr.y,moved:false};
+ if(!p.inst)grab(p);
+});
+cv.addEventListener('pointermove',e=>{
+ ptr=toW(e);
+ if(down&&!down.moved&&Math.hypot(ptr.x-down.sx,ptr.y-down.sy)>8){
+  down.moved=true;const p=down.p;
+  if(p.inst&&!held){
+   if(removable(p)){p.inst=false;p.dirty=true;if(['hammer','trigger','cyl'].includes(p.id))resetMech();complete=false;refresh();grab(p)}
+   else{const q=parts.find(q=>q.inst&&q.deps.includes(p.id));say('Remove the '+q.name+' first.');sndErr()}
+  }
+ }
+});
+function up(){
+ if(!down)return;const p=down.p,moved=down.moved;down=null;
+ if(held)release(p);
+ if(!moved){
+  if(p.inst&&complete){if(p.id==='hammer')cock();else if(p.id==='trigger')pull()}
+  else if(p.id==='cyl'&&!p.inst){p.av=14}
+ }
+}
+cv.addEventListener('pointerup',up);cv.addEventListener('pointercancel',up);
+cv.addEventListener('wheel',e=>{if(held){held.hrot+=e.deltaY*.003;e.preventDefault()}},{passive:false});
+addEventListener('keydown',e=>{if(held){if(e.key==='q'||e.key==='Q')held.hrot-=.2;if(e.key==='e'||e.key==='E')held.hrot+=.2}});
+document.getElementById('bs').onclick=scatter;
+document.getElementById('bm').onclick=e=>{mute=!mute;e.target.textContent=mute?'Sound off':'Sound on'};
+
+/* ---------- simulation ---------- */
+function step(dt){
+ for(const p of parts){
+  if(p.fixed)continue;
+  if(p.wob>.004){p.wob*=Math.exp(-5*dt);p.wt+=dt*34;p.dirty=true}else if(p.wob){p.wob=0;p.dirty=true}
+  if(p.id==='mainspring'||p.id==='spring'){const h=p.inst&&(p.id==='spring'?P.sTrigger.inst:P.gripL.inst);if(h!==!!p.hid){p.hid=h;p.dirty=true}}
+  if(p.snap){
+   const s=p.snap;s.t+=dt/.2;const t=Math.min(1,s.t),e=1-Math.pow(1-t,3);
+   p.x=s.x0+(p.tx-s.x0)*e;p.y=s.y0+(p.ty-s.y0)*e;p.r=p.tr+wrap(s.r0-p.tr)*(1-e);
+   if(t>=1)finish(p);continue;
+  }
+  if(p.inst){
+   p.x=p.tx;p.y=p.ty;p.r=p.tr;p.z=0;
+   if(p.id==='cyl'){const d=p.angT-p.ang;if(Math.abs(d)>.002){p.ang+=d*Math.min(1,dt*14);p.dirty=true}}
+   continue;
+  }
+  if(p.held){
+   let tx=ptr.x+p.ox,ty=ptr.y+p.oy,d=999,ok=depsOk(p);
+   if(ok){d=Math.hypot(tx-p.tx,ty-p.ty);if(d<80){const m=.55*(1-d/80);tx+=(p.tx-tx)*m;ty+=(p.ty-ty)*m}}
+   p.vx+=((tx-p.x)*240-p.vx*22)*dt;p.vy+=((ty-p.y)*240-p.vy*22)*dt;p.x+=p.vx*dt;p.y+=p.vy*dt;
+   let tr=p.hrot+Math.max(-.4,Math.min(.4,p.vx*.0011));
+   if(ok&&d<90)tr=p.tr+wrap(tr-p.tr)*(d/90);
+   p.r+=wrap(tr-p.r)*Math.min(1,dt*12);
+   if(p.id==='cyl'){p.ang+=p.vx*dt*.02;p.dirty=true}
+  }else{
+   p.x+=p.vx*dt;p.y+=p.vy*dt;p.r+=p.vr*dt;
+   const f=Math.exp(-4*dt);p.vx*=f;p.vy*=f;p.vr*=Math.exp(-3*dt);
+   const m=p.rad;
+   if(p.x<m){p.x=m;p.vx=Math.abs(p.vx)*.5}if(p.x>W-m){p.x=W-m;p.vx=-Math.abs(p.vx)*.5}
+   if(p.y<70+m*.4){p.y=70+m*.4;p.vy=Math.abs(p.vy)*.5}if(p.y>H-m*.4){p.y=H-m*.4;p.vy=-Math.abs(p.vy)*.5}
+  }
+  if(p.id==='cyl'){
+   if(p.av){p.ang+=p.av*dt;p.av*=Math.exp(-1.6*dt);if(Math.abs(p.av)<.05)p.av=0;p.dirty=true}
+   p.angT=p.ang;
+   const k=Math.floor(p.ang/(Math.PI/3));if(k!==lastTick){lastTick=k;tone(1900,.02,'square',.025)}
+  }
+  p.z+=((p.held?1:0)-p.z)*Math.min(1,dt*14);
+ }
+ hc+=(hcT-hc)*Math.min(1,dt*(hcT>hc?14:55));P.hammer.ex=P.hammer.inst?-.45*hc:0;
+ tp*=Math.exp(-9*dt);P.trigger.ex=P.trigger.inst?.4*tp:0;
+ for(let i=sparks.length-1;i>=0;i--){const s=sparks[i];s.l-=dt;if(s.l<=0){sparks.splice(i,1);continue}s.vy+=420*dt;s.x+=s.vx*dt;s.y+=s.vy*dt}
+ if(toastS.t>0)toastS.t-=dt;shake*=Math.exp(-9*dt);
+}
+
+/* ---------- drawing ---------- */
+function sprite(p,x,y,r,alpha,shadow){
+ if(p.dirty)render(p);
+ ctx.save();ctx.translate(x,y);ctx.rotate(r);
+ if(shadow!==undefined){const k=S*DPR;ctx.shadowColor='rgba(70,40,10,.32)';ctx.shadowBlur=3*k;ctx.shadowOffsetX=shadow*k;ctx.shadowOffsetY=shadow*1.3*k;const sc=1+.06*p.z;ctx.scale(sc,sc)}
+ ctx.globalAlpha=alpha;ctx.drawImage(p.cv,p.b[0],p.b[1],p.b[2]-p.b[0],p.b[3]-p.b[1]);ctx.restore();
+}
+function draw(now){
+ ctx.setTransform(DPR,0,0,DPR,0,0);ctx.fillStyle='#D7BC95';ctx.fillRect(0,0,cv.width,cv.height);
+ ctx.translate(OX+(Math.random()-.5)*shake,OY+(Math.random()-.5)*shake);ctx.scale(S,S);
+ ctx.strokeStyle='rgba(120,80,30,.07)';ctx.lineWidth=2;
+ for(let y=-400;y<1200;y+=90){ctx.beginPath();ctx.moveTo(-600,y);ctx.lineTo(1900,y);ctx.stroke()}
+ ctx.beginPath();rr(ctx,240,112,800,478,24);ctx.fillStyle='#C9AE87';ctx.fill();ctx.lineWidth=3;ctx.strokeStyle='#b69a70';ctx.stroke();
+ ctx.setLineDash([9,8]);ctx.beginPath();rr(ctx,254,126,772,450,16);ctx.strokeStyle='rgba(90,60,20,.18)';ctx.lineWidth=2;ctx.stroke();ctx.setLineDash([]);
+ ctx.fillStyle='rgba(90,60,20,.3)';ctx.font='600 15px Georgia,serif';ctx.textAlign='center';ctx.fillText('Single-Action Army · assembly mat',640,566);
+ const pulse=.5+.5*Math.sin(now/220);
+ if(held&&depsOk(held)){
+  const h=held,near=Math.hypot(h.x-h.tx,h.y-h.ty)<SNAP;
+  if(h.screw){ctx.beginPath();ctx.arc(h.tx,h.ty,h.hr+5,0,7);ctx.setLineDash([4,4]);ctx.strokeStyle=near?'#fff':'rgba(255,255,255,.6)';ctx.lineWidth=2.5;ctx.stroke();ctx.setLineDash([])}
+  else sprite(h,h.tx,h.ty,h.tr,near?.5:.25);
+ }
+ for(const p of order())sprite(p,p.x,p.y,p.r+p.ex,1,p.inst?(p.flat?undefined:2.5):3+p.z*11);
+ for(const s of sparks){ctx.globalAlpha=Math.min(1,s.l*2.5);ctx.fillStyle=s.c;ctx.fillRect(s.x-3,s.y-3,6,6);ctx.globalAlpha=1}
+ if(toastS.t>0){
+  ctx.font='600 20px ui-sans-serif,system-ui,sans-serif';ctx.textAlign='center';
+  const w=ctx.measureText(toastS.s).width+36;ctx.globalAlpha=Math.min(1,toastS.t*2);
+  ctx.beginPath();rr(ctx,640-w/2,640,w,40,12);ctx.fillStyle='rgba(34,26,18,.9)';ctx.fill();
+  ctx.fillStyle='#f7ecd9';ctx.fillText(toastS.s,640,666);ctx.globalAlpha=1;
+ }
+}
+let last=0;
+function loop(now){
+ const dt=Math.min(.033,(now-last)/1000||0);last=now;step(dt);draw(now);
+ requestAnimationFrame(loop);
+}
+resize();refresh();say('Drag parts onto the frame. Scroll or Q/E rotates a held part.',6);
+if(globalThis.__T)globalThis.__T({parts,P,order,render,sprite:null});else requestAnimationFrame(loop);
+})();
+</script></body></html>
