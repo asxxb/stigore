@@ -3506,6 +3506,7 @@
                 if (P === PL && P.ln > 0 && P.lnB) { const o = lnArm(i, sh, F); if (o[2] > .001) { ang = ang * (1 - o[2]) + o[0] * o[2]; flex = flex * (1 - o[2]) + o[1] * o[2] } }
                 if (P === PL && P.lb > 0 && P.lnB) { const o = lbArm(i, sh, F); if (o[2] > .001) { ang = ang * (1 - o[2]) + o[0] * o[2]; flex = flex * (1 - o[2]) + o[1] * o[2] } }
                 if (P === PL && swim.on && swim.cl > 0) { const o = climbArm(i, sh, F, S); if (o && o[2] > .001) { ang = ang * (1 - o[2]) + o[0] * o[2]; flex = flex * (1 - o[2]) + o[1] * o[2]; } }
+                if (P === PL && window.coinArm) { const o = coinArm(i, sh, F, rot); if (o && o[2] > .001) { ang += wrapA(o[0] - ang) * o[2]; flex = flex * (1 - o[2]) + o[1] * o[2]; } }
                 wristKick = (i === 0 && P === PL && P.gunK > .02) ? RC_WRIST * P.recoil * P.recoil + (P.rl > 0 ? rlTilt(P.rl / RELOAD_T) : 0) : 0;
                 arm(sh, ang, flex, F, (i === kA && !P.pk) ? P.kt : 0, Math.max(pq, (cb && !(P === PL && P.stbk > 0)) ? cb.w : 0), (i === kA && !P.pk) ? P.tt / TOSS_T : 0);
                 if (i === 1 && P === PL && P.rl > 0) {

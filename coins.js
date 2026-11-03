@@ -200,6 +200,89 @@
     ctx.restore();
   };
 
-  // ---- test coins on the ground around the treehouse (climb down to get them) ----
-  for (const lx of [-330, -200, -120, 130, 210, 290]) dropItem('coin', TH_WX + lx * TH_SC);
+  // ================= TAKE A COIN FROM THE SACK (Y) =================
+  const TK = { on: false, t: 0, took: false, put: false };
+  const TK_TAKE = .42, TK_PUT = .98, TK_END = 1.3;       // grab / set-down / end (seconds)
+  window.coinTake = { get active() { return TK.on; } };
+  const tkMix = (p, q, k) => [lerp(p[0], q[0], k), lerp(p[1], q[1], k)];
+
+  function tkBlocked() {
+    return P.z < 0 || P.mount || swim.on || TH_CL.on || P.stc > 0 || P.pk > 0 || P.cs > 0 || P.pu > 0 || P.sqg > 0 || P.sqt > 0 ||
+      P.dts > 0 || P.stm > 0 || P.fin > 0 || P.thw > 0 || P.tt > 0 || P.stbk > 0 || P.fs > 0 || P.gu > 0 || P.yk > 0 || P.sgp > 0 ||
+      P.sm > 0 || P.ln > 0 || P.lb > 0 || P.ld > 0 || P.gun || P.gs === 2 || P.sg || P.kn !== 0 || P.kt > .05 ||
+      DD.carry || DD.g.on || TH_SQ.held || P.mpk > 0 || P.mSl > 0 || P.sqSl > 0;
+  }
+  function tkStart() {
+    if (TK.on || (INV.coin || 0) <= 0 || P.puHeld || tkBlocked()) return;
+    if (P.skid) endSkid();
+    Object.assign(TK, { on: true, t: 0, took: false, put: false });
+    P.idle = 0; P.fid = 0; P.abuf = 0;
+  }
+  function tkCancel() {                                    // interrupted: don't lose the coin
+    if (TK.took && !TK.put) dropItem('coin', P.x + P.face * 20 * CSc());
+    if (P.puHeld && P.puHeld.type === 'coin') P.puHeld = null;
+    TK.on = false;
+  }
+  function tkTick(dt) {
+    if (!TK.on) return;
+    if (tkBlocked()) { tkCancel(); return; }
+    TK.t += dt;
+    if (!TK.took && TK.t >= TK_TAKE) {                     // fingers close on a coin
+      TK.took = true;
+      INV.coin = Math.max(0, (INV.coin || 0) - 1); if (!INV.coin) delete INV.coin;
+      P.puHeld = { type: 'coin', seed: Math.random() * 99 };
+      kick(-.6); ting();                                   // sack jiggles
+    }
+    if (TK.took && !TK.put && TK.t >= TK_PUT) {            // set it down in front
+      TK.put = true; P.puHeld = null;
+      dropItem('coin', P.x + P.face * 38 * CSc());
+    }
+    if (TK.t >= TK_END) TK.on = false;
+  }
+
+  // arm 0 reaches back into the sack mouth, grabs, brings the coin forward, sets it down, returns
+  window.coinArm = function (i, sh, F, rot) {
+    if (!TK.on || i !== 0) return null;
+    const t = TK.t, a = rot(-F * 12, -12), g = SK.ang;
+    const mouth = [a[0] - 5 * Math.sin(g), a[1] + 5 * Math.cos(g)];     // follows the swinging sack
+    const rest = [sh[0] + F * 14, sh[1] + 80], front = [sh[0] + F * 46, sh[1] + 54], low = [sh[0] + F * 40, sh[1] + 86];
+    let T;
+    if (t < .30) T = tkMix(rest, mouth, sm(t / .30));
+    else if (t < TK_TAKE) { const r = Math.sin(t * 42) * 1.3; T = [mouth[0] + r, mouth[1] + 2 + r * .6]; }   // rummaging
+    else if (t < .64) { const u = sm((t - TK_TAKE) / (.64 - TK_TAKE)); T = tkMix(mouth, front, u); T[1] -= 9 * Math.sin(Math.PI * u); }
+    else if (t < TK_PUT) T = tkMix(front, low, sm((t - .8) / (TK_PUT - .8)));
+    else T = tkMix(low, rest, sm((t - TK_PUT - .02) / .28));
+    const w = sm(t / .14) * (1 - sm((t - 1.1) / .2));
+    const [ang, flex] = ikTo(sh, T[0], T[1], F);
+    return [ang, flex, w];
+  };
+
+  // the held coin, drawn on top of the fist so it shows between the fingers (and flips)
+  const _dhi = drawHeldItem;
+  drawHeldItem = function (F, S, now) {
+    const it = P.puHeld; _dhi(F, S, now);
+    if (!it || it.type !== 'coin') return;
+    const A = P.armPts && P.armPts[0]; if (!A) return;
+    const el = A[0], wr = A[1]; let dx = wr[0] - el[0], dy = wr[1] - el[1]; const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
+    const x = wr[0] + dx * PALM * .95, y = wr[1] + dy * PALM * .95 - 3, fl = Math.abs(Math.cos(now * 11));
+    ctx.save(); ctx.translate(x, y); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.ellipse(0, 0, Math.max(1.2, 5 * fl), 5, 0, 0, 7); ctx.fillStyle = GOLD; ctx.fill(); ctx.lineWidth = 1.6; ctx.strokeStyle = '#111'; ctx.stroke();
+    if (fl > .5) { ctx.beginPath(); ctx.ellipse(0, 0, 3 * fl, 3, 0, 0, 7); ctx.strokeStyle = GOLD_D; ctx.lineWidth = .8; ctx.stroke(); }
+    ctx.restore();
+  };
+
+  // hooks: lock walking while it plays, tick every frame, key
+  const _ddl = ddLock; ddLock = function () { return TK.on || _ddl(); };
+  const _upd = update; update = function (dt) { tkTick(dt); return _upd(dt); };
+  addEventListener('keydown', e => {
+    if (e.code !== 'KeyY' || e.repeat) return;
+    if (/INPUT|TEXTAREA/.test(e.target.tagName || '')) return;
+    tkStart();
+  });
+
+  // ---- test coins near the player so they can be collected into the sack ----
+  // T picks these up; once INV.coin > 0, press Y to take a coin from the sack.
+  for (const lx of [-110, -70, -30, 30, 70, 110]) {
+    dropItem('coin', P.x + lx);
+  }
 })();
