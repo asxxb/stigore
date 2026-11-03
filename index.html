@@ -1130,6 +1130,9 @@
             if (o.dark !== undefined) e.dark = o.dark ? 1 : 0;   // black-filled head or paper head
             if (o.female) e.female = true;                       // drawChar already draws the skirt and ponytail for this
             e.range = o.range || 350;                            // how far he wanders from where he stands
+            e.peaceful = o.peaceful !== false;                // town NPCs are calm by default; player can still interact with them
+            e.social = Math.random() < 0.72 ? 'friendly' : 'shy'; // varied, mostly friendly idle reactions
+            e.idleAt = 2.5 + Math.random() * 5.5;              // randomized idle operation timing
             e.spawnX = x;                                        // where he comes back after dying (see step 3)
             e.face = Math.random() < .5 ? -1 : 1;
             ENEMIES.push(e);
@@ -2376,7 +2379,9 @@
             n.amp += (Math.min(1, sp / 200) - n.amp) * Math.min(1, dt * 10);
             n.lean += (Math.max(-1, Math.min(1, n.vx / 420)) * .4 - n.lean) * Math.min(1, dt * 6);
 
-            fidgetTick(n, stunned || dir || sp > 8 || near || n.stab || n.fst || n.fkT > 0, dt);
+            // Peaceful NPCs continue their small idle routines when the player is nearby;
+            // they may turn toward the player, but do not initiate combat.
+            fidgetTick(n, stunned || dir || sp > 8 || n.stab || n.fst || n.fkT > 0, dt);
         }
         function drawEnemies(gy) {
             const S = CSc();
