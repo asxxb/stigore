@@ -3,9 +3,10 @@
 (() => {
     'use strict';
     const CFG = {
-        quiver: 20, drawTime: 1.05, vMin: 650, vMax: 4350,   // px/s, scales with draw (energy ~ draw^1.25)
-        gravity: 1500, drag: .000045, windPush: .25,         // arrows drop, slow down and drift in the wind
+        quiver: 20, drawTime: 1.05, vMin: 420, vMax: 2600,   // px/s, scales with draw (energy ~ draw^1.25)
+        gravity: 1100, drag: .000045, windPush: .25,         // arrows drop, slow down and drift in the wind
         preview: true,                                       // faint trajectory dots at full draw (set false for pure skill)
+        snap: .2,                                            // chance an arrow breaks when pulled out of a body
         life: 120                                            // seconds a spent arrow stays on the ground
     };
     // L_ARROW = arrow length, LDRAW = full draw length (must stay < L_ARROW so the head clears the bow hand)
@@ -178,9 +179,17 @@
             if (a.st === 'fly') step(a, i, dt, S);
             else if (a.st === 'emb') {
                 const e = a.e;
-                if (e.dying > 0 || e.dead > 0 || e.decap || e.hsDead || e.gutDead || e.crawl) {   // victim drops: arrow pops free and falls
+                if (e.dying > 0 || e.dead > 0 || e.decap || e.hsDead || e.gutDead) {   // victim dies: the arrow stays in the body and settles onto the corpse
+                    a.st = 'cps'; a.age = 0; a.a0 = a.ang; a.y0 = a.oy; a.ox = Math.max(-30 * S, Math.min(30 * S, a.ox)); a.at = Math.PI / 2 + (Math.random() - .5) * 1.1;
+                } else if (e.crawl) {                                           // crawling victim: arrow pops free and falls
                     a.x = e.x + a.ox; a.y = a.oy; a.vx = (e.vx || 0) * .4 + (Math.random() - .5) * 80; a.vy = -60; a.st = 'fall'; a.spin = (Math.random() - .5) * 7; a.age = 0;
                 }
+            } else if (a.st === 'cps') {                                          // arrow stuck in a corpse (can be pulled out with T)
+                const e = a.e, k = sm(c01(a.age / .7)), gnd = floorY(e.x + a.ox, a.y0 - 5) - 12;
+                a.oy = lp(a.y0, gnd, k); const dd = Math.atan2(Math.sin(a.at - a.a0), Math.cos(a.at - a.a0)); a.ang = a.a0 + dd * k;
+                if (safe(() => ENEMIES.indexOf(e)) === -1 || (e.hp > 0 && !(e.dying > 0 || e.dead > 0 || e.decap || e.hsDead || e.gutDead))) {   // corpse gone / victim back up: arrow drops
+                    a.x = e.x + a.ox; a.y = a.oy; a.vx = (Math.random() - .5) * 80; a.vy = -60; a.st = 'fall'; a.spin = (Math.random() - .5) * 7; a.age = 0;
+                } else if (a.age > CFG.life) a.dead = 1;
             } else if (a.st === 'fall') {
                 a.vy += 1500 * dt; a.x += a.vx * dt; a.y += a.vy * dt; a.ang += a.spin * dt;
                 const f = floorY(a.x, a.y - 5);
@@ -197,12 +206,21 @@
     window.gunTick = function (dt) { _gt.call(this, dt); tick(dt) };
 
     // ---------------- pick arrows up again (T) ----------------
+    const ax = a => a.st === 'cps' ? a.e.x + a.ox : a.x, ay = a => a.st === 'cps' ? a.oy : a.y;   // world position of a ground / corpse arrow
     const _pp = window.pressPickup;
     window.pressPickup = function () {
         if (!P.mount && !swim.on && P.z >= 0) {
             const S = CSc(), lvl = -(P.dh || 0) - (P.mh || 0); let bi = -1, bd = 95 * S;
-            A.forEach((a, i) => { if (a.st !== 'gnd') return; const d = Math.abs(a.x - P.x); if (d < bd && Math.abs(a.y - lvl) < 90 * S) { bd = d; bi = i } });
-            if (bi >= 0) { A.splice(bi, 1); BW.ammo++; say(.7, 'ARROW RECOVERED'); playSfx('pickup', .7); return }
+            A.forEach((a, i) => { if (a.st !== 'gnd' && a.st !== 'cps') return; const d = Math.abs(ax(a) - P.x); if (d < bd && Math.abs(ay(a) - lvl) < 90 * S) { bd = d; bi = i } });
+            if (bi >= 0) {
+                const a = A[bi], body = a.st === 'cps', X = ax(a), Y = ay(a); A.splice(bi, 1);
+                if (body) {                                                    // yanked out of a corpse: blood, a thud, and it might snap
+                    safe(() => burst(X, Y, 5, 140, -1)); shake = Math.max(shake, 1.2); playSfx('stab', .35);
+                    if (Math.random() < CFG.snap) { say(.8, 'ARROW SNAPPED'); return }
+                    say(.8, 'ARROW PULLED OUT'); BW.ammo++; return;
+                }
+                BW.ammo++; say(.7, 'ARROW RECOVERED'); playSfx('pickup', .7); return;
+            }
         }
         return _pp.apply(this, arguments);
     };
@@ -283,22 +301,22 @@
         // slim shaft: ink outline, light cedar core, thin highlight
         ctx.strokeStyle = INK; ctx.lineWidth = 3.3; ctx.beginPath(); ctx.moveTo(-L + 4, 0); ctx.lineTo(-18, 0); ctx.stroke();
         ctx.strokeStyle = '#d6aa6e'; ctx.lineWidth = 1.6; ctx.stroke();
-        ctx.strokeStyle = 'rgba(255,242,210,.65)'; ctx.lineWidth = .6; ctx.beginPath(); ctx.moveTo(-L + 48, -.5); ctx.lineTo(-30, -.5); ctx.stroke();
+        ctx.strokeStyle = 'rgba(255,242,210,.65)'; ctx.lineWidth = .6; ctx.beginPath(); ctx.moveTo(-L + 38, -.5); ctx.lineTo(-30, -.5); ctx.stroke();
         // cresting bands just ahead of the fletching
         ctx.lineCap = 'butt'; ctx.strokeStyle = '#8a2c1c'; ctx.lineWidth = 2;
-        for (const x of [-L + 44, -L + 48]) { ctx.beginPath(); ctx.moveTo(x, -.8); ctx.lineTo(x, .8); ctx.stroke() }
+        for (const x of [-L + 33, -L + 36.5]) { ctx.beginPath(); ctx.moveTo(x, -.8); ctx.lineTo(x, .8); ctx.stroke() }
         ctx.lineCap = 'round';
-        // fletching: low swept shield-cut vanes, tall at the nock end and tapering toward the head
+        // fletching: small, low swept vanes
         for (const s of [-1, 1]) {
             ctx.beginPath(); ctx.moveTo(-L + 5, s * .9);
-            ctx.quadraticCurveTo(-L + 6, s * 7.4, -L + 14, s * 6.6);
-            ctx.quadraticCurveTo(-L + 28, s * 5.2, -L + 39, s * .9);
+            ctx.quadraticCurveTo(-L + 6, s * 4.6, -L + 11, s * 4.1);
+            ctx.quadraticCurveTo(-L + 20, s * 3.3, -L + 29, s * .9);
             ctx.closePath();
-            ctx.fillStyle = s < 0 ? '#7e2519' : '#b6402a'; ctx.fill(); ctx.lineWidth = 1.3; ctx.strokeStyle = INK; ctx.stroke();
-            ctx.strokeStyle = 'rgba(40,8,4,.7)'; ctx.lineWidth = .6; ctx.beginPath();
-            for (let k = 0; k < 6; k++) {                                  // barbs lean toward the head
-                const o = 8 + k * 4.4, hh = Math.max(2, 6.4 - Math.max(0, o + 3 - 14) * .22);
-                ctx.moveTo(-L + o, s * 1.1); ctx.lineTo(-L + o + 3, s * hh);
+            ctx.fillStyle = s < 0 ? '#7e2519' : '#b6402a'; ctx.fill(); ctx.lineWidth = 1.2; ctx.strokeStyle = INK; ctx.stroke();
+            ctx.strokeStyle = 'rgba(40,8,4,.7)'; ctx.lineWidth = .55; ctx.beginPath();
+            for (let k = 0; k < 5; k++) {
+                const o = 7 + k * 3.8, hh = Math.max(1.6, 4 - Math.max(0, o + 3 - 11) * .16);
+                ctx.moveTo(-L + o, s * 1.1); ctx.lineTo(-L + o + 2.5, s * hh);
             }
             ctx.stroke();
         }
@@ -321,8 +339,8 @@
         ctx.strokeStyle = '#d6aa6e'; ctx.lineWidth = 1.4; ctx.stroke();
         for (const s of [-1, 1]) {
             ctx.beginPath(); ctx.moveTo(s * .8, -hk + 3);
-            ctx.quadraticCurveTo(s * 5.2, -hk + 3.2, s * 4.6, -hk + 9);
-            ctx.quadraticCurveTo(s * 2.8, -hk + 14, s * .8, -hk + 16); ctx.closePath();
+            ctx.quadraticCurveTo(s * 3.4, -hk + 3.2, s * 3, -hk + 7);
+            ctx.quadraticCurveTo(s * 1.9, -hk + 10, s * .8, -hk + 11.5); ctx.closePath();
             ctx.fillStyle = (s < 0) === redder ? '#7e2519' : '#b6402a'; ctx.fill(); ctx.lineWidth = 1.1; ctx.strokeStyle = '#111'; ctx.stroke();
         }
         ctx.beginPath(); ctx.arc(0, -hk - .4, 1.7, 0, 7); ctx.fillStyle = '#2a1c12'; ctx.fill(); ctx.lineWidth = 1; ctx.strokeStyle = '#111'; ctx.stroke();
@@ -404,8 +422,27 @@
         const fist = i => { const f = P.fistInfo && P.fistInfo[i]; if (f && FIST.complete) { ctx.save(); ctx.translate(f.x, f.y); ctx.scale(f.F, 1); ctx.rotate(f.a - Math.PI / 2); ctx.drawImage(FIST, -FIST.naturalWidth / 2, -4); ctx.restore() } };
         // string hand: open back of the hand behind the string, three fingers hooked on it
         // (index above the arrow, middle + ring below), thumb relaxed - not a closed fist
+        // after the shot the fingers spring open and the hand flicks out, then curls back toward a fist
+        const openHand = (f, Af, op) => {
+            const an = Math.atan2(Af[2][1] - Af[1][1], Af[2][0] - Af[1][0]);
+            ctx.save(); ctx.translate(f.x, f.y); ctx.rotate(an); ctx.scale(1, F);
+            ctx.fillStyle = '#111'; ctx.strokeStyle = '#111'; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+            ctx.beginPath(); ctx.ellipse(3.5, 0, 5.6, 4.3, 0, 0, 7); ctx.fill();               // palm
+            ctx.lineWidth = 2.3;
+            for (let j = 0; j < 4; j++) {                                                       // fingers fan out, then curl in
+                const y0 = (j - 1.5) * 2.3, a = (j - 1.5) * (.12 + .3 * op), len = 3.2 + 6.8 * op - (j === 3 ? 1.4 : 0);
+                ctx.beginPath(); ctx.moveTo(7.5, y0); ctx.lineTo(7.5 + Math.cos(a) * len, y0 + Math.sin(a) * len); ctx.stroke();
+            }
+            const ta = .7 + .5 * op, tl = 4.5 + 3.5 * op;                                       // thumb
+            ctx.lineWidth = 2.4; ctx.beginPath(); ctx.moveTo(2, 3.6); ctx.lineTo(2 + Math.cos(ta) * tl, 3.6 + Math.sin(ta) * tl); ctx.stroke();
+            ctx.restore();
+        };
         const hook = () => {
             const f = P.fistInfo && P.fistInfo[1]; if (!f) return;
+            if (BW.rt < .6 && BW.ld > 0 && BW.tk <= 0 && BW.d <= 0 && P.armFullPts && P.armFullPts[1]) {
+                const op = BW.rt < .06 ? BW.rt / .06 : Math.exp(-(BW.rt - .06) * 4.5);
+                return openHand(f, P.armFullPts[1], op);
+            }
             if (w < .45 || BW.tk < 1) return fist(1);
             ctx.save(); ctx.translate(f.x, f.y); ctx.rotate(Math.atan2(u[1], u[0])); ctx.scale(1, F);   // local +x = toward the bow, -y = up
             ctx.fillStyle = '#111'; ctx.strokeStyle = '#111'; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
@@ -432,7 +469,7 @@
         const S = CSc(), now = performance.now() / 1000;
         for (const a of A) {
             let sx, sy, ang = a.ang, al = 1;
-            if (a.st === 'emb') { sx = a.e.x + a.ox - P.x + W / 2; sy = gy + 4 + a.oy }
+            if (a.st === 'emb' || a.st === 'cps') { sx = a.e.x + a.ox - P.x + W / 2; sy = gy + 4 + a.oy }
             else { sx = a.x - P.x + W / 2; sy = gy + 4 + a.y }
             if (sx < -250 || sx > W + 250) continue;
             ctx.save();
@@ -442,7 +479,7 @@
                 ang += Math.sin(a.age * 55) * .1 * Math.exp(-a.age * 6.5); if (a.age > CFG.life - 8) al = Math.max(0, (CFG.life - a.age) / 8);
             } else if (a.st === 'emb') ang += Math.sin(a.age * 50) * .09 * Math.exp(-a.age * 6);
             ctx.globalAlpha = al; ctx.translate(sx, sy); ctx.rotate(ang); ctx.scale(S, S);
-            if (a.st === 'gnd' || a.st === 'emb') ctx.translate(a.depth || 0, 0);
+            if (a.st === 'gnd' || a.st === 'emb' || a.st === 'cps') ctx.translate(a.depth || 0, 0);
             if (a.st === 'fly') { ctx.strokeStyle = 'rgba(17,17,17,.28)'; ctx.lineWidth = 1.2; ctx.lineCap = 'round'; for (const k of [-1, 1]) { ctx.beginPath(); ctx.moveTo(-L_ARROW - 8, k * 3); ctx.lineTo(-L_ARROW - 80, k * 3); ctx.stroke() } }
             arrowShape(); ctx.restore();
         }
@@ -471,6 +508,10 @@
         if (BW.eq < .05) return;
         ctx.save(); ctx.globalAlpha = Math.min(1, BW.eq); ctx.fillStyle = '#111'; ctx.strokeStyle = '#111'; ctx.font = 'italic 20px Georgia,serif'; ctx.textAlign = 'left';
         ctx.fillText('arrows ×' + BW.ammo, 24, H - 54);
+        if (!P.mount && !swim.on && P.z >= 0) {                              // hint when an arrow (ground or corpse) is within reach
+            const S = CSc(), lvl = -(P.dh || 0) - (P.mh || 0);
+            if (A.some(a => (a.st === 'gnd' || a.st === 'cps') && Math.abs(ax(a) - P.x) < 95 * S && Math.abs(ay(a) - lvl) < 90 * S)) { ctx.font = 'italic 16px Georgia,serif'; ctx.fillText('T  pull arrow', 24, H - 76) }
+        }
         if (BW.d > 0) {
             ctx.lineWidth = 2; ctx.strokeRect(24, H - 46, 110, 8); ctx.fillStyle = BW.fat > .5 ? '#a3121a' : '#111'; ctx.fillRect(26, H - 44, 106 * BW.d, 4);
         }
