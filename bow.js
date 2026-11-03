@@ -11,7 +11,7 @@
     // L_ARROW = arrow length, LDRAW = full draw length (must stay < L_ARROW so the head clears the bow hand)
     const TAKE = .5;   // seconds to pull an arrow out of the quiver after pressing F
     const L_ARROW = 118, HL = 92, LDRAW = 100, TB0 = 16, PSI_C = -1.25, BP = { lean: -.05, hipY: 7, hx: 3, hy: 1 };
-    const BW = window.BOW = { out: false, eq: 0, w: 0, d: 0, dh: 0, vib: 0, aim: .1, sway: 0, hold: 0, fat: 0, tired: false, cd: 0, rt: 9, ammo: CFG.quiver, ai: 0, fr: null, t: 0, arrows: [], saved: null, dirIn: 0, ok: false, msg: 0, qa: 0, qv: 0, tk: 0 };
+    const BW = window.BOW = { out: false, eq: 0, w: 0, d: 0, dh: 0, vib: 0, aim: .1, sway: 0, hold: 0, fat: 0, tired: false, cd: 0, rt: 9, ammo: CFG.quiver, ai: 0, fr: null, t: 0, arrows: [], saved: null, dirIn: 0, ok: false, msg: 0, qa: 0, qv: 0, tk: 0, ld: 0, ov: 0, sa: 0, shr: 0, bp: 0, br: 0 };
     const A = BW.arrows, lp = (a, b, k) => a + (b - a) * k, c01 = v => Math.max(0, Math.min(1, v));
     const safe = f => { try { return f() } catch (e) { return false } };
     const spd = (d, fat) => (CFG.vMin + (CFG.vMax - CFG.vMin) * Math.pow(d, 1.25)) * (1 - .18 * fat);
@@ -53,7 +53,7 @@
         if (!held) BW.tired = false;
         BW.eq += ((BW.out ? 1 : 0) - BW.eq) * Math.min(1, dt * 9);
         const up = keys.ArrowUp || keys.KeyW, dn = keys.ArrowDown || keys.KeyS;
-        const raise = ok && (want || BW.d > 0 || BW.rt < .45);
+        const raise = ok && (want || BW.d > 0 || BW.rt < .6);
         BW.w += ((raise ? 1 : 0) - BW.w) * Math.min(1, dt * (raise ? 7 : 5));
         if (!raise && BW.w < .004) BW.w = 0;
         if (ok && BW.w > .3) BW.aim = Math.max(-.6, Math.min(1, BW.aim + ((up ? 1 : 0) - (dn ? 1 : 0)) * 1.25 * dt));
@@ -71,8 +71,17 @@
         }
         BW.fat = BW.d >= 1 ? c01((BW.hold - 2) / 3.5) : Math.max(0, BW.fat - dt * .6);
         BW.dh = Math.max(0, BW.dh - dt * 3.2);
+        // seating: the string hand overshoots a little when the string reaches full draw, then settles into the anchor
+        BW.sa = BW.d >= 1 ? BW.sa + dt : 0;
+        BW.ov = BW.sa < .25 ? 3.5 * Math.sin(BW.sa / .25 * Math.PI) : 0;
+        // shrug + lean back as the draw nears its end (eases back out after release)
+        BW.shr += ((BW.d > 0 ? sm(c01((BW.d - .7) / .3)) : 0) - BW.shr) * Math.min(1, dt * 8);
+        // breathing: slow inhale / exhale that lifts and drops the aim; faster, deeper and less steady as the arm tires
+        BW.bp += dt * (1.45 + 1.1 * BW.fat);
+        const bre = Math.sin(BW.bp) + .3 * Math.sin(BW.bp * 2 + .8), bam = (BW.d > .4 ? 1 : .3) * (1 + 3.2 * BW.fat);
+        BW.br = bre * (BW.d > .4 ? 1 : .3) * (1 + 1.5 * BW.fat);
         const k = 1 + 4 * BW.fat;
-        BW.sway = (Math.sin(BW.t * 1.3) * .010 + Math.sin(BW.t * 2.9 + 1) * .006) * k * (BW.d > 0 ? 1 : .4) + Math.sin(BW.t * 31) * .004 * BW.fat;
+        BW.sway = (Math.sin(BW.t * 1.3) * .010 + Math.sin(BW.t * 2.9 + 1) * .006) * k * (BW.d > 0 ? 1 : .4) + Math.sin(BW.t * 31) * .004 * BW.fat + bre * .011 * bam;
         // quiver swing: a damped spring that lags behind the body when you start / stop / run
         {
             const h = Math.min(dt, .033), vx = P.vx || 0, tgt = -Math.max(-1, Math.min(1, vx / 500)) * .2;
@@ -107,7 +116,7 @@
             st: 'fly', x: gx + f.u[0] * len, y: gy + f.u[1] * len, vx: Math.cos(th) * v + P.vx * .3, vy: Math.sin(th) * v,
             F: Math.cos(th) >= 0 ? 1 : -1, age: 0, pw: c01(v / CFG.vMax), ang: th
         });
-        BW.ammo--; BW.tk = 0; BW.cd = .55; BW.dh = d; BW.vib = 6 + 9 * d; BW.rt = 0; BW.d = 0; BW.hold = 0;
+        BW.ammo--; BW.ld = d; BW.tk = 0; BW.cd = .55; BW.dh = d; BW.vib = 6 + 9 * d; BW.rt = 0; BW.d = 0; BW.hold = 0;
         shake = Math.max(shake, 1.5 + 1.5 * d); playSfx('throw', .85);
     }
 
@@ -204,7 +213,7 @@
         const o = _cp.call(this, Q);
         if (o || Q !== PL || BW.w < .02) return o;
         return {
-            w: BW.w, a0: .08, f0: 0, a1: .08, f1: 0, lean: BP.lean - .03 * BW.d, hipX: -2 * BW.d, hipY: BP.hipY, arch: .03, hx: BP.hx, hy: BP.hy,
+            w: BW.w, a0: .08, f0: 0, a1: .08, f1: 0, lean: BP.lean - .03 * BW.d - .025 * BW.shr, hipX: -2 * BW.d, hipY: BP.hipY, arch: .03, hx: BP.hx, hy: BP.hy,
             l0: [30, 0, 0], l1: [-34, 0, 0], st: STEPS[0], sw: 0, ik: 0, noArms: true
         };
     };
@@ -232,20 +241,26 @@
         if (CUR !== PL || BW.eq < .02) return _arm(sh, ang, flex, F, kt, pq, tq);
         const i = BW.ai++, w = BW.w, d = BW.d, now = performance.now() / 1000, fat = BW.fat;
         const tr = [Math.sin(now * 41) * 1.3 * fat + Math.sin(now * 1.7) * .5, Math.sin(now * 37 + 1) * 1.1 * fat + Math.sin(now * 1.3) * .6];
+        tr[1] += BW.br * 1.1 - BW.shr * 1.5;                       // chest rises / falls with breath, shoulders shrug up near full draw
+        const rr = BW.rt, kk = rr < .6 ? Math.exp(-rr * 9) * Math.min(1, rr / .03) * (.4 + .6 * BW.ld) : 0;   // release kick (bow arm + bow jump)
         if (i === 0) {
             const lean = (BP.lean - .03 * d) * w, l = F * lean, bx = F * (-7 + BP.hx * w), by = -34 + BP.hy * w;       // where the face is, relative to the shoulder
             const An = [sh[0] + bx * Math.cos(l) - by * Math.sin(l) + F * 15, sh[1] + bx * Math.sin(l) + by * Math.cos(l) + 11];
             const psi = BW.aim + BW.sway, uA = [F * Math.cos(psi), -Math.sin(psi)];
             if (w > .003) {
-                const [ia, ifl] = ikTo(sh, An[0] + uA[0] * LDRAW + tr[0], An[1] + uA[1] * LDRAW + tr[1], F);
+                const [ia, ifl] = ikTo(sh, An[0] + uA[0] * (LDRAW + 6 * kk) + tr[0], An[1] + uA[1] * LDRAW + tr[1] - 4 * kk, F);
                 ang = lp(ang, ia, w); flex = lp(flex, ifl, w);
             }
             const { wr, d2 } = wristOf(sh, ang, flex, F), psiE = lp(PSI_C, psi, w), g = [wr[0] + d2[0] * 11, wr[1] + d2[1] * 11];
             BW.fr = { sh, F, g, u: [F * Math.cos(psiE), -Math.sin(psiE)], psi: psiE, An };
         } else if (BW.fr && w > .003) {
-            const fr = BW.fr, dd = Math.max(d, BW.dh), w1 = sm((w - .35) / .65), rest = wristOf(sh, ang, flex, F);
-            let hx = lp(rest.wr[0] + rest.d2[0] * 11, fr.g[0] - fr.u[0] * (TB0 + (LDRAW - TB0) * dd) + tr[0] * .6, w1);
-            let hy = lp(rest.wr[1] + rest.d2[1] * 11, fr.g[1] - fr.u[1] * (TB0 + (LDRAW - TB0) * dd) + tr[1] * .6, w1);
+            const fr = BW.fr, dd = d > 0 ? d : BW.ld * (1 - sm(c01((rr - .12) / .4))), w1 = sm((w - .35) / .65), rest = wristOf(sh, ang, flex, F);
+            let hx = lp(rest.wr[0] + rest.d2[0] * 11, fr.g[0] - fr.u[0] * (TB0 + (LDRAW - TB0) * dd + BW.ov) + tr[0] * .6, w1);
+            let hy = lp(rest.wr[1] + rest.d2[1] * 11, fr.g[1] - fr.u[1] * (TB0 + (LDRAW - TB0) * dd + BW.ov) + tr[1] * .6 - 2.2 * BW.shr, w1);
+            {   // release follow-through: the hand snaps back past the cheek (elbow flicks out and up), then relaxes
+                const env = rr < .8 ? (1 - Math.exp(-rr * 60)) * Math.exp(-rr * 6) * (.4 + .6 * BW.ld) : 0, tv = [-F * Math.sin(fr.psi), -Math.cos(fr.psi)];
+                hx += (-fr.u[0] * 16 + tv[0] * 5) * env; hy += (-fr.u[1] * 16 + tv[1] * 5) * env;
+            }
             const tk = BW.tk;
             if (tk > 0 && tk < 1) {                                        // reach back -> grab -> pull out -> bring to the string
                 const e = x => x * x * (3 - 2 * x), p0 = [hx, hy], g1 = qGrab(fr.sh, F, w, -48), g2 = qGrab(fr.sh, F, w, -66);
@@ -352,7 +367,8 @@
             ctx.restore();
         }
         // bow limbs: belly faces the archer, tips flex back as it is drawn
-        const N = 24, TB = TB0 + 14 * d, hl = HL * (.4 + .6 * eq), pts = [], wd = [];
+        const lo = BW.rt < .5 ? -Math.sin(BW.rt * 70) * Math.exp(-BW.rt * 12) * (3 + 8 * BW.ld) : 0,   // limbs snap forward past neutral and settle
+            N = 24, TB = TB0 + 14 * d + lo, hl = HL * (.4 + .6 * eq), pts = [], wd = [];
         for (let k = 0; k <= N; k++) {
             const s = -1 + 2 * k / N, as = Math.abs(s), back = TB * Math.pow(as, 2.1);
             pts.push([g[0] + t[0] * s * hl - u[0] * back, g[1] + t[1] * s * hl - u[1] * back]); wd.push(3 + 6.4 * Math.pow(1 - as, 1.5));
@@ -364,7 +380,7 @@
                 ctx.beginPath(); ctx.moveTo(pts[k][0], pts[k][1]); ctx.lineTo(pts[k + 1][0], pts[k + 1][1]); ctx.stroke();
             }
         };
-        const nk = [g[0] - u[0] * (TB0 + (LDRAW - TB0) * d), g[1] - u[1] * (TB0 + (LDRAW - TB0) * d)];   // string nock point
+        const nk = [g[0] - u[0] * (TB0 + (LDRAW - TB0) * d + BW.ov), g[1] - u[1] * (TB0 + (LDRAW - TB0) * d + BW.ov)];   // string nock point
         if (BW.rt < .5 && BW.vib > 0) { const o = Math.sin(BW.rt * 85) * BW.vib * Math.exp(-BW.rt * 13); nk[0] += u[0] * o; nk[1] += u[1] * o }
         const strn = () => { ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]); ctx.lineTo(nk[0], nk[1]); ctx.lineTo(pts[N][0], pts[N][1]) };
         seg('#111', 3.4); seg(as => as > .84 ? '#8c8e93' : '#8a5329', 0);
