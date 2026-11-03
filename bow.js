@@ -9,8 +9,9 @@
         life: 120                                            // seconds a spent arrow stays on the ground
     };
     // L_ARROW = arrow length, LDRAW = full draw length (must stay < L_ARROW so the head clears the bow hand)
+    const TAKE = .5;   // seconds to pull an arrow out of the quiver after pressing F
     const L_ARROW = 118, HL = 92, LDRAW = 100, TB0 = 16, PSI_C = -1.25, BP = { lean: -.05, hipY: 7, hx: 3, hy: 1 };
-    const BW = window.BOW = { out: false, eq: 0, w: 0, d: 0, dh: 0, vib: 0, aim: .1, sway: 0, hold: 0, fat: 0, tired: false, cd: 0, rt: 9, ammo: CFG.quiver, ai: 0, fr: null, t: 0, arrows: [], saved: null, dirIn: 0, ok: false, msg: 0, qa: 0, qv: 0 };
+    const BW = window.BOW = { out: false, eq: 0, w: 0, d: 0, dh: 0, vib: 0, aim: .1, sway: 0, hold: 0, fat: 0, tired: false, cd: 0, rt: 9, ammo: CFG.quiver, ai: 0, fr: null, t: 0, arrows: [], saved: null, dirIn: 0, ok: false, msg: 0, qa: 0, qv: 0, tk: 0 };
     const A = BW.arrows, lp = (a, b, k) => a + (b - a) * k, c01 = v => Math.max(0, Math.min(1, v));
     const safe = f => { try { return f() } catch (e) { return false } };
     const spd = (d, fat) => (CFG.vMin + (CFG.vMax - CFG.vMin) * Math.pow(d, 1.25)) * (1 - .18 * fat);
@@ -57,8 +58,11 @@
         if (!raise && BW.w < .004) BW.w = 0;
         if (ok && BW.w > .3) BW.aim = Math.max(-.6, Math.min(1, BW.aim + ((up ? 1 : 0) - (dn ? 1 : 0)) * 1.25 * dt));
         if (!ok && BW.d > 0) { BW.d = 0; BW.hold = 0 }
+        // taking an arrow from the quiver (hand goes back, pulls one out, brings it to the string), then the draw starts
+        if (want && BW.w > .6 && BW.cd <= 0 && !BW.tired) BW.tk = Math.min(1, BW.tk + dt / TAKE);
+        else if (BW.d <= 0) BW.tk = Math.max(0, BW.tk - dt * 4);
         // draw
-        if (want && BW.w > .92 && BW.cd <= 0 && !BW.tired) {
+        if (want && BW.w > .92 && BW.cd <= 0 && !BW.tired && BW.tk >= 1) {
             BW.d = Math.min(1, BW.d + dt / CFG.drawTime);
             if (BW.d >= 1) { BW.hold += dt; if (BW.hold > 6.5) BW.tired = true }
         } else if (BW.d > 0 && ok) {
@@ -103,7 +107,7 @@
             st: 'fly', x: gx + f.u[0] * len, y: gy + f.u[1] * len, vx: Math.cos(th) * v + P.vx * .3, vy: Math.sin(th) * v,
             F: Math.cos(th) >= 0 ? 1 : -1, age: 0, pw: c01(v / CFG.vMax), ang: th
         });
-        BW.ammo--; BW.cd = .55; BW.dh = d; BW.vib = 6 + 9 * d; BW.rt = 0; BW.d = 0; BW.hold = 0;
+        BW.ammo--; BW.tk = 0; BW.cd = .55; BW.dh = d; BW.vib = 6 + 9 * d; BW.rt = 0; BW.d = 0; BW.hold = 0;
         shake = Math.max(shake, 1.5 + 1.5 * d); playSfx('throw', .85);
     }
 
@@ -205,6 +209,13 @@
         };
     };
 
+    const QY = 30, QX = 12, QS = .9, QL = 22;
+    function qGrab(sh, F, w, ly) {                                         // point on the quiver axis (local y: -30 = mouth, more negative = up the arrows)
+        const th = BW.th || 0, rot = F * (th - .2 - .03 * w), sx = F * Math.sin(th), sy = -Math.cos(th);
+        const ox = sh[0] - F * Math.cos(th) * QX - sx * QY, oy = sh[1] - Math.sin(th) * QX - sy * QY;
+        return [ox - QS * ly * Math.sin(rot), oy + QS * ly * Math.cos(rot)];
+    }
+
     // ---------------- arms: bow arm extended, string arm hauls to the cheek anchor ----------------
     function wristOf(sh, a, f, F) {
         const d1 = [Math.sin(a) * F, Math.cos(a)], el = [sh[0] + d1[0] * 58, sh[1] + d1[1] * 58], d2 = [Math.sin(a + f) * F, Math.cos(a + f)];
@@ -233,8 +244,16 @@
             BW.fr = { sh, F, g, u: [F * Math.cos(psiE), -Math.sin(psiE)], psi: psiE, An };
         } else if (BW.fr && w > .003) {
             const fr = BW.fr, dd = Math.max(d, BW.dh), w1 = sm((w - .35) / .65), rest = wristOf(sh, ang, flex, F);
-            const hx = lp(rest.wr[0] + rest.d2[0] * 11, fr.g[0] - fr.u[0] * (TB0 + (LDRAW - TB0) * dd) + tr[0] * .6, w1);
-            const hy = lp(rest.wr[1] + rest.d2[1] * 11, fr.g[1] - fr.u[1] * (TB0 + (LDRAW - TB0) * dd) + tr[1] * .6, w1);
+            let hx = lp(rest.wr[0] + rest.d2[0] * 11, fr.g[0] - fr.u[0] * (TB0 + (LDRAW - TB0) * dd) + tr[0] * .6, w1);
+            let hy = lp(rest.wr[1] + rest.d2[1] * 11, fr.g[1] - fr.u[1] * (TB0 + (LDRAW - TB0) * dd) + tr[1] * .6, w1);
+            const tk = BW.tk;
+            if (tk > 0 && tk < 1) {                                        // reach back -> grab -> pull out -> bring to the string
+                const e = x => x * x * (3 - 2 * x), p0 = [hx, hy], g1 = qGrab(fr.sh, F, w, -48), g2 = qGrab(fr.sh, F, w, -66);
+                const n0 = [fr.g[0] - fr.u[0] * TB0 + tr[0] * .6, fr.g[1] - fr.u[1] * TB0 + tr[1] * .6];
+                let a, b, k;
+                if (tk < .4) { a = p0; b = g1; k = e(tk / .4) } else if (tk < .55) { a = g1; b = g2; k = e((tk - .4) / .15) } else { a = g2; b = n0; k = e((tk - .55) / .45) }
+                hx = lp(a[0], b[0], k); hy = lp(a[1], b[1], k);
+            }
             [ang, flex] = ikFlip(sh, hx, hy, F);
         }
         return _arm(sh, ang, flex, F, 0, pq, tq);
@@ -303,7 +322,7 @@
             const th0 = Math.max(-.15, Math.min(.9, Math.atan2(F * fr.sh[0], 56)));
             BW.th = BW.th === undefined ? th0 : BW.th + (th0 - BW.th) * .6;
             const th = BW.th, rot = F * (th - .2 - .03 * w);   // same back-tilt relative to the spine as when standing
-            const QY = 30, QX = 12, QS = .9, QL = 22;   // quiver: height (bigger = lower), distance behind the spine, size, extra length added downward (mouth stays put)
+            // (QY, QX, QS, QL are declared at the top of the file) quiver: height (bigger = lower), distance behind the spine, size, extra length added downward (mouth stays put)
             const sx = F * Math.sin(th), sy = -Math.cos(th);   // spine direction hip -> shoulder
             const ox = fr.sh[0] - F * Math.cos(th) * QX - sx * QY, oy = fr.sh[1] - Math.sin(th) * QX - sy * QY;   // sit behind the back, down the spine
             ctx.save(); ctx.translate(ox, oy); ctx.rotate(rot); ctx.scale(QS, QS); ctx.strokeStyle = '#111';
@@ -314,7 +333,7 @@
             ctx.setLineDash([2, 2.4]); ctx.strokeStyle = '#d6b27c'; ctx.lineWidth = .8; ctx.beginPath(); ctx.moveTo(5.6, -20); ctx.lineTo(4.6, 20 + QL); ctx.stroke(); ctx.setLineDash([]);   // stitching
             ctx.fillStyle = '#3a2414'; ctx.beginPath(); ctx.moveTo(-6.2, 24 + QL); ctx.quadraticCurveTo(0, 33 + QL, 6.2, 24 + QL); ctx.quadraticCurveTo(0, 27.5 + QL, -6.2, 24 + QL); ctx.fill();          // base cap
             ctx.beginPath(); ctx.ellipse(0, -30, 8, 2.7, 0, 0, 7); ctx.fillStyle = '#1a1008'; ctx.fill(); ctx.lineWidth = 2.4; ctx.strokeStyle = '#111'; ctx.stroke();           // open mouth
-            const n = Math.min(5, BW.ammo);
+            const n = Math.min(5, BW.ammo - (BW.tk > .3 || BW.d > 0 ? 1 : 0));
             for (let k = 0; k < n; k++) {                                  // arrows rattle a little more than the quiver itself
                 const m = k - (n - 1) / 2, hk = 30 + ((k * 7) % 4) * 3.5;
                 ctx.save(); ctx.translate(m * 2.8, -30); ctx.rotate(m * .1);
@@ -354,7 +373,16 @@
         ctx.strokeStyle = '#111'; ctx.lineWidth = 12.5; ctx.beginPath(); ctx.moveTo(g[0] - t[0] * 11, g[1] - t[1] * 11); ctx.lineTo(g[0] + t[0] * 11, g[1] + t[1] * 11); ctx.stroke();   // leather grip
         ctx.strokeStyle = '#3b2616'; ctx.lineWidth = 9; ctx.stroke();
         strn(); ctx.strokeStyle = '#111'; ctx.lineWidth = 2.4; ctx.stroke(); strn(); ctx.strokeStyle = '#e9e1c8'; ctx.lineWidth = 1.1; ctx.stroke();
-        if (BW.ammo > 0 && w > .55 && BW.cd <= 0) {                        // nocked arrow, resting on the hand
+        if (BW.ammo > 0 && w > .45 && BW.tk > .4 && BW.tk < 1) {            // arrow carried in the hand from the quiver to the string
+            const f = P.fistInfo && P.fistInfo[1];
+            if (f) {
+                const s = sm(c01((BW.tk - .55) / .45)), as = Math.atan2(-.5, F), a1 = Math.atan2(u[1], u[0]);
+                let dd = a1 - as; dd = Math.atan2(Math.sin(dd), Math.cos(dd));
+                const an = as + dd * s;
+                ctx.save(); ctx.globalAlpha = c01((BW.tk - .4) / .12); ctx.translate(f.x + Math.cos(an) * L_ARROW, f.y + Math.sin(an) * L_ARROW); ctx.rotate(an); arrowShape(); ctx.restore();
+            }
+        }
+        if (BW.ammo > 0 && w > .55 && BW.cd <= 0 && BW.tk >= 1) {          // nocked arrow, resting on the hand
             ctx.save(); ctx.translate(nk[0] + u[0] * L_ARROW, nk[1] + u[1] * L_ARROW); ctx.rotate(Math.atan2(u[1], u[0])); arrowShape(); ctx.restore();
         }
         const fist = i => { const f = P.fistInfo && P.fistInfo[i]; if (f && FIST.complete) { ctx.save(); ctx.translate(f.x, f.y); ctx.scale(f.F, 1); ctx.rotate(f.a - Math.PI / 2); ctx.drawImage(FIST, -FIST.naturalWidth / 2, -4); ctx.restore() } };
@@ -362,7 +390,7 @@
         // (index above the arrow, middle + ring below), thumb relaxed - not a closed fist
         const hook = () => {
             const f = P.fistInfo && P.fistInfo[1]; if (!f) return;
-            if (w < .45) return fist(1);
+            if (w < .45 || BW.tk < 1) return fist(1);
             ctx.save(); ctx.translate(f.x, f.y); ctx.rotate(Math.atan2(u[1], u[0])); ctx.scale(1, F);   // local +x = toward the bow, -y = up
             ctx.fillStyle = '#111'; ctx.strokeStyle = '#111'; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
             ctx.beginPath(); ctx.ellipse(-4.8, .4, 6.4, 4.4, 0, 0, 7); ctx.fill();                       // back of hand
