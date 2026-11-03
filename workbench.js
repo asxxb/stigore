@@ -38,10 +38,18 @@
         { id: 'file', kind: 'hold', tool: 'file', label: 'FILE THE EDGE', help: 'SHIFT pins the blade · hold CLICK and push the file along it · Q sharpens', dur: 3.4 },
         { id: 'fit', kind: 'fit', tool: 'hand', label: 'PIN THE HANDLE', help: 'Slide the handle with the mouse · SHIFT steadies · CLICK to pin it', speed: 1.5 },
         { id: 'test', kind: 'test', label: 'TEST: STAB THE BOARD', help: 'Mouse height aims · CLICK to stab' }]
+    },
+    bowarrow: {
+      name: 'Bow & Arrow', mats: { stick: 2, plant: 2, scrap: 1 }, stages: [
+        { id: 'carve', kind: 'hold', tool: 'knife', label: 'CARVE THE LIMB', help: 'SHIFT grips the stave · hold CLICK and drag DOWN to taper · lift, repeat', dur: 3.2 },
+        { id: 'till', kind: 'bend', tool: 'hand', label: 'TILL THE BOW', help: 'SHIFT braces the riser · hold CLICK, pull down to flex · release in the green', win: [.55, .72], crack: .88, rate: .45, fail: 'stick' },
+        { id: 'string', kind: 'fit', tool: 'hand', label: 'STRING THE BOW', help: 'Slide string into notch · SHIFT steadies · CLICK to seat it', speed: 1.3 },
+        { id: 'feather', kind: 'beat', tool: 'hand', label: 'FLETCH ARROWS', help: 'SHIFT holds the shaft · CLICK to glue feathers on the beat', hits: 5, bpm: 85 },
+        { id: 'test', kind: 'test', label: 'TEST: LOOSE AN ARROW', help: 'SHIFT grips · hold CLICK to draw back string, mouse height aims, release to loose' }]
     }
   };
   // 6 slots: index 0-2 = first row, 3-5 = second row. null = empty slot for a future blueprint.
-  const ORDER = ['bowie', 'slingshot', null, 'revolver', null, null];
+  const ORDER = ['bowie', 'slingshot', 'bowarrow', 'revolver', null, null];
   const SECTIONS = [{ name: 'WEAPONS', row: 0 }, { name: 'Guns', row: 1 }];
 
   /* ---------------- slingshot sprite (your exact artwork, split into layers) ---------------- */
