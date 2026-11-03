@@ -8,8 +8,9 @@
         preview: true,                                       // faint trajectory dots at full draw (set false for pure skill)
         life: 120                                            // seconds a spent arrow stays on the ground
     };
-    const L_ARROW = 105, HL = 92, LDRAW = 88, TB0 = 16, PSI_C = -1.25, BP = { lean: -.05, hipY: 7, hx: 3, hy: 1 };
-    const BW = window.BOW = { out: false, eq: 0, w: 0, d: 0, dh: 0, vib: 0, aim: .1, sway: 0, hold: 0, fat: 0, tired: false, cd: 0, rt: 9, ammo: CFG.quiver, ai: 0, fr: null, t: 0, arrows: [], saved: null, dirIn: 0, ok: false, msg: 0 };
+    // L_ARROW = arrow length, LDRAW = full draw length (must stay < L_ARROW so the head clears the bow hand)
+    const L_ARROW = 118, HL = 92, LDRAW = 100, TB0 = 16, PSI_C = -1.25, BP = { lean: -.05, hipY: 7, hx: 3, hy: 1 };
+    const BW = window.BOW = { out: false, eq: 0, w: 0, d: 0, dh: 0, vib: 0, aim: .1, sway: 0, hold: 0, fat: 0, tired: false, cd: 0, rt: 9, ammo: CFG.quiver, ai: 0, fr: null, t: 0, arrows: [], saved: null, dirIn: 0, ok: false, msg: 0, qa: 0, qv: 0 };
     const A = BW.arrows, lp = (a, b, k) => a + (b - a) * k, c01 = v => Math.max(0, Math.min(1, v));
     const safe = f => { try { return f() } catch (e) { return false } };
     const spd = (d, fat) => (CFG.vMin + (CFG.vMax - CFG.vMin) * Math.pow(d, 1.25)) * (1 - .18 * fat);
@@ -68,6 +69,12 @@
         BW.dh = Math.max(0, BW.dh - dt * 3.2);
         const k = 1 + 4 * BW.fat;
         BW.sway = (Math.sin(BW.t * 1.3) * .010 + Math.sin(BW.t * 2.9 + 1) * .006) * k * (BW.d > 0 ? 1 : .4) + Math.sin(BW.t * 31) * .004 * BW.fat;
+        // quiver swing: a damped spring that lags behind the body when you start / stop / run
+        {
+            const h = Math.min(dt, .033), vx = P.vx || 0, tgt = -Math.max(-1, Math.min(1, vx / 500)) * .2;
+            BW.qv += (150 * (tgt - BW.qa) - 12 * BW.qv) * h; BW.qa += BW.qv * h;
+            BW.qa = Math.max(-.5, Math.min(.5, BW.qa));
+        }
         // aiming roots the player; A/D only turns him
         if (ok && BW.w > .08) {
             BW.dirIn = (keys.ArrowRight || keys.KeyD ? 1 : 0) - (keys.ArrowLeft || keys.KeyA ? 1 : 0);
@@ -239,37 +246,80 @@
     function arrowShape() {                                                // tip at (0,0), points +x, local units = character units
         const INK = '#111', L = L_ARROW;
         ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-        ctx.strokeStyle = INK; ctx.lineWidth = 5.4; ctx.beginPath(); ctx.moveTo(-L + 4, 0); ctx.lineTo(-14, 0); ctx.stroke();
-        ctx.strokeStyle = '#a0703c'; ctx.lineWidth = 3; ctx.stroke();
-        ctx.strokeStyle = 'rgba(255,225,170,.55)'; ctx.lineWidth = .9; ctx.beginPath(); ctx.moveTo(-L + 10, -.8); ctx.lineTo(-24, -.8); ctx.stroke();
-        for (const s of [-1, 1]) {                                         // fletching: two visible vanes, ink barbs
-            ctx.beginPath(); ctx.moveTo(-L + 3, s * 1.6); ctx.lineTo(-L + 8, s * 8.8); ctx.lineTo(-L + 31, s * 8.2); ctx.lineTo(-L + 38, s * 1.6); ctx.closePath();
-            ctx.fillStyle = s < 0 ? '#8a2c1c' : '#a63a24'; ctx.fill(); ctx.lineWidth = 1.6; ctx.strokeStyle = INK; ctx.stroke();
-            ctx.strokeStyle = 'rgba(50,10,5,.8)'; ctx.lineWidth = .8; ctx.beginPath();
-            for (let k = 0; k < 5; k++) { ctx.moveTo(-L + 8 + k * 5.6, s * 1.9); ctx.lineTo(-L + 13 + k * 5.6, s * 7.8) }
+        // slim shaft: ink outline, light cedar core, thin highlight
+        ctx.strokeStyle = INK; ctx.lineWidth = 3.3; ctx.beginPath(); ctx.moveTo(-L + 4, 0); ctx.lineTo(-18, 0); ctx.stroke();
+        ctx.strokeStyle = '#d6aa6e'; ctx.lineWidth = 1.6; ctx.stroke();
+        ctx.strokeStyle = 'rgba(255,242,210,.65)'; ctx.lineWidth = .6; ctx.beginPath(); ctx.moveTo(-L + 48, -.5); ctx.lineTo(-30, -.5); ctx.stroke();
+        // cresting bands just ahead of the fletching
+        ctx.lineCap = 'butt'; ctx.strokeStyle = '#8a2c1c'; ctx.lineWidth = 2;
+        for (const x of [-L + 44, -L + 48]) { ctx.beginPath(); ctx.moveTo(x, -.8); ctx.lineTo(x, .8); ctx.stroke() }
+        ctx.lineCap = 'round';
+        // fletching: low swept shield-cut vanes, tall at the nock end and tapering toward the head
+        for (const s of [-1, 1]) {
+            ctx.beginPath(); ctx.moveTo(-L + 5, s * .9);
+            ctx.quadraticCurveTo(-L + 6, s * 7.4, -L + 14, s * 6.6);
+            ctx.quadraticCurveTo(-L + 28, s * 5.2, -L + 39, s * .9);
+            ctx.closePath();
+            ctx.fillStyle = s < 0 ? '#7e2519' : '#b6402a'; ctx.fill(); ctx.lineWidth = 1.3; ctx.strokeStyle = INK; ctx.stroke();
+            ctx.strokeStyle = 'rgba(40,8,4,.7)'; ctx.lineWidth = .6; ctx.beginPath();
+            for (let k = 0; k < 6; k++) {                                  // barbs lean toward the head
+                const o = 8 + k * 4.4, hh = Math.max(2, 6.4 - Math.max(0, o + 3 - 14) * .22);
+                ctx.moveTo(-L + o, s * 1.1); ctx.lineTo(-L + o + 3, s * hh);
+            }
             ctx.stroke();
         }
-        ctx.beginPath(); ctx.arc(-L + 1, 0, 3, 0, 7); ctx.fillStyle = '#2a1c12'; ctx.fill(); ctx.strokeStyle = INK; ctx.lineWidth = 1.2; ctx.stroke();
-        ctx.beginPath(); ctx.rect(-24, -3, 7, 6); ctx.fillStyle = '#5d5f64'; ctx.fill(); ctx.lineWidth = 1.3; ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-10, -8); ctx.lineTo(-21, -5.8); ctx.lineTo(-17, 0); ctx.lineTo(-21, 5.8); ctx.lineTo(-10, 8); ctx.closePath();   // broadhead
-        ctx.fillStyle = '#82858b'; ctx.fill(); ctx.lineWidth = 1.7; ctx.stroke();
-        ctx.strokeStyle = '#c9ccd1'; ctx.lineWidth = .9; ctx.beginPath(); ctx.moveTo(-1.5, 0); ctx.lineTo(-16, 0); ctx.stroke();
+        // nock: small flared knob with a string slot
+        ctx.beginPath(); ctx.moveTo(-L - 1.5, -2.5); ctx.lineTo(-L + 5.5, -1.6); ctx.lineTo(-L + 5.5, 1.6); ctx.lineTo(-L - 1.5, 2.5); ctx.closePath();
+        ctx.fillStyle = '#2a1c12'; ctx.fill(); ctx.lineWidth = 1.1; ctx.strokeStyle = INK; ctx.stroke();
+        ctx.strokeStyle = '#d9d0b4'; ctx.lineWidth = .7; ctx.beginPath(); ctx.moveTo(-L - 1, 0); ctx.lineTo(-L + 2, 0); ctx.stroke();
+        // steel collar + long needle-point leaf head
+        ctx.beginPath(); ctx.rect(-24, -2.1, 5, 4.2); ctx.fillStyle = '#5d5f64'; ctx.fill(); ctx.lineWidth = 1.1; ctx.strokeStyle = INK; ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(-8, -2.1, -13, -4.7); ctx.lineTo(-19, -3.1); ctx.lineTo(-19, 3.1); ctx.lineTo(-13, 4.7); ctx.quadraticCurveTo(-8, 2.1, 0, 0); ctx.closePath();
+        ctx.fillStyle = '#9a9da3'; ctx.fill(); ctx.lineWidth = 1.4; ctx.strokeStyle = INK; ctx.stroke();
+        ctx.fillStyle = 'rgba(40,42,48,.45)'; ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(-8, 2.1, -13, 4.7); ctx.lineTo(-19, 3.1); ctx.lineTo(-19, 0); ctx.closePath(); ctx.fill();   // shaded lower half
+        ctx.strokeStyle = '#e3e5e9'; ctx.lineWidth = .8; ctx.beginPath(); ctx.moveTo(-1.5, 0); ctx.lineTo(-17, 0); ctx.stroke();   // centre ridge shine
+    }
+
+    // arrow poking out of the quiver mouth: nock end up, fletching visible
+    function quiverArrow(hk, redder) {
+        ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        ctx.strokeStyle = '#111'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -hk); ctx.stroke();
+        ctx.strokeStyle = '#d6aa6e'; ctx.lineWidth = 1.4; ctx.stroke();
+        for (const s of [-1, 1]) {
+            ctx.beginPath(); ctx.moveTo(s * .8, -hk + 3);
+            ctx.quadraticCurveTo(s * 5.2, -hk + 3.2, s * 4.6, -hk + 9);
+            ctx.quadraticCurveTo(s * 2.8, -hk + 14, s * .8, -hk + 16); ctx.closePath();
+            ctx.fillStyle = (s < 0) === redder ? '#7e2519' : '#b6402a'; ctx.fill(); ctx.lineWidth = 1.1; ctx.strokeStyle = '#111'; ctx.stroke();
+        }
+        ctx.beginPath(); ctx.arc(0, -hk - .4, 1.7, 0, 7); ctx.fillStyle = '#2a1c12'; ctx.fill(); ctx.lineWidth = 1; ctx.strokeStyle = '#111'; ctx.stroke();
     }
 
     function top(F, S, now) {                                              // after the head: quiver, bow, string, arrow, hands
         const fr = BW.fr; if (!fr || BW.eq < .02) return;
         const eq = sm(BW.eq), w = BW.w, d = BW.d, g = fr.g, u = fr.u, psi = fr.psi, t = [-F * Math.sin(psi), -Math.cos(psi)];
         ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-        if (BW.ammo > 0) {                                                 // quiver on the back
-            ctx.save(); ctx.translate(fr.sh[0] - F * 10, fr.sh[1] + 16); ctx.rotate(-F * (.32 + .08 * w)); ctx.strokeStyle = '#111';
-            for (let k = 0; k < Math.min(4, BW.ammo); k++) {
-                ctx.save(); ctx.translate((k - 1.5) * 4.2, -30 - (k % 2) * 4); ctx.rotate((k - 1.5) * .1);
-                ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-3.4, -4); ctx.lineTo(-3, -15); ctx.lineTo(0, -17); ctx.lineTo(3, -15); ctx.lineTo(3.4, -4); ctx.closePath();
-                ctx.fillStyle = k % 2 ? '#a63a24' : '#8a2c1c'; ctx.fill(); ctx.lineWidth = 1.3; ctx.stroke(); ctx.restore();
-            }
-            ctx.beginPath(); ctx.moveTo(-8, -30); ctx.lineTo(8, -30); ctx.lineTo(7, 26); ctx.quadraticCurveTo(0, 32, -7, 26); ctx.closePath();
+        {   // ---- quiver: strapped to the back, swings and bounces with movement ----
+            // torso lean (forward = +): shoulder offset from the hip line, so the quiver follows the body when walking / running
+            const th0 = Math.max(-.15, Math.min(.9, Math.atan2(F * fr.sh[0], 56)));
+            BW.th = BW.th === undefined ? th0 : BW.th + (th0 - BW.th) * .6;
+            const th = BW.th, rot = F * (th - .2 - .03 * w);   // same back-tilt relative to the spine as when standing
+            const QY = 30, QX = 12, QS = .9, QL = 22;   // quiver: height (bigger = lower), distance behind the spine, size, extra length added downward (mouth stays put)
+            const sx = F * Math.sin(th), sy = -Math.cos(th);   // spine direction hip -> shoulder
+            const ox = fr.sh[0] - F * Math.cos(th) * QX - sx * QY, oy = fr.sh[1] - Math.sin(th) * QX - sy * QY;   // sit behind the back, down the spine
+            ctx.save(); ctx.translate(ox, oy); ctx.rotate(rot); ctx.scale(QS, QS); ctx.strokeStyle = '#111';
+            ctx.beginPath(); ctx.moveTo(-8, -30); ctx.lineTo(8, -30); ctx.lineTo(6.2, 24 + QL); ctx.quadraticCurveTo(0, 33 + QL, -6.2, 24 + QL); ctx.closePath();   // tapered leather body
             ctx.fillStyle = '#6a4326'; ctx.fill(); ctx.lineWidth = 3; ctx.stroke();
-            ctx.strokeStyle = '#3a2414'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-8, -24); ctx.lineTo(8, -24); ctx.moveTo(-7.5, 10); ctx.lineTo(7.5, 10); ctx.stroke();
+            ctx.strokeStyle = '#8a5a33'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-4.6, -24); ctx.lineTo(-3.6, 21 + QL); ctx.stroke();                 // highlight
+            ctx.strokeStyle = '#3a2414'; ctx.lineWidth = 2.4; ctx.beginPath(); ctx.moveTo(-8, -24); ctx.lineTo(8, -24); ctx.moveTo(-7.2, 6); ctx.lineTo(7.2, 6); ctx.moveTo(-6.8, 6 + QL * .9); ctx.lineTo(6.8, 6 + QL * .9); ctx.stroke();   // bands
+            ctx.setLineDash([2, 2.4]); ctx.strokeStyle = '#d6b27c'; ctx.lineWidth = .8; ctx.beginPath(); ctx.moveTo(5.6, -20); ctx.lineTo(4.6, 20 + QL); ctx.stroke(); ctx.setLineDash([]);   // stitching
+            ctx.fillStyle = '#3a2414'; ctx.beginPath(); ctx.moveTo(-6.2, 24 + QL); ctx.quadraticCurveTo(0, 33 + QL, 6.2, 24 + QL); ctx.quadraticCurveTo(0, 27.5 + QL, -6.2, 24 + QL); ctx.fill();          // base cap
+            ctx.beginPath(); ctx.ellipse(0, -30, 8, 2.7, 0, 0, 7); ctx.fillStyle = '#1a1008'; ctx.fill(); ctx.lineWidth = 2.4; ctx.strokeStyle = '#111'; ctx.stroke();           // open mouth
+            const n = Math.min(5, BW.ammo);
+            for (let k = 0; k < n; k++) {                                  // arrows rattle a little more than the quiver itself
+                const m = k - (n - 1) / 2, hk = 30 + ((k * 7) % 4) * 3.5;
+                ctx.save(); ctx.translate(m * 2.8, -30); ctx.rotate(m * .1);
+                quiverArrow(hk, k % 2 === 0); ctx.restore();
+            }
             ctx.restore();
         }
         // bow limbs: belly faces the archer, tips flex back as it is drawn
@@ -298,13 +348,26 @@
             ctx.save(); ctx.translate(nk[0] + u[0] * L_ARROW, nk[1] + u[1] * L_ARROW); ctx.rotate(Math.atan2(u[1], u[0])); arrowShape(); ctx.restore();
         }
         const fist = i => { const f = P.fistInfo && P.fistInfo[i]; if (f && FIST.complete) { ctx.save(); ctx.translate(f.x, f.y); ctx.scale(f.F, 1); ctx.rotate(f.a - Math.PI / 2); ctx.drawImage(FIST, -FIST.naturalWidth / 2, -4); ctx.restore() } };
+        // string hand: open back of the hand behind the string, three fingers hooked on it
+        // (index above the arrow, middle + ring below), thumb relaxed - not a closed fist
+        const hook = () => {
+            const f = P.fistInfo && P.fistInfo[1]; if (!f) return;
+            if (w < .45) return fist(1);
+            ctx.save(); ctx.translate(f.x, f.y); ctx.rotate(Math.atan2(u[1], u[0])); ctx.scale(1, F);   // local +x = toward the bow, -y = up
+            ctx.fillStyle = '#111'; ctx.strokeStyle = '#111'; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+            ctx.beginPath(); ctx.ellipse(-4.8, .4, 6.4, 4.4, 0, 0, 7); ctx.fill();                       // back of hand
+            ctx.lineWidth = 2.6;
+            for (const o of [-4, 1.4, 4.6]) { ctx.beginPath(); ctx.moveTo(-6, o); ctx.lineTo(1.6, o); ctx.lineTo(-.8, o + 2); ctx.stroke() }   // hooked fingers
+            ctx.lineWidth = 2.2; ctx.beginPath(); ctx.moveTo(-7, 3); ctx.lineTo(-12, 5.4); ctx.stroke();    // relaxed thumb
+            ctx.restore();
+        };
         fist(0);
         const Af = P.armFullPts && P.armFullPts[1];
         if (Af && w > .3) {                                                // string arm drawn over the face
             ctx.fillStyle = '#111';
             for (let j = 14; j <= 30; j++) { const q = j / 30, v = 1 - q, x = v * v * Af[0][0] + 2 * v * q * Af[1][0] + q * q * Af[2][0], y = v * v * Af[0][1] + 2 * v * q * Af[1][1] + q * q * Af[2][1]; ctx.beginPath(); ctx.arc(x, y, 1.8 + 2.4 * q, 0, 7); ctx.fill() }
         }
-        fist(1);
+        hook();
         ctx.restore();
     }
     const _dlp = window.drawLanternProps;
@@ -326,7 +389,7 @@
             } else if (a.st === 'emb') ang += Math.sin(a.age * 50) * .09 * Math.exp(-a.age * 6);
             ctx.globalAlpha = al; ctx.translate(sx, sy); ctx.rotate(ang); ctx.scale(S, S);
             if (a.st === 'gnd' || a.st === 'emb') ctx.translate(a.depth || 0, 0);
-            if (a.st === 'fly') { ctx.strokeStyle = 'rgba(17,17,17,.28)'; ctx.lineWidth = 1.4; ctx.lineCap = 'round'; for (const k of [-1, 1]) { ctx.beginPath(); ctx.moveTo(-L_ARROW - 8, k * 4); ctx.lineTo(-L_ARROW - 70, k * 4); ctx.stroke() } }
+            if (a.st === 'fly') { ctx.strokeStyle = 'rgba(17,17,17,.28)'; ctx.lineWidth = 1.2; ctx.lineCap = 'round'; for (const k of [-1, 1]) { ctx.beginPath(); ctx.moveTo(-L_ARROW - 8, k * 3); ctx.lineTo(-L_ARROW - 80, k * 3); ctx.stroke() } }
             arrowShape(); ctx.restore();
         }
         const f = BW.fr;
@@ -378,4 +441,3 @@
         mk('Q', 178, toggle); mk('F', 98, () => keys.KeyF = 1, () => keys.KeyF = 0);
     }
 })();
-
