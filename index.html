@@ -3242,6 +3242,7 @@
                 P.lnBA = rot(F * 7, -12);
                 drawBelt(P.lnBA, P.lnB);
             }
+            if (P === PL && window.coinDrawSack) coinDrawSack(rot, F, now);
             const sh = rot(0, -T + 10), swing = (.015 + .9 * R) * P.amp * ARM_SWING, up = z < 0 ? -.9 : 0;
             const sTilt = (P === PL) ? smokeTilt() : [0, 0];
             const mA = (P === PL && P.sm) ? (() => { const h = rot(-F * 7 + F * sTilt[0], -T - 24 + sTilt[1]); return [h[0] + F * 19, h[1] + 8] })() : null;
@@ -18111,6 +18112,7 @@
     </script>
     <script src="workbench.js"></script>
     <script src="bow.js"></script>
+    <script src="coins.js"></script>
 </body>
 
 </html>
