@@ -321,6 +321,16 @@
                 quiverArrow(hk, k % 2 === 0); ctx.restore();
             }
             ctx.restore();
+            // small shoulder strap: holds the quiver, over the shoulder and down the chest to a tiny buckle
+            const A = [ox + QS * 14 * Math.sin(rot), oy - QS * 14 * Math.cos(rot)],             // where it clips onto the quiver
+                S1 = [fr.sh[0] - F * 1, fr.sh[1] - 3],                                         // over the top of the shoulder
+                E = [fr.sh[0] - sx * 18 + F * Math.cos(th) * 5, fr.sh[1] - sy * 18 + Math.sin(th) * 5];   // chest, a little below
+            ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+            ctx.strokeStyle = '#111'; ctx.lineWidth = 3.6; ctx.beginPath(); ctx.moveTo(A[0], A[1]); ctx.lineTo(S1[0], S1[1]); ctx.lineTo(E[0], E[1]); ctx.stroke();
+            ctx.strokeStyle = '#4a2f1a'; ctx.lineWidth = 1.8; ctx.stroke();
+            ctx.fillStyle = '#8c8e93'; ctx.strokeStyle = '#111'; ctx.lineWidth = 1; ctx.beginPath(); ctx.rect(E[0] - 2.2, E[1] - 2.2, 4.4, 4.4); ctx.fill(); ctx.stroke();   // buckle
+            ctx.beginPath(); ctx.arc(A[0], A[1], 2, 0, 7); ctx.fillStyle = '#8c8e93'; ctx.fill(); ctx.stroke();                                                         // clip on the quiver
+            ctx.restore();
         }
         // bow limbs: belly faces the archer, tips flex back as it is drawn
         const N = 24, TB = TB0 + 14 * d, hl = HL * (.4 + .6 * eq), pts = [], wd = [];
