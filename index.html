@@ -2717,42 +2717,125 @@
             ctx.restore();
         }
 
-        // ---- woman: ponytail (drawn BEHIND the head) ----
+        // ---------- shared helpers ----------
+        function hairRnd(i) { const x = Math.sin(i * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); }
+
+        // tapered brush stroke (filled lens) along a quadratic curve; thick near the start, fine tip at the end
+        function hairLens(ax, ay, cx, cy, bx, by, w) {
+            const n = 16, Lp = [], Rp = [];
+            for (let i = 0; i <= n; i++) {
+                const t = i / n, u = 1 - t;
+                const x = u * u * ax + 2 * u * t * cx + t * t * bx, y = u * u * ay + 2 * u * t * cy + t * t * by;
+                let dx = 2 * u * (cx - ax) + 2 * t * (bx - cx), dy = 2 * u * (cy - ay) + 2 * t * (by - cy);
+                const l = Math.hypot(dx, dy) || 1; dx /= l; dy /= l;
+                const wd = w * Math.pow(Math.max(0, 1 - t), .75) * Math.min(1, .35 + t * 5);
+                Lp.push([x - dy * wd, y + dx * wd]); Rp.push([x + dy * wd, y - dx * wd]);
+            }
+            ctx.beginPath(); ctx.moveTo(Lp[0][0], Lp[0][1]);
+            for (let i = 1; i <= n; i++) ctx.lineTo(Lp[i][0], Lp[i][1]);
+            for (let i = n; i >= 0; i--) ctx.lineTo(Rp[i][0], Rp[i][1]);
+            ctx.closePath(); ctx.fill();
+        }
+
+        // tapered wavy strand (call inside the hair transform)
+        function hairStrand(x0, y0, x1, y1, amp, freq, ph, w0, w1, swayX) {
+            const n = 24, dx = x1 - x0, dy = y1 - y0, L = Math.hypot(dx, dy) || 1, nx = -dy / L, ny = dx / L;
+            let px = x0, py = y0;
+            for (let i = 1; i <= n; i++) {
+                const t = i / n, o = Math.sin(t * freq * 6.2832 + ph) * amp * Math.min(1, t * 3);
+                const x = x0 + dx * t + nx * o + swayX * t * t, y = y0 + dy * t + ny * o;
+                ctx.lineWidth = w0 + (w1 - w0) * t;
+                ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(x, y); ctx.stroke();
+                px = x; py = y;
+            }
+        }
+
+        // ---------- BEHIND the head: back lock + long wavy strands ----------
+        // Units = head radii (1 = 24px), x+ = facing direction, origin = head centre.
+        // Every root sits INSIDE the head circle, so the head disc hides it: hair is always attached.
         function femaleHairBack(hd, F, vx, now) {
-            const run = Math.min(1, Math.abs(vx) / 520);
-            const root = [hd[0] - F * 25, hd[1] - 9];
-            const sway = Math.sin(now * 3) * 3 + Math.sin(now * 13) * 3 * run;
-            const tip = [root[0] - F * (14 + 34 * run), root[1] + 44 - 26 * run + sway];
-            const mid = [root[0] - F * (20 + 14 * run), root[1] + 12 - 8 * run + sway * .4];
+            const spd = Math.min(1, Math.abs(vx) / 520);
+            const sw = -(.05 * Math.sin(now * 2.1) + .45 * spd);
             ctx.save();
-            ctx.fillStyle = '#111'; ctx.strokeStyle = '#111'; ctx.lineWidth = 2;
-            ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-            ctx.beginPath();
-            ctx.moveTo(root[0], root[1] - 7);
-            ctx.quadraticCurveTo(mid[0], mid[1] - 10, tip[0], tip[1]);
-            ctx.quadraticCurveTo(mid[0] + F * 6, mid[1] + 10, root[0] + F * 2, root[1] + 7);
-            ctx.closePath(); ctx.fill(); ctx.stroke();
-            ctx.strokeStyle = '#b3261e'; ctx.lineWidth = 3.2;                 // hair tie
-            ctx.beginPath(); ctx.moveTo(root[0] - F, root[1] - 6); ctx.lineTo(root[0] + F, root[1] + 6); ctx.stroke();
-            ctx.strokeStyle = PAPER; ctx.globalAlpha = .45; ctx.lineWidth = 1;   // strand highlight
-            ctx.beginPath(); ctx.moveTo(root[0] - F * 4, root[1]);
-            ctx.quadraticCurveTo(mid[0], mid[1], tip[0] + F * 3, tip[1] - 4); ctx.stroke();
+            ctx.translate(hd[0], hd[1]); ctx.scale(F * 24, 24);
+            ctx.fillStyle = '#111'; ctx.strokeStyle = '#111'; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+
+            // back lock: smooth brush strokes hugging the back of the skull and tapering down past the neck
+            for (let i = 0; i < 5; i++) {
+                const a = 3.2 - i * .12;                                            // roots from behind-ear up to the crown line
+                const rx = Math.cos(a) * .8, ry = Math.sin(a) * .8;
+                const ex = -1.0 - hairRnd(i + 20) * .4 + sw * .2, ey = .8 + hairRnd(i + 5) * .6;
+                hairLens(rx, ry, -1.15 - i * .03, .2 + i * .05, ex, ey, .1 - i * .008);
+            }
+
+            // long wavy loose strands
+            hairStrand(-1.6, -.3, -2.0, 2.5, .12, 1.6, 0, .085, .03, sw * .9);
+            hairStrand(-1.2, .2, -1.35, 2.4, .13, 1.7, 1.2, .08, .03, sw);
+            hairStrand(-1.0, .35, -.95, 1.95, .1, 1.4, 2.4, .065, .025, sw * .7);
+            hairStrand(-1.75, -.7, -2.25, 1.4, .1, 1.3, 3.6, .06, .025, sw * .8);
             ctx.restore();
         }
 
-        // ---- woman: hair cap, fringe, eye, lashes, lips (drawn ON TOP of the head) ----
+        // ---------- IN FRONT of the head: big messy bun + hair swept over the crown ----------
         function femaleHairFront(hd, F) {
-            ctx.save(); ctx.translate(hd[0], hd[1]); ctx.scale(F, 1);
-            ctx.fillStyle = '#111'; ctx.strokeStyle = '#111'; ctx.lineWidth = 2.5; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+            const now = performance.now() / 1000;
+            const spd = (typeof CUR !== 'undefined' && CUR) ? Math.min(1, Math.abs(CUR.vx) / 520) : 0;
+            ctx.save();
+            ctx.translate(hd[0], hd[1]); ctx.scale(F * 24, 24);
+            ctx.fillStyle = '#111'; ctx.strokeStyle = '#111'; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+            const BX = -1.15, BY = -1.0;                                             // bun centre (up and behind the crown)
+
+            // 1) crescent of hair over the crown: thick at the back, tapering to a point at the forehead
             ctx.beginPath();
-            ctx.arc(0, 0, 24.5, Math.PI * .72, Math.PI * 1.9);
-            ctx.quadraticCurveTo(10, -16, -2, -5);          // sweeping fringe
-            ctx.quadraticCurveTo(-12, 2, -15.7, 18.9);
-            ctx.closePath(); ctx.fill(); ctx.stroke();
-            ctx.lineWidth = 2;                               // eye + lashes
-            ctx.beginPath(); ctx.arc(13, -1, 1.7, 0, 7); ctx.fill();
-            ctx.beginPath(); ctx.moveTo(10, -3); ctx.lineTo(17, -6); ctx.moveTo(11, -4); ctx.lineTo(14, -8); ctx.stroke();
-            ctx.fillStyle = '#b3261e'; ctx.beginPath(); ctx.ellipse(18, 10, 3.2, 1.6, 0, 0, 7); ctx.fill();   // lips
+            ctx.arc(0, 0, 1.06, 3.25, 5.6, false);
+            ctx.bezierCurveTo(.78, -.62, .4, -.84, -.05, -.82);
+            ctx.bezierCurveTo(-.5, -.78, -.8, -.45, -.88, .02);
+            ctx.closePath(); ctx.fill();
+
+            // 2) long brush strands from the bun, flowing over the skull to the forehead
+            for (let i = 0; i < 18; i++) {
+                const k = i / 17, a = 3.8 + k * 1.95 + (hairRnd(i + 40) - .5) * .1;
+                const r1 = .98 + hairRnd(i + 60) * .22;
+                const ex = Math.cos(a) * r1, ey = Math.sin(a) * r1;
+                const am = 3.9 + k * 1.2, rr = 1.22 + hairRnd(i + 90) * .2;
+                hairLens(BX + (hairRnd(i) - .5) * .7, BY + (hairRnd(i + 9) - .5) * .5, Math.cos(am) * rr, Math.sin(am) * rr, ex, ey, .06 + hairRnd(i + 7) * .045);
+            }
+
+            // 3) the bun: dense swirling brush strokes, ragged outline, little paper showing through
+            ctx.save(); ctx.translate(BX, BY); ctx.rotate(-.35);
+            ctx.beginPath(); ctx.ellipse(0, 0, .5, .4, 0, 0, 7); ctx.fill();
+            for (let i = 0; i < 54; i++) {
+                const a = i * .71 + hairRnd(i + 3) * .6, dir = i % 2 ? 1 : -1;
+                const r0 = .12 + hairRnd(i + 11) * .35, r1 = .66 + hairRnd(i + 17) * .55;
+                const sx = Math.cos(a) * r0, sy = Math.sin(a) * r0 * .85;
+                const mx = Math.cos(a + dir * .8) * r1, my = Math.sin(a + dir * .8) * r1 * .86;
+                const ex = Math.cos(a + dir * 1.7) * (r0 + .3), ey = Math.sin(a + dir * 1.7) * (r0 + .3) * .85;
+                hairLens(sx, sy, mx, my, ex, ey, .06 + hairRnd(i + 23) * .06);
+            }
+            ctx.lineWidth = .032;                                                    // short flyaways around the bun edge
+            for (let i = 0; i < 9; i++) {
+                const a = i * .7 + hairRnd(i + 31) * .3, c = (i % 2 ? .35 : -.35);
+                const sx = Math.cos(a) * .55, sy = Math.sin(a) * .46;
+                const mx = Math.cos(a - c * .4) * (.82 + hairRnd(i + 33) * .12), my = Math.sin(a - c * .4) * (.7 + hairRnd(i + 34) * .12);
+                const ex = Math.cos(a + c) * (.85 + hairRnd(i + 35) * .2) + Math.sin(now * 1.3 + i) * .012, ey = Math.sin(a + c) * (.74 + hairRnd(i + 36) * .2);
+                ctx.beginPath(); ctx.moveTo(sx, sy); ctx.quadraticCurveTo(mx, my, ex, ey); ctx.stroke();
+            }
+            ctx.globalAlpha = .3; ctx.strokeStyle = PAPER; ctx.lineWidth = .03;     // lighter streaks inside the bun
+            for (let i = 0; i < 5; i++) { ctx.beginPath(); ctx.ellipse(0, 0, .3 + i * .08, .22 + i * .065, 0, .4 + i * .8, 2.3 + i * .8); ctx.stroke(); }
+            ctx.restore();
+
+            // 4) light streaks on the crown showing hair direction
+            ctx.globalAlpha = .28; ctx.strokeStyle = PAPER; ctx.lineWidth = .028;
+            for (let i = 0; i < 7; i++) { ctx.beginPath(); ctx.arc(0, 0, .82 + i * .04, 3.9 + i * .1, 5.15 - i * .02, false); ctx.stroke(); }
+            ctx.globalAlpha = 1; ctx.strokeStyle = '#111'; ctx.fillStyle = '#111';
+
+            // 5) a couple of flyaways off the crown
+            ctx.lineWidth = .04;
+            ctx.beginPath(); ctx.moveTo(-.35, -1.1); ctx.quadraticCurveTo(-.25, -1.36, .05, -1.32); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(.3, -1.08); ctx.quadraticCurveTo(.5, -1.28, .72, -1.18); ctx.stroke();
+
+            // 6) thin wavy strand along the face edge
+            hairStrand(.93, -.42, .88, 2.15, .1, 1.7, .5, .065, .025, -(.05 * Math.sin(now * 2.4) + .5 * spd));
             ctx.restore();
         }
 
