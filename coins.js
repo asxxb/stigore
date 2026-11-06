@@ -611,7 +611,7 @@
   const TOSS_KEY = 'KeyP';   // G is already used for revolver draw/holster, so using P
 
   function coinTossStart() {
-    if (CT.active || CT.wind || TK.on) return;
+    if (CT.active || CT.wind || TK.on || CC.on) return;
     if (!P.puHeld || P.puHeld.type !== 'coin') return;
     if (P.z < 0 || P.mount || swim.on) return;
     CT.wind = true;
@@ -735,4 +735,78 @@
     if (/INPUT|TEXTAREA/.test(e.target.tagName || '')) return;
     coinTossStart();
   });
+
+  // ================= COIN CATCH =================
+  const CC = { on: false, t: 0, px: 0, py: 0, rw: 0 };
+  const CC_DUR = .3;          // catch + cushion length
+  const CC_RANGE = 80;        // how far sideways the player can reach
+  const CC_SNAP = 18;         // hand-to-coin distance that counts as caught
+
+  function coinHandLocal() {
+    const A = P.armPts && P.armPts[0];
+    if (!A) return null;
+    const el = A[0], wr = A[1];
+    let dx = wr[0] - el[0], dy = wr[1] - el[1];
+    const dl = Math.hypot(dx, dy) || 1;
+    dx /= dl; dy /= dl;
+    return [wr[0] + dx * PALM * .95, wr[1] + dy * PALM * .95 - 3];
+  }
+
+  function coinCanReach() {
+    if (!CT.active || CT.vz >= 0 || P.puHeld || CC.on || tkBlocked()) return false;
+    return Math.abs(CT.x - P.x) < CC_RANGE && CT.z < 340 && CT.z > 20;
+  }
+
+  function coinCatchTick(dt) {
+    if (CC.on) {
+      CC.t += dt;
+      if (CC.t >= CC_DUR || tkBlocked()) CC.on = false;
+      return;
+    }
+
+    const can = coinCanReach();
+    CC.rw = can ? Math.min(1, CC.rw + dt * 10) : Math.max(0, CC.rw - dt * 10);
+    if (!can) return;
+
+    const h = coinHandLocal();
+    if (!h) return;
+
+    const cx = CT.x - P.x, cy = -CT.z;
+    const d = Math.hypot(cx - h[0], cy - h[1]);
+
+    // caught: hand reached the coin, or it fell to waist height right beside the player
+    if (d < CC_SNAP || (CT.z < 100 && Math.abs(cx) < 45)) {
+      P.puHeld = { type: 'coin', seed: Math.random() * 99 };
+      CT.active = false;
+      Object.assign(CC, { on: true, t: 0, px: cx, py: cy });
+      kick(.4);   // small jiggle of the sack
+      ting();
+    }
+  }
+
+  const _coinArmCatch = window.coinArm;
+  window.coinArm = function (i, sh, F, rot) {
+    if (i === 0) {
+      if (CC.on) {
+        // hand pulls down and in, absorbing the coin
+        const u = sm(CC.t / CC_DUR);
+        const T = tkMix([CC.px, CC.py], [sh[0] + F * 34, sh[1] + 62], u);
+        T[1] += 7 * Math.sin(Math.PI * Math.min(1, CC.t / .14));
+        const [ang, flex] = ikTo(sh, T[0], T[1], F);
+        return [ang, flex, 1 - sm((CC.t - .2) / .1)];
+      }
+      if (CC.rw > .01 && CT.active) {
+        // open hand tracks the falling coin
+        const [ang, flex] = ikTo(sh, CT.x - P.x, -CT.z, F);
+        return [ang, flex, CC.rw];
+      }
+    }
+    return _coinArmCatch(i, sh, F, rot);
+  };
+
+  const _updCatch = update;
+  update = function (dt) {
+    coinCatchTick(dt);
+    return _updCatch(dt);
+  };
 })();
