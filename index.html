@@ -15270,6 +15270,11 @@
             return b;
         }
         function pressPickup() {
+            if (P.puHeld && P.puHeld.type === 'bird' && P.pu === 0) {
+                dropItem('bird', P.x + P.face * 30 * CSc());
+                P.puHeld = null;
+                return;
+            }
             if (P.mpk > 0) return;
             if (DD.carry && P.pu === 0) { ddPutDown(); return; }   // NEW
             if (TH_SQ.held && P.pu === 0 && P.sqg === 0 && !(P.sqt > 0)) { sqPutDown(); return; }
@@ -15386,14 +15391,19 @@
                         banner.t = .8; banner.text = 'GOT THE SQUIRREL';
                     } else if (h && h.type === 'knife') {
                         hasKnife = true; banner.t = .8; banner.text = 'KNIFE RECOVERED';
+                    } else if (h && h.type === 'bird') {
+                        banner.t = .8; banner.text = 'GOT THE BIRD';
                     } else if (h) {
                         INV[h.type] = (INV[h.type] || 0) + 1;
                         banner.t = .8; banner.text = 'PICKED UP: ' + ITEM_DEFS[h.type].label;
                     }
-                    P.puHeld = null;
+                    if (!(h && h.type === 'bird')) P.puHeld = null;
                     if (typeof playSfx === 'function') playSfx('pickup');
                 }
-                if (P.puT2 >= .75) { P.pu = 0; P.puM = 0; P.puIt = null; P.puHeld = null; P.puC = null }   // PICKUP -> IDLE / run (by input)
+                if (P.puT2 >= .75) {
+                    P.pu = 0; P.puM = 0; P.puIt = null; P.puC = null;
+                    if (!(P.puHeld && P.puHeld.type === 'bird')) P.puHeld = null;   // the bird stays in the hand
+                }
             }
         }
 
