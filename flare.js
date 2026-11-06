@@ -176,7 +176,7 @@ function flareFire() {                                     // called from pressF
     }
     for (let i = 0; i < 16; i++) addSpark(m[0], m[1] - dh, ux * (200 + R() * 700) + (R() - .5) * 260, uy * (200 + R() * 700) + (R() - .5) * 260, .2 + R() * .3);
     const dA = Math.atan2(uy, ux);
-    flmEmBurst(m[0], m[1] - dh, dA, 1.1, 55, 80, S, 1, dh);          // forward cone
+    flmEmBurst(m[0], m[1] - dh, dA, 1.1, 90, 130, S, 1.1, dh);        // forward cone
     flmEmBurst(m[0], m[1] - dh, dA + Math.PI, 1.8, 12, 16, S, .5, dh);   // blowback
     FLM.muz = { t: 0, life: .45 };                           // keeps spitting for a moment
     FLM.jet = { t: 0, life: FLM_JET_T, seed: R() * 100 };
