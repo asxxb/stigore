@@ -127,7 +127,7 @@ const FLM_DROPS = 1;            // molten droplet amount multiplier
 const FLM_JET_LEN = 430;        // length of the muzzle flame in px (at normal scale)
 const FLM_JET_T = .5;           // how long the flame keeps spitting after the shot (s)
 const FLM_EMBERS = 1;           // multiplier for flying embers and bright sparks (try 1.6 for a firestorm)
-const FLM = { drops: [], fade: [], prev: new Set(), jet: null, em: [], muz: null };
+const FLM = { drops: [], fade: [], prev: new Set(), jet: null, em: [], muz: null, spill: [] };
 
 function flmRate(r) { return Math.floor(r) + (Math.random() < r % 1 ? 1 : 0) }   // fractional spawn counts
 
@@ -318,6 +318,22 @@ function flFly(S, dt) {                                    // flip up, spin once
     }
 }
 
+function flSplash(x, y, F, dh, k) {            // fire splashing and spilling on ground contact. k: 1 = landing, .6 = bounce
+    const S = CSc(), R = Math.random;
+    for (let i = 0, n = Math.round(26 * k * FLM_DROPS); i < n; i++) {      // molten drops thrown sideways and up
+        const dir = R() < .5 ? -1 : 1, f = R(), sp = 120 + R() * 520;
+        flmDrop(x, y - 2, dir * sp * (.5 + .5 * f) + F * 90, -(30 + R() * 300 * (1 - f * .5)), 1.5 + R() * 3, dh);
+    }
+    for (let i = 0, n = Math.round(9 * k); i < n; i++) {                    // burning fire spilled along the ground
+        if (FLM.spill.length > 60) FLM.spill.shift();
+        const dir = R() < .5 ? -1 : 1;
+        FLM.spill.push({ x: x + (R() - .5) * 16 * S, y, dh, vx: dir * (90 + R() * 380) + F * 60, t: 0, life: .9 + R() * 1.4, h: (14 + R() * 20) * S, w: (4 + R() * 4) * S, seed: R() * 50 });
+    }
+    flmEmBurst(x, y - 2, -Math.PI / 2, 2.4, 30 * k, 45 * k, S, .9, dh);      // upward shower
+    flmEmBurst(x, y - 2, -.2, .5, 8 * k, 22 * k, S, 1, dh);                 // low sparks skidding right
+    flmEmBurst(x, y - 2, -Math.PI + .2, .5, 8 * k, 22 * k, S, 1, dh);       // low sparks skidding left
+}
+
 // ================= PER-FRAME UPDATE =================
 function flareTick(dt) {
     const S = CSc(), R = Math.random;
@@ -357,14 +373,20 @@ function flareTick(dt) {
             const landY = onDeck ? -p.dh : 0;
             if (p.y > landY) {
                 if (!onDeck && inPond(p.x)) { for (let k = 0; k < 4; k++) addSmoke(p.x + (R() - .5) * 10, -2, (R() - .5) * 30, -30 - R() * 40, 6 * S, .8, .35); flares.splice(i, 1); continue }
-                if (!p.bn && p.vy > 260) { p.bn = 1; p.y = landY - 1; p.vy *= -.3; p.vx *= .55; burst(p.x, landY - 2, 5, 160, p.F); continue }
-                p.y = landY; p.st = 1; p.t = 0; p.vx = 0; p.vy = 0; groundFX(p.x, p.F); continue;
+                if (!p.bn && p.vy > 260) { p.bn = 1; p.y = landY - 1; p.vy *= -.3; p.vx *= .55; burst(p.x, landY - 2, 5, 160, p.F); flSplash(p.x, landY, p.F, p.dh, .6); continue }
+                p.y = landY; p.st = 1; p.t = 0; p.vx = 0; p.vy = 0; groundFX(p.x, p.F);
+                flSplash(p.x, landY, p.F, p.dh, 1);
+                p.pool = []; for (let k = 0; k < 8; k++) p.pool.push({ ox: (R() - .5) * 150, h: 16 + R() * 22, w: 4 + R() * 3, seed: R() * 50 });
+                continue;
             }
             if (Math.abs(p.x - p.x0) > 2600 || p.age > 4) flares.splice(i, 1);
         } else {
             p.t += dt;
             if (R() < dt * 40) addSpark(p.x + (R() - .5) * 6, p.y - 4, (R() - .5) * 110, -(60 + R() * 150), .25 + R() * .3);
             if (R() < dt * 14) addSmoke(p.x + (R() - .5) * 6, p.y - 8, (R() - .5) * 10, -22 - R() * 18, (4 + R() * 3) * S, 1.1 + R() * .6, .2);
+            const fd = Math.max(0, Math.min(1, (FL_GROUND_T - p.t) / 1.5)), wd = 70 * S * Math.min(1, p.t / .6);
+            if (R() < dt * 45 * fd) flmEm(0, p.x + (R() - .5) * wd * 2, p.y - 6 * S, (R() - .5) * 50, -(40 + R() * 140), (1 + R() * 2) * S, .8 + R() * 1.4, p.dh);   // embers rising from the pool
+            if (R() < dt * 30 * fd) flmEm(1, p.x + (R() - .5) * wd, p.y - 4, (R() - .5) * 260, -(150 + R() * 380), (1 + R() * 1.2) * S, .15 + R() * .3, p.dh);        // crackling sparks
             if (p.t > FL_GROUND_T) flares.splice(i, 1);
         }
     }
@@ -457,6 +479,12 @@ function flmTick(dt) {
             }
             if (R() < dt * 30 * env) addSmoke(m[0] + Math.cos(dA) * 40, m[1] - dh + Math.sin(dA) * 40 - 10, F * 70 + (R() - .5) * 40, -30 - R() * 30, (8 + R() * 9) * S, 1.2 + R(), .35);
         }
+    }
+
+    for (let i = FLM.spill.length - 1; i >= 0; i--) {
+        const s = FLM.spill[i]; s.t += dt; s.x += s.vx * dt; s.vx *= Math.max(0, 1 - 4 * dt);   // slides, then stops
+        if (s.t > s.life) { FLM.spill.splice(i, 1); continue }
+        if (R() < dt * 10) flmEm(0, s.x, s.y - s.h * .5, (R() - .5) * 40, -(40 + R() * 100), (1 + R() * 1.5) * S, .5 + R() * .9, s.dh);
     }
 
     for (let i = FLM.fade.length - 1; i >= 0; i--) {
@@ -581,6 +609,11 @@ function drawFlareFX(gy) {
 
     for (const f of FLM.fade) flmTrail(f.tl, gy, now, f.seed, S, 1 - f.t / .3, FLM_TRAIL_W);
 
+    for (const s of FLM.spill) {
+        const sx = s.x - P.x + W / 2; if (sx < -50 || sx > W + 50) continue;
+        const k = s.t / s.life, grow = Math.min(1, s.t / .12);
+        flFlame(sx, gy + 4 + s.y, s.h * grow * (1 - k * .6), s.w * (1 - k * .4), s.seed, now, Math.min(1, (1 - k) * 1.6));
+    }
 
     for (const p of flares) {
         const sx = p.x - P.x + W / 2, sy = gy + 4 + p.y;
@@ -603,6 +636,14 @@ function drawFlareFX(gy) {
             g.addColorStop(0, 'rgba(255,150,110,.5)'); g.addColorStop(.4, 'rgba(255,80,50,.16)'); g.addColorStop(1, 'rgba(255,60,30,0)');
             ctx.globalAlpha = 1; ctx.fillStyle = g; ctx.beginPath(); ctx.arc(sx, sy - 4, R, 0, 7); ctx.fill();
             flFlame(sx, sy - 2, 30 * S, 6 * S, p.seed, now, fade);
+            if (p.pool) {
+                const gk = 1 - Math.pow(1 - Math.min(1, p.t / .6), 2);          // eased spread over the ground
+                ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.translate(sx, sy); ctx.scale(1, .22);
+                const gg = ctx.createRadialGradient(0, 0, 0, 0, 0, 90 * S * gk);
+                gg.addColorStop(0, 'rgba(255,170,70,' + .5 * fade + ')'); gg.addColorStop(1, 'rgba(255,80,20,0)');
+                ctx.fillStyle = gg; ctx.beginPath(); ctx.arc(0, 0, 90 * S * gk, 0, 7); ctx.fill(); ctx.restore();
+                for (const o of p.pool) flFlame(sx + o.ox * S * gk, sy - 1, o.h * S * gk * (.6 + .4 * fade), o.w * S, o.seed, now, fade * .9);
+            }
             ctx.globalAlpha = fade; ctx.fillStyle = '#fff4ec'; ctx.strokeStyle = '#c0301a'; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.arc(sx, sy - 2, 3.4 * S, 0, 7); ctx.fill(); ctx.stroke();
         }
     }
