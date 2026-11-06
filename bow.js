@@ -91,7 +91,7 @@
 
     // segment (px,py)->(a.x,a.y) vs head circle + body box. Returns the earliest hit, with the head's centre for zone maths.
     function arrowHit(a, px, py, e, S) {
-        const down = e.down > 0 || e.crawl, w = (down ? 120 : 30) * S, zt = Math.min(0, e.z), top = (down ? -70 : -320) * S + zt, bot = 6 * S + zt;
+        const down = e.down > 0 || e.crawl, w = (down ? 120 : 30) * S, zt = Math.min(0, e.z), top = (down ? -70 : -350) * S + zt, bot = 6 * S + zt;
         const dx = a.x - px, dy = a.y - py;
         let t0 = 0, t1 = 1;
         const clip = (p, q) => { if (p === 0) return q >= 0; const r = q / p; if (p < 0) { if (r > t1) return false; if (r > t0) t0 = r } else { if (r < t0) return false; if (r < t1) t1 = r } return true };
@@ -231,6 +231,14 @@
     }
 
     function hitEnemy(a, e, h, S) {
+        // anything at head height (skull, hat, neck) is a head hit: snap the entry onto the skull surface, facing the shooter
+        if (!h.head && !(e.down > 0 || e.crawl)) {
+            const hcx = e.x + (e.hdp ? e.hdp[0] * S : 0), hcy = e.hdp ? e.hdp[1] * S : -290 * S, R = 25 * S;
+            if (h.y < hcy + R * 1.4) {
+                const v = Math.hypot(a.vx, a.vy) || 1;
+                h = { x: hcx - a.vx / v * R * .96, y: hcy - a.vy / v * R * .96, head: true, hc: [hcx, hcy], d: h.d };
+            }
+        }
         if (h.head && h.hc) return headHit(a, e, h, S);
         const F = a.F, pw = a.pw;
         if (h.y > -150 * S && safe(() => legShot(a, e, h, S))) { embed(a, e, h); return }
@@ -369,9 +377,14 @@
             let n = 0; for (const a of A) if (a.st === 'emb' && a.e === e && a.hd) n++;
             e.arrNod = (e.arrNod || 0) + ((dead ? 0 : Math.min(1, n * .6)) - (e.arrNod || 0)) * Math.min(1, dt * 6);   // arrow weight pulls the head down
             if (dead) e.pool = Math.min(70, (e.pool || 0) + dt * (3 + 4 * e.arrWd.length + 10 * e.arrWd.filter(w => w.open).length));
-            if (!e.rot && e.hdp) for (const w of e.arrWd)                    // drips while the wound is fresh (or open)
+            // living, upright victim: drips fall from the wound at head height
+            if (!dead && !e.rot && !e.down && !e.crawl && e.hdp) for (const w of e.arrWd)
                 if ((BW.t - w.t0 < 10 || w.open) && Math.random() < dt * (w.open ? 14 : 5))
                     bits(e.x + (e.hdp[0] + (e.face || 1) * w.fx) * S, (e.hdp[1] + w.ry) * S, 1, 40, 0, 1, '#7a0b11', 1, 2.2, .6);
+            // dead / fallen: no head-height drips. Blood leaks from where the arrow lies on the corpse, at ground level, and feeds the pool
+            if (dead || e.rot || e.down || e.crawl) for (const a of A)
+                if (a.st === 'cps' && a.e === e && a.hd && a.wd && (BW.t - a.wd.t0 < 14 || a.wd.open) && Math.random() < dt * (a.wd.open ? 10 : 3))
+                    bits(e.x + a.ox, a.oy + 4, 1, 25, 0, 1, '#7a0b11', 1, 2, .8);
         }
         while (A.length > 70) { const k = A.findIndex(q => q.st === 'gnd'); A.splice(k < 0 ? 0 : k, 1) }
     }
@@ -665,7 +678,12 @@
             ctx.save();
             if (a.st === 'fly') { ang = Math.atan2(a.vy, a.vx) + Math.sin(a.age * 70) * .07 * Math.exp(-a.age * 7); }
             else if (a.st === 'gnd') {
-                if (!a.flat) { ctx.beginPath(); ctx.rect(sx - 300, sy - 1500, 600, 1500 + 1.5); ctx.clip() }
+                if (!a.flat) {                                                    // hide everything below the real ground surface (follows slopes, decks, docks)
+                    const GOFF = 1.2;                                             // px above the surface line; raise it if a sliver of tip still shows
+                    ctx.beginPath(); ctx.moveTo(sx - 180, sy - 1500);
+                    for (let dx = -180; dx <= 180; dx += 10) ctx.lineTo(sx + dx, gy + 4 + floorY(a.x + dx, a.y - 5) - GOFF);
+                    ctx.lineTo(sx + 180, sy - 1500); ctx.closePath(); ctx.clip();
+                }
                 ang += Math.sin(a.age * 55) * .1 * Math.exp(-a.age * 6.5); if (a.age > CFG.life - 8) al = Math.max(0, (CFG.life - a.age) / 8);
             } else if (a.st === 'emb') {
                 if (a.hd) {                                                       // violent shaft vibration, plus tremble while he claws at it
