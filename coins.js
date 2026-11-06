@@ -611,7 +611,7 @@
   const TOSS_KEY = 'KeyP';   // G is already used for revolver draw/holster, so using P
 
   function coinTossStart() {
-    if (CT.active || CT.wind || TK.on || CC.on) return;
+    if (CT.active || CT.wind || TK.on || CC.on || PB.on) return;
     if (!P.puHeld || P.puHeld.type !== 'coin') return;
     if (P.z < 0 || P.mount || swim.on) return;
     CT.wind = true;
@@ -809,4 +809,71 @@
     coinCatchTick(dt);
     return _updCatch(dt);
   };
+
+  // ================= PUT COIN BACK IN SACK (Y while holding a coin) =================
+  const PB = { on: false, t: 0, done: false };
+  const PB_REL = .36, PB_DUR = .72;
+
+  function pbStart() {
+    if (PB.on || TK.on || CT.wind || CT.active || CC.on) return;
+    if (!P.puHeld || P.puHeld.type !== 'coin') return;
+    if (tkBlocked()) return;
+    Object.assign(PB, { on: true, t: 0, done: false });
+    P.idle = 0; P.fid = 0; P.abuf = 0;
+  }
+
+  function pbTick(dt) {
+    if (!PB.on) return;
+
+    // interrupted: if the coin is still in the hand, it simply stays there
+    if (tkBlocked()) { PB.on = false; return; }
+
+    PB.t += dt;
+
+    if (!PB.done && PB.t >= PB_REL) {
+      PB.done = true;
+      if (P.puHeld && P.puHeld.type === 'coin') {
+        P.puHeld = null;
+        INV.coin = (INV.coin || 0) + 1;   // HUD hook plays the jiggle + ting
+      }
+    }
+    if (PB.t >= PB_DUR) PB.on = false;
+  }
+
+  const _coinArmPB = window.coinArm;
+  window.coinArm = function (i, sh, F, rot) {
+    if (PB.on && i === 0) {
+      const t = PB.t;
+      const a = rot(-F * 12, -12), g = SK.ang;
+      const mouth = [a[0] - 5 * Math.sin(g), a[1] + 5 * Math.cos(g)];
+      const front = [sh[0] + F * 46, sh[1] + 54];
+      const rest  = [sh[0] + F * 14, sh[1] + 80];
+
+      let T;
+      if (t < PB_REL) {
+        T = tkMix(front, mouth, sm(t / PB_REL));
+      } else {
+        T = tkMix(mouth, rest, sm((t - PB_REL) / (PB_DUR - PB_REL)));
+      }
+      const [ang, flex] = ikTo(sh, T[0], T[1], F);
+      const w = sm(t / .14) * (1 - sm((t - .5) / .2));
+      return [ang, flex, w];
+    }
+    return _coinArmPB(i, sh, F, rot);
+  };
+
+  const _updPB = update;
+  update = function (dt) {
+    pbTick(dt);
+    return _updPB(dt);
+  };
+
+  const _ddlPB = ddLock;
+  ddLock = function () { return PB.on || _ddlPB(); };
+
+  addEventListener('keydown', e => {
+    if (e.code !== 'KeyY' || e.repeat) return;
+    if (/INPUT|TEXTAREA/.test(e.target.tagName || '')) return;
+    pbStart();
+  });
 })();
