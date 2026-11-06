@@ -121,14 +121,15 @@ function drawFlareHUD() {
 function flareFire() {                                     // called from pressFire() after the generic guards
     if (P.fAmmo <= 0) { banner.t = .5; banner.text = 'CLICK! (R)'; P.fireCd = .3; flSfx(FL_SFX.empty, .8); return }
     const S = CSc(), F = P.face, th = P.gunA || 0, m = P.muzzle || [P.x + F * 60 * S, -250 * S], R = Math.random;
+    const dh = (P.thDeck && P.dh > 0) ? P.dh : 0;
     P.fAmmo = 0; P.fireCd = FL_FIRE_CD; P.recoil = 1; P.idle = 0; P.fid = 0;
     flSfx(FL_SFX.fire, FL_SFX.fireVol);
     const a = th - .05;
-    flares.push({ x: m[0], y: m[1], x0: m[0], F, vx: F * Math.cos(a) * FL_V, vy: Math.sin(a) * FL_V, age: 0, st: 0, t: 0, tr: 0, bn: 0, seed: R() * 100 });
-    burst(m[0], m[1], 10, 300, F);
-    fireFX(m, F, th);
+    flares.push({ x: m[0], y: m[1] - dh, x0: m[0], dh, F, vx: F * Math.cos(a) * FL_V, vy: Math.sin(a) * FL_V, age: 0, st: 0, t: 0, tr: 0, bn: 0, seed: R() * 100 });
+    burst(m[0], m[1] - dh, 10, 300, F);
+    fireFX([m[0], m[1] - dh], F, th);
     const ux = F * Math.cos(th), uy = Math.sin(th);
-    for (let i = 0; i < 5; i++) addSmoke(m[0] + ux * (14 + i * 10), m[1] + uy * (14 + i * 10), ux * (120 - i * 15) + (R() - .5) * 30, uy * 120 - 20 - R() * 30, (9 + R() * 6) * S, 1.5 + R() * .8, .45);
+    for (let i = 0; i < 5; i++) addSmoke(m[0] + ux * (14 + i * 10), m[1] - dh + uy * (14 + i * 10), ux * (120 - i * 15) + (R() - .5) * 30, uy * 120 - 20 - R() * 30, (9 + R() * 6) * S, 1.5 + R() * .8, .45);
     shake = Math.max(shake, 5);
 }
 
@@ -162,7 +163,9 @@ function flSmallHit(p, px, py) {                           // birds, fowl, butte
 // ================= GROUND GUN + PICKUP =================
 const FL_REST = .3, FL_REST_Y = -14, FL_CEN = 24;          // lying angle, grip height, centre of the gun along its length
 const FL_RANGE = 200, FL_STAND = 40, FL_HIT = .3, FL_FLY = .55;
-const FLG = { on: 1, x: 380, y: 0, F: 1, th: FL_REST, vx: 0, vy: 0, air: 0, bounced: 0, flying: 0, cx: 0, c0: [0, 0], tr: [], trT: 0 };
+const FL_DECK_DH = typeof TH_DY !== 'undefined' && typeof TH_SC !== 'undefined' ? -TH_DY * TH_SC : 1122;
+const FL_INIT_X = typeof TH_WX !== 'undefined' && typeof TH_SC !== 'undefined' ? (TH_WX + 60 * TH_SC) : -29796;
+const FLG = { on: 1, x: FL_INIT_X, y: 0, dh: FL_DECK_DH, F: 1, th: FL_REST, vx: 0, vy: 0, air: 0, bounced: 0, flying: 0, cx: 0, c0: [0, 0], tr: [], trT: 0 };
 
 function flCenter(S) { return FLG.x + FLG.F * Math.cos(FL_REST) * FL_CEN * S }
 
@@ -179,7 +182,11 @@ function pressFlarePickup() {
     if (P.fin > 0 || P.cs > 0 || P.thw > 0 || P.tt > 0 || P.sm > 0 || P.pk > 0 || P.fs > 0 || P.gu > 0 || P.yk > 0 || P.stbk > 0 || P.sgp > 0 || P.z < 0) return;
     const S = CSc();
     if (!FLG.on || FLG.air || FLG.flying) return;
-    if (Math.abs(flCenter(S) - P.x) > FL_RANGE * S) { banner.t = .8; banner.text = 'WALK TO THE FLARE PISTOL'; return }
+    const sameLevel = Math.abs((P.dh || 0) - (FLG.dh || 0)) < 80;
+    if (Math.abs(flCenter(S) - P.x) > FL_RANGE * S || !sameLevel) {
+        if (!sameLevel && Math.abs(flCenter(S) - P.x) <= FL_RANGE * S) return;
+        banner.t = .8; banner.text = 'WALK TO THE FLARE PISTOL'; return;
+    }
     if (P.skid) endSkid();
     FLG.cx = flCenter(S);
     P.face = FLG.cx >= P.x ? 1 : -1;
@@ -189,19 +196,31 @@ function pressFlarePickup() {
 
 function dropFlarePistol() {
     const S = CSc(), F = P.face, R = P.gun && P.armPts && P.armPts[0] ? P.armPts[0][1] : [F * 20, -100];
-    Object.assign(FLG, { on: 1, air: 1, bounced: 0, flying: 0, F, x: P.x + R[0] * S, y: R[1] * S, th: P.gunA || 0, vx: F * 170, vy: -230 });
+    const dh = (P.thDeck && P.dh > 0) ? P.dh : 0;
+    Object.assign(FLG, { on: 1, air: 1, bounced: 0, flying: 0, F, x: P.x + R[0] * S, y: R[1] * S, dh, th: P.gunA || 0, vx: F * 170, vy: -230 });
     P.gun = 0; P.wt = 'rev'; P.rl = 0; P.gs = 0; P.idle = 0; P.fid = 0;
 }
 
 function flGroundTick(dt) {
     const g = FLG, S = CSc();
     if (!g.on || g.flying) return;
+    if (g.dh > 0 && typeof TH_WX !== 'undefined' && typeof TH_SC !== 'undefined') {
+        const minX = TH_WX - 285 * TH_SC, maxX = TH_WX + 205 * TH_SC;
+        if (g.x < minX || g.x > maxX) {
+            g.y -= g.dh;
+            g.dh = 0;
+            g.air = 1;
+        }
+    }
     if (!g.air) { g.y = FL_REST_Y * S; g.th = FL_REST; return }
     g.vy += 1500 * dt; g.x += g.vx * dt; g.y += g.vy * dt; g.vx *= Math.max(0, 1 - 2.5 * dt);
     g.th += (FL_REST - g.th) * Math.min(1, dt * 9);
     const rest = FL_REST_Y * S;
     if (g.y >= rest) {
-        g.y = rest; burst(g.x, -4, 6, 180, g.F); shake = Math.max(shake, 2.5);
+        g.y = rest;
+        const dh = g.dh || 0;
+        burst(g.x, -4 - dh, 6, 180, g.F);
+        shake = Math.max(shake, 2.5);
         if (g.vy > 260 && !g.bounced) { g.vy *= -.28; g.bounced = 1 }
         else { g.vy = 0; g.vx = 0; g.air = 0; g.th = FL_REST }
     }
@@ -209,7 +228,7 @@ function flGroundTick(dt) {
 
 function flPickupTick(dt) {
     if (!(P.fgp > 0)) return;
-    const S = CSc(), F = P.face, g = FLG;
+    const S = CSc(), F = P.face, g = FLG, dh = g.dh || 0;
     P.abuf = 0; P.jbuf = 0;
     if (!g.on || P.z < 0) { P.fgp = 0; return }
     if (P.fgpWalk) {                                       // walk up to the gun
@@ -224,8 +243,8 @@ function flPickupTick(dt) {
         P.fgpHit = 1;
         g.c0 = [g.cx, g.y + Math.sin(FL_REST) * FL_CEN * S];
         g.F = F; g.flying = 1; g.air = 0; g.tr = []; g.trT = 0;
-        burst(g.cx, -4, 10, 260, F); burst(g.cx, -4, 6, 200, -F);
-        impacts.push({ x: g.cx, y: -8 * S, t: 0, life: .2, s: 70, seed: Math.random() * 50 });
+        burst(g.cx, -4 - dh, 10, 260, F); burst(g.cx, -4 - dh, 6, 200, -F);
+        impacts.push({ x: g.cx, y: (-8 * S) - dh, t: 0, life: .2, s: 70, seed: Math.random() * 50 });
         shake = Math.max(shake, 5); flSfx(FL_SFX.pickup, .6);
         banner.t = .7; banner.text = 'FLICKED UP!';
     }
@@ -241,10 +260,11 @@ function flFly(S, dt) {                                    // flip up, spin once
     g.th = th; g.x = cx - F * Math.cos(th) * FL_CEN * S; g.y = cy - Math.sin(th) * FL_CEN * S;
     g.trT -= dt; if (g.trT <= 0) { g.trT = .035; g.tr.push([g.x, g.y, g.th]); if (g.tr.length > 6) g.tr.shift() }
     if (u >= 1) {                                          // CAUGHT
+        const dh = g.dh || 0;
         g.on = 0; g.flying = 0; P.fgp = 0; P.fgpHit = 0;
         P.wt = 'flare'; P.gun = 1; P.gunK = Math.max(P.gunK, .5); P.gdT = 1; P.glint = 1; P.rl = 0; P.gs = 0; P.idle = 0; P.fid = 0;
         shake = Math.max(shake, 4); banner.t = .8; banner.text = 'FLARE PISTOL';
-        burst(P.x + F * 40 * S, -150 * S, 5, 150, F);
+        burst(P.x + F * 40 * S, -150 * S - dh, 5, 150, F);
     }
 }
 
@@ -283,16 +303,18 @@ function flareTick(dt) {
             }
             if (best) { flareHit(p, best.e, best.h, S); flares.splice(i, 1); continue }
             if (flSmallHit(p, px, py)) { flares.splice(i, 1); continue }
-            if (p.y > 0) {
-                if (inPond(p.x)) { for (let k = 0; k < 4; k++) addSmoke(p.x + (R() - .5) * 10, -2, (R() - .5) * 30, -30 - R() * 40, 6 * S, .8, .35); flares.splice(i, 1); continue }
-                if (!p.bn && p.vy > 260) { p.bn = 1; p.y = -1; p.vy *= -.3; p.vx *= .55; burst(p.x, -2, 5, 160, p.F); continue }
-                p.y = 0; p.st = 1; p.t = 0; p.vx = 0; p.vy = 0; groundFX(p.x, p.F); continue;
+            const onDeck = p.dh > 0 && typeof TH_WX !== 'undefined' && typeof TH_SC !== 'undefined' && p.x >= (TH_WX - 285 * TH_SC) && p.x <= (TH_WX + 205 * TH_SC);
+            const landY = onDeck ? -p.dh : 0;
+            if (p.y > landY) {
+                if (!onDeck && inPond(p.x)) { for (let k = 0; k < 4; k++) addSmoke(p.x + (R() - .5) * 10, -2, (R() - .5) * 30, -30 - R() * 40, 6 * S, .8, .35); flares.splice(i, 1); continue }
+                if (!p.bn && p.vy > 260) { p.bn = 1; p.y = landY - 1; p.vy *= -.3; p.vx *= .55; burst(p.x, landY - 2, 5, 160, p.F); continue }
+                p.y = landY; p.st = 1; p.t = 0; p.vx = 0; p.vy = 0; groundFX(p.x, p.F); continue;
             }
             if (Math.abs(p.x - p.x0) > 2600 || p.age > 4) flares.splice(i, 1);
         } else {
             p.t += dt;
-            if (R() < dt * 40) addSpark(p.x + (R() - .5) * 6, -4, (R() - .5) * 110, -(60 + R() * 150), .25 + R() * .3);
-            if (R() < dt * 14) addSmoke(p.x + (R() - .5) * 6, -8, (R() - .5) * 10, -22 - R() * 18, (4 + R() * 3) * S, 1.1 + R() * .6, .2);
+            if (R() < dt * 40) addSpark(p.x + (R() - .5) * 6, p.y - 4, (R() - .5) * 110, -(60 + R() * 150), .25 + R() * .3);
+            if (R() < dt * 14) addSmoke(p.x + (R() - .5) * 6, p.y - 8, (R() - .5) * 10, -22 - R() * 18, (4 + R() * 3) * S, 1.1 + R() * .6, .2);
             if (p.t > FL_GROUND_T) flares.splice(i, 1);
         }
     }
@@ -375,24 +397,25 @@ function drawFlareFX(gy) {
     ctx.restore();
 }
 
-function drawFlareProp(gy, front) {                        // front=false: lying on the ground, front=true: flipping through the air
+function drawFlareProp(gy, front) {                        // front=false: lying on the ground/deck, front=true: flipping through the air
     const g = FLG;
     if (!g.on || !!g.flying !== front) return;
-    const S = CSc(), sx = g.x - P.x + W / 2, sy = gy + 4 + g.y;
+    const S = CSc(), dh = g.dh || 0;
+    const sx = g.x - P.x + W / 2, sy = gy - dh + 4 + g.y;
     if (sx < -250 || sx > W + 250) return;
     if (g.flying) {                                        // motion-blur afterimages
         ctx.save(); ctx.strokeStyle = '#111'; ctx.lineCap = 'round';
         g.tr.forEach((q, j) => {
-            ctx.save(); ctx.translate(q[0] - P.x + W / 2, gy + 4 + q[1]); ctx.scale(S * g.F, S); ctx.rotate(q[2]);
+            ctx.save(); ctx.translate(q[0] - P.x + W / 2, gy - dh + 4 + q[1]); ctx.scale(S * g.F, S); ctx.rotate(q[2]);
             ctx.globalAlpha = .05 + .07 * j; ctx.lineWidth = 7; ctx.beginPath(); ctx.moveTo(-6, 0); ctx.lineTo(56, -12); ctx.stroke(); ctx.restore();
         });
         ctx.restore();
     } else if (!g.air && !(P.fgp > 0) && !(P.wt === 'flare' && P.gun)) {   // dashed ring + key hint
-        const cxs = flCenter(S) - P.x + W / 2, near = Math.abs(flCenter(S) - P.x) < FL_RANGE * S, now = performance.now();
+        const cxs = flCenter(S) - P.x + W / 2, near = Math.abs(flCenter(S) - P.x) < FL_RANGE * S && Math.abs((P.dh || 0) - dh) < 80, now = performance.now();
         ctx.save(); ctx.strokeStyle = '#111'; ctx.lineWidth = 2; ctx.setLineDash([6, 6]);
         ctx.globalAlpha = (near ? .5 : .25) + .2 * Math.sin(now / 250);
-        ctx.beginPath(); ctx.ellipse(cxs, gy + 6, 70 * S, 8, 0, 0, 7); ctx.stroke(); ctx.restore();
-        if (near) { ctx.save(); ctx.fillStyle = '#111'; ctx.font = 'italic bold 22px Georgia,serif'; ctx.textAlign = 'center'; ctx.fillText(FL_KEY_LABEL, cxs, gy - 50 * S - 4 * Math.sin(now / 200)); ctx.restore() }
+        ctx.beginPath(); ctx.ellipse(cxs, gy - dh + 6, 70 * S, 8, 0, 0, 7); ctx.stroke(); ctx.restore();
+        if (near) { ctx.save(); ctx.fillStyle = '#111'; ctx.font = 'italic bold 22px Georgia,serif'; ctx.textAlign = 'center'; ctx.fillText(FL_KEY_LABEL, cxs, gy - dh - 50 * S - 4 * Math.sin(now / 200)); ctx.restore() }
     }
     ctx.save(); ctx.translate(sx, sy); ctx.scale(S * g.F, S); ctx.rotate(g.th);
     ctx.globalAlpha = 1; ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.strokeStyle = '#111';
