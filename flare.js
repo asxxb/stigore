@@ -440,15 +440,22 @@ function flmTick(dt) {
         if (e.y > floorY) FLM.em.splice(i, 1);
     }
 
-    if (FLM.jet) {                                         // long flame spitting from the muzzle
+    if (FLM.jet) {                                         // after the shot: sparks and embers keep spraying from the muzzle
         const j = FLM.jet; j.t += dt;
         if (j.t >= j.life || !P.gun || P.wt !== 'flare' || !P.muzzle) FLM.jet = null;
         else {
-            const m = P.muzzle, F = P.face, th = P.gunA || 0, ux = F * Math.cos(th), uy = Math.sin(th), env = 1 - (j.t / j.life) * (j.t / j.life);
+            const m = P.muzzle, F = P.face, th = P.gunA || 0, env = 1 - (j.t / j.life) * (j.t / j.life);
+            const dA = Math.atan2(Math.sin(th), F * Math.cos(th));
             const dh = (P.thDeck && P.dh > 0) ? P.dh : 0;
-            if (R() < dt * 110 * FLM_DROPS * env) { const sp = 300 + R() * 900, aa = th + (R() - .5) * .4; flmDrop(m[0] + ux * 30, m[1] - dh + uy * 30, F * Math.cos(aa) * sp, Math.sin(aa) * sp, 1.6 + R() * 3.2, dh) }
-            if (R() < dt * 70 * env) { const d = 40 + R() * 300 * S; addSpark(m[0] + ux * d, m[1] - dh + uy * d, ux * 200 + (R() - .5) * 260, uy * 200 - R() * 120, .2 + R() * .3) }
-            if (R() < dt * 30 * env) { const d = 60 + R() * 260 * S; addSmoke(m[0] + ux * d, m[1] - dh + uy * d - 10, ux * 70 + (R() - .5) * 40, -30 - R() * 30, (8 + R() * 9) * S, 1.2 + R(), .35) }
+            for (let c = flmRate(dt * 260 * env * FLM_EMBERS); c > 0; c--) {   // fast bright sparks in a cone
+                const a = dA + (R() - .5) * 1.0, sp = 300 + R() * 800;
+                flmEm(1, m[0], m[1] - dh, Math.cos(a) * sp, Math.sin(a) * sp, (1 + R() * 1.4) * S, .12 + R() * .3, dh);
+            }
+            for (let c = flmRate(dt * 200 * env * FLM_EMBERS); c > 0; c--) {   // drifting embers, wider spread
+                const a = dA + (R() - .5) * 1.6, sp = 60 + R() * 420;
+                flmEm(0, m[0], m[1] - dh, Math.cos(a) * sp, Math.sin(a) * sp, (1 + R() * 2.2) * S, .6 + R() * 1.3, dh);
+            }
+            if (R() < dt * 30 * env) addSmoke(m[0] + Math.cos(dA) * 40, m[1] - dh + Math.sin(dA) * 40 - 10, F * 70 + (R() - .5) * 40, -30 - R() * 30, (8 + R() * 9) * S, 1.2 + R(), .35);
         }
     }
 
@@ -573,7 +580,7 @@ function drawFlareFX(gy) {
     ctx.save(); ctx.lineCap = 'round';
 
     for (const f of FLM.fade) flmTrail(f.tl, gy, now, f.seed, S, 1 - f.t / .3, FLM_TRAIL_W);
-    flmJetDraw(gy, now, S);
+
 
     for (const p of flares) {
         const sx = p.x - P.x + W / 2, sy = gy + 4 + p.y;
