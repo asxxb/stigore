@@ -348,7 +348,8 @@
             if (e.code === 'Space') pressJump();
             if (e.code === 'KeyJ') pressAtk();
             if (e.code === 'KeyM') pressKick();
-            if (e.code === 'KeyX') pressSuperJump();
+            if (typeof FL_KEY !== 'undefined' && e.code === FL_KEY) pressFlarePickup();
+            else if (e.code === 'KeyX') pressSuperJump();
             if (e.code === 'KeyT') pressPickup();
         });
         addEventListener('keyup', e => keys[e.code] = 0);
@@ -6510,7 +6511,7 @@
         }
         function pressReload() {
             if (P.sg) { pressSgReload(); return }
-            if (!P.gun || P.rl > 0 || P.ammo >= MAG || P.fin > 0) return;
+            if (!P.gun || P.rl > 0 || (P.wt === 'flare' ? P.fAmmo >= 1 : P.ammo >= MAG) || P.fin > 0) return;
             if (P.gs === 2) return;
             if (P.gs === 1) { P.gsEnd = 1; P.gsFast = 1; P.q = 2; P.qT = .5; return }
             P.rl = .0001; P.rlShell = 0; P.rlLoad = 0; P.rlSnap = 0;
@@ -6521,6 +6522,7 @@
             if (!P.gun || P.gunK < .8 || P.rl > 0 || P.fin > 0 || P.fireCd > 0 || P.pk > 0) return;
             if (P.gs === 2) return;
             if (P.gs === 1) { P.gsEnd = 1; P.gsFast = 1; P.q = 1; P.qT = .5; return }
+            if (P.wt === 'flare') { flareFire(); return }
             if (P.ammo <= 0) { banner.t = .5; banner.text = 'CLICK! (R)'; P.fireCd = .3; playSfx('gunempty', .8); return }
             const S = CSc(), F = P.face, m = P.muzzle || [P.x + F * 60 * S, -250 * S];
             P.ammo--; P.fireCd = FIRE_CD; P.recoil = 1; P.idle = 0; P.fid = 0;
@@ -6619,6 +6621,7 @@
             }
         }
         function dropLoader() {
+            if (P.wt === 'flare') return;
             const a = P.armPts && P.armPts[1], w = a ? a[1] : [0, -150], S = CSc();
             shells.push({ x: P.x + w[0] * S, y: w[1] * S, vx: P.face * 40, vy: -60, rot: 0, vr: (Math.random() - .5) * 12, landed: false, t: 0, ld: 1 });
         }
@@ -6765,7 +6768,7 @@
 
             ctx.save(); ctx.translate(ox, oy); ctx.scale(F, 1); ctx.rotate(th);
             ctx.globalAlpha = Math.min(1, P.gunK * 1.6); ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.strokeStyle = '#111'; ctx.lineWidth = 2.2;
-            drawRevolver(co, uR);
+            (P.wt === 'flare' ? drawFlarePistol : drawRevolver)(co, uR);
             if (P.glint > 0) {
                 const t = 1 - P.glint, gx = 28 + 28 * t, a = Math.sin(Math.PI * Math.min(1, t * 1.15)) * .75;
                 const g = ctx.createLinearGradient(gx - 9, 0, gx + 9, 0);
@@ -6825,6 +6828,7 @@
             ctx.restore();
         }
         function drawGunHUD() {
+            if (P.wt === 'flare') { drawFlareHUD(); return }
             if (P.gunK < .05) return;
             ctx.save(); ctx.globalAlpha = Math.min(1, P.gunK); ctx.lineWidth = 2.5; ctx.strokeStyle = '#111';
             for (let i = 0; i < MAG; i++) { ctx.beginPath(); ctx.arc(30 + i * 22, calcTop() + 24, 8, 0, 7); ctx.fillStyle = i < P.ammo ? '#c99a3a' : 'rgba(0,0,0,0)'; ctx.fill(); ctx.stroke() }
@@ -18157,7 +18161,7 @@
                 else if (Math.abs(zt - curZoom) > 0.0005) applyZoom(curZoom + (zt - curZoom) * (1 - Math.exp(-5 * dt0)));
             }
 
-            update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); sgTick(dt); sgGroundTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); waterFXTick(dt); brainTick(dt); hzTick(dt); gibTick(dt); boneTick(dt); weatherTick(dt); horseTick(dt); mpkTick(dt); birdTick(dt); fowlTick(dt); frogTick(dt); duckTick(dt); ddTick(dt); ddSqueezeTick(dt); sqHeldTick(dt); ddHalvesTick(dt); stompTick(dt); crocTick(dt); bgTick(dt); corpseTick(dt); dayTick(dt0); fireflyTick(dt0); stExtrasTick(dt0);
+            update(dt); for (const e of ENEMIES) updateEnemy(e, dt); updateKnives(dt); updateGroundKnives(dt); gunTick(dt); if (typeof flareTick === 'function') flareTick(dt); sgTick(dt); sgGroundTick(dt); spinTick(dt); smokeTick(dt); bloodFX(dt); waterFXTick(dt); brainTick(dt); hzTick(dt); gibTick(dt); boneTick(dt); weatherTick(dt); horseTick(dt); mpkTick(dt); birdTick(dt); fowlTick(dt); frogTick(dt); duckTick(dt); ddTick(dt); ddSqueezeTick(dt); sqHeldTick(dt); ddHalvesTick(dt); stompTick(dt); crocTick(dt); bgTick(dt); corpseTick(dt); dayTick(dt0); fireflyTick(dt0); stExtrasTick(dt0);
             if (window.wbTick) wbTick(dt0);
             const hStop = MT_HORSE_STOP_X();
             const hGap = HRS.x - hStop;
@@ -18210,6 +18214,7 @@
             drawButts(gy);
             drawGhosts(gy);
             drawSgProp(gy, false);
+            if (typeof drawFlareProp === 'function') drawFlareProp(gy, false);
             corpsesIn(); drawEnemies(gy);
             drawGutFX(gy);
             drawIntestines(gy);
@@ -18223,6 +18228,7 @@
             drawFootKnives(gy);
             drawKnives(gy);
             drawShots(gy);
+            if (typeof drawFlareFX === 'function') drawFlareFX(gy);
             drawPellets(gy);
             drawWaterFX(gy);
             drawBirds(gy);
@@ -18250,6 +18256,7 @@
             if (window.wbDrawHint) wbDrawHint(gy);
             drawForest(gy, 1);
             drawSgProp(gy, true);
+            if (typeof drawFlareProp === 'function') drawFlareProp(gy, true);
             drawSmoke(gy);
             drawBlood(gy);
             drawWeather(gy);
@@ -18279,6 +18286,7 @@
     <script src="workbench.js"></script>
     <script src="bow.js"></script>
     <script src="coins.js"></script>
+    <script src="flare.js"></script>
 </body>
 
 </html>
