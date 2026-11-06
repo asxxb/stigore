@@ -2,9 +2,13 @@
   // ---- coin as a normal pick-up item (uses your existing T pickup) ----
   ITEM_DEFS.coin = { label: 'COIN', h: 3 };
 
-  // TEMP TEST STARTING BALANCE
-  // Remove this line after confirming the Y animation works.
-  INV.coin = Math.max(INV.coin || 0, 5);
+  const SAVE_KEY = 'inkwalker.save.v1';
+  const loadSave = () => {
+    try { return JSON.parse(localStorage.getItem(SAVE_KEY)) || {}; }
+    catch (e) { return {}; }
+  };
+  INV.coin = Math.max(0, +loadSave().coin || 0);
+  if (!INV.coin) delete INV.coin;
 
   const GOLD = 'rgb(232,184,48)', GOLD_D = 'rgb(176,128,30)';
   let ac = null;
@@ -89,7 +93,7 @@
 
   // ================= SACK: soft-body physics =================
   const SK = {
-    ang: 0, vel: 0, pop: 0, last: 0, n: 0,
+    ang: 0, vel: 0, pop: 0, last: 0, n: INV.coin || 0,
     pvx: 0, pvz: 0, pz: 0, ax: 0, az: 0,
     tail: 0, tailV: 0
   };
@@ -442,14 +446,10 @@
   }
 
   function tkCancel() {
-    if (TK.took && !TK.put) {
+    if (TK.took && P.puHeld && P.puHeld.type === 'coin') {
       dropItem('coin', P.x + P.face * 20 * CSc());
-    }
-
-    if (P.puHeld && P.puHeld.type === 'coin') {
       P.puHeld = null;
     }
-
     TK.on = false;
   }
 
@@ -594,11 +594,6 @@
 
     tkStart();
   });
-
-  // Test coins on the ground near treehouse
-  for (const lx of [-330, -200, -120, 130, 210, 290]) {
-    dropItem('coin', TH_WX + lx * TH_SC);
-  }
 
 
   // ================= COIN TOSS ANIMATION =================
@@ -876,4 +871,78 @@
     if (/INPUT|TEXTAREA/.test(e.target.tagName || '')) return;
     pbStart();
   });
+
+  // ================= SAVE + CLOUD (Supabase) =================
+  const SB_URL = 'https://ovnnchjubnlbdkitmegn.supabase.co';
+  const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im92bm5jaGp1Ym5sYmRraXRtZWduIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM5NTc4MDcsImV4cCI6MjEwOTUzMzgwN30.IAdGM8p9yGe4Opd88-oMwPU0WqXN_71nvg6TIuNgy-4';
+  const sb = window.supabase ? window.supabase.createClient(SB_URL, SB_KEY) : null;
+
+  // coins in the sack + in the hand + in the air
+  const coinTotal = () =>
+    (INV.coin || 0) +
+    (P.puHeld && P.puHeld.type === 'coin' ? 1 : 0) +
+    (CT.active ? 1 : 0);
+
+  let uid = null, ready = false, timer = 0, pending = -1;
+  let lastSaved = coinTotal();
+
+  function saveCoins() {
+    const n = coinTotal();
+    if (n === lastSaved) return;
+    lastSaved = n;
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify({ coin: n })); } catch (e) { }
+    if (!ready) return;               // never push before the cloud value has loaded
+    pending = n;
+    clearTimeout(timer);
+    timer = setTimeout(flushCloud, 1500);
+  }
+
+  async function flushCloud() {
+    if (!sb || !uid || pending < 0) return;
+    const n = pending;
+    pending = -1;
+    try {
+      const { error } = await sb.from('saves').upsert({
+        user_id: uid, coin: n, updated_at: new Date().toISOString()
+      });
+      if (error) pending = n;
+    } catch (e) { pending = n; }
+  }
+
+  async function cloudInit() {
+    if (!sb) return;
+    try {
+      let { data: { session } } = await sb.auth.getSession();
+      if (!session) session = (await sb.auth.signInAnonymously()).data.session;
+      if (!session) return;
+      uid = session.user.id;
+
+      const { data } = await sb.from('saves').select('coin')
+        .eq('user_id', uid).maybeSingle();
+
+      const local = coinTotal();
+      if (data && data.coin > local) {
+        INV.coin = (INV.coin || 0) + (data.coin - local);   // cloud is higher: top up the sack
+        SK.n = INV.coin;                                     // no jiggle/ting on load
+      }
+      lastSaved = coinTotal();
+      try { localStorage.setItem(SAVE_KEY, JSON.stringify({ coin: lastSaved })); } catch (e) { }
+      if (!data || local > data.coin) pending = lastSaved;  // first run, or offline progress
+      ready = true;
+      flushCloud();
+    } catch (e) { }
+  }
+
+  const _updSave = update;
+  update = function (dt) {
+    saveCoins();
+    return _updSave(dt);
+  };
+
+  addEventListener('beforeunload', saveCoins);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { saveCoins(); flushCloud(); }
+  });
+
+  cloudInit();
 })();
