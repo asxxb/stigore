@@ -290,6 +290,27 @@
         embed(a, e, h);
         a.depth = glance ? 4 + 6 * pw : 12 + 22 * pw;                // speed decides how deep; max 34 < 48 skull width, so it never exits
     }
+
+    // arrow vs flying / perched bird: kill it and pin the arrow through its body
+    function arrowBird(a, px, py) {
+        const S = CSc();
+        for (const b of birds) {
+            if (b.st !== 0 && b.st !== 3 && b.st !== 4) continue;
+            const r = 20 * S * b.s, dx = a.x - px, dy = a.y - py, l2 = dx * dx + dy * dy || 1;
+            let t = ((b.x - px) * dx + (b.y - py) * dy) / l2; t = Math.max(0, Math.min(1, t));
+            const cx = px + dx * t, cy = py + dy * t;
+            if ((cx - b.x) ** 2 + (cy - b.y) ** 2 < r * r) {
+                const th = Math.atan2(a.vy, a.vx);
+                killBird(b, a.F);                                        // bird starts falling (feathers, blood, etc.)
+                a.st = 'brd'; a.b = b; a.age = 0; a.a0 = th; a.r0 = b.rot;
+                a.lx = (cx - b.x) * .35; a.ly = (cy - b.y) * .35;        // pierce near the middle of the body
+                a.depth = 12 + 14 * a.pw;                                // tip pokes out the far side
+                return true;
+            }
+        }
+        return false;
+    }
+
     function step(a, i, dt, S) {
         const px = a.x, py = a.y, v = Math.hypot(a.vx, a.vy);
         a.vx += (-CFG.drag * v * a.vx + wind.v * CFG.windPush) * dt;     // air drag + wind drift
@@ -302,8 +323,9 @@
             if (h && h.d < bd) { bd = h.d; best = { e, h } }
         }
         if (best) { hitEnemy(a, best.e, best.h, S); return }
+        if (safe(() => arrowBird(a, px, py))) return;
         const X = a.x, Y = a.y, F = a.F;
-        if (safe(() => headGoreHit(px, py, X, Y, F, false)) || safe(() => birdsHit(px, py, X, Y, F, 20)) || safe(() => fowlHit(px, py, X, Y, F, 20)) ||
+        if (safe(() => headGoreHit(px, py, X, Y, F, false)) || safe(() => fowlHit(px, py, X, Y, F, 20)) ||
             safe(() => bflyHit(px, py, X, Y, F, 20)) || safe(() => clothHit(px, py, X, Y, F)) || safe(() => thSqHit(px, py, X, Y, F, 20)) ||
             safe(() => frogHit(a, px, py, false)) || safe(() => duckHit(a, px, py, false)) || safe(() => crocHit(a, px, py)) || safe(() => horseHit(a, px, py, false))) { a.dead = 1; return }
         if (onWater(a.x) && a.y >= waterSurfaceY(a.x)) {                  // into the pond: splash, scared fish, gone
@@ -347,6 +369,13 @@
                     a.y = f - 2; a.st = 'gnd'; a.age = 0; a.depth = 0; a.ang = (Math.random() < .5 ? .12 : Math.PI - .12); a.flat = 1;
                     burst(a.x, f, 3, 100, 1);
                 }
+            } else if (a.st === 'brd') {                                          // arrow rides the falling bird
+                const b = a.b;
+                if (birds.indexOf(b) < 0) {                                     // bird landed and became a pick-up: arrow stays lying through the corpse
+                    const dir = Math.cos(a.a0) >= 0 ? 1 : -1;
+                    a.x = b.x + dir * 34; a.y = floorY(b.x, -10) - 3; a.ang = dir > 0 ? .1 : Math.PI - .1;
+                    a.st = 'gnd'; a.age = 0; a.depth = 0; a.flat = 1;
+                } else if (a.age > 30) a.dead = 1;
             } else if (a.age > CFG.life) a.dead = 1;
             if (a.dead) A.splice(i, 1);
         }
@@ -673,6 +702,10 @@
         for (const a of A) {
             let sx, sy, ang = a.ang, al = 1;
             if (a.st === 'emb' || a.st === 'cps') { sx = a.e.x + a.ox - P.x + W / 2; sy = gy + 4 + a.oy }
+            else if (a.st === 'brd') {                                          // pinned to the bird, turning with its spin
+                const b = a.b, d = b.F * (b.rot - a.r0), c = Math.cos(d), s_ = Math.sin(d);
+                sx = b.x + a.lx * c - a.ly * s_ - P.x + W / 2; sy = gy + 4 + b.y + a.lx * s_ + a.ly * c; ang = a.a0 + d;
+            }
             else { sx = a.x - P.x + W / 2; sy = gy + 4 + a.y }
             if (sx < -250 || sx > W + 250) continue;
             ctx.save();
@@ -691,10 +724,10 @@
                     ang += Math.sin(a.age * 64) * (.10 + .22 * a.pw) * Math.exp(-a.age * 1.2) + (Math.sin(a.age * 23) * .05 + Math.sin(BW.t * 41) * .04) * cl;
                     if (a.e.snap) sx += a.e.snap;
                 } else ang += Math.sin(a.age * 58) * (.06 + .16 * a.pw) * Math.max(0, 1 - a.age / .5);
-            }
+            } else if (a.st === 'brd') ang += Math.sin(a.age * 60) * .12 * Math.exp(-a.age * 5);
             if (a.st === 'emb' && a.hd) { ctx.translate(sx, sy); ctx.rotate(ang); ctx.beginPath(); ctx.rect(-4000, -4000, 4000, 8000); ctx.clip(); ctx.rotate(-ang); ctx.translate(-sx, -sy) }
             ctx.globalAlpha = al; ctx.translate(sx, sy); ctx.rotate(ang); ctx.scale(S, S);
-            if (a.st === 'gnd' || a.st === 'emb' || a.st === 'cps') ctx.translate(a.depth || 0, 0);
+            if (a.st === 'gnd' || a.st === 'emb' || a.st === 'cps' || a.st === 'brd') ctx.translate(a.depth || 0, 0);
             if (a.st === 'fly') { ctx.strokeStyle = 'rgba(17,17,17,.28)'; ctx.lineWidth = 1.2; ctx.lineCap = 'round'; for (const k of [-1, 1]) { ctx.beginPath(); ctx.moveTo(-L_ARROW - 8, k * 3); ctx.lineTo(-L_ARROW - 80, k * 3); ctx.stroke() } }
             arrowShape(); ctx.restore();
             if (a.st === 'emb' && a.hd && !a.e.hsDead) {                    // skin pushed around the shaft + blood smeared along it
