@@ -3623,8 +3623,8 @@
             const grabHdOffY = isGrabbed ? 6 - hk * 2 : 0;
             const fnn = (P !== PL && P.fst === 1 && PL.fin > 0) ? finK(PL.fin) : null;
             const fp = fnn ? fnn.foot : 0, fq = fnn ? fnn.pull : 0;
-            const hdX = -F * 7 + F * (cb ? cb.hx * cb.w : 0) + F * pq * 10 + L * 10 - F * 5 * st + grabHdOffX - kux * kpull * 7 * kk + F * 9 * R * P.amp + F * sTilt[0] + (pain ? Math.sin(now * 58) * 2.5 * pain + Math.sin(now * 37) * 2 * pain - F * spasm * 8 : 0) + (mpa ? F * MP.pose.lean * 12 * MP.W : 0);
-            const hdY = -T - 24 + (cb ? cb.hy * cb.w : 0) - 6 * st - Math.abs(L) * 1.5 + grabHdOffY - kuy * kpull * 7 * kk + 6 * kk + 5 * R * P.amp + sTilt[1] + (pain ? Math.sin(now * 49) * 2 * pain - spasm * 6 : 0) - (mpa ? MP.pose.lean * 8 * MP.W : 0);
+            const hdX = -F * 7 + F * (cb ? cb.hx * cb.w : 0) + F * pq * 10 + L * 10 - F * 5 * st + grabHdOffX - kux * kpull * 7 * kk + F * 9 * R * P.amp + F * sTilt[0] + (pain ? Math.sin(now * 58) * 2.5 * pain + Math.sin(now * 37) * 2 * pain - F * spasm * 8 : 0) + (mpa ? F * MP.pose.lean * 12 * MP.W : 0) + F * 3 * (P.arrNod || 0) + Math.max(-22, Math.min(22, P.snap || 0));
+            const hdY = -T - 24 + (cb ? cb.hy * cb.w : 0) - 6 * st - Math.abs(L) * 1.5 + grabHdOffY - kuy * kpull * 7 * kk + 6 * kk + 5 * R * P.amp + sTilt[1] + (pain ? Math.sin(now * 49) * 2 * pain - spasm * 6 : 0) - (mpa ? MP.pose.lean * 8 * MP.W : 0) + 5 * (P.arrNod || 0) - Math.abs(Math.max(-22, Math.min(22, P.snap || 0))) * .25;
             const hd = rot(hdX, hdY);
             if (hpK > .01) { hd[0] += Math.sin(now * 33) * 1.4 * hpK; hd[1] += 5 * hpK }   // wincing, head bowed
             if (hl > .01) {
@@ -3727,6 +3727,7 @@
                 }
                 if (P.female) femaleHairFront(hd, F);
                 if (P.hCrack > 0) drawHeadCrack(hd, F, P, now);
+                if (P.arrWd && window.drawArrowWounds) drawArrowWounds(hd, F, P);
                 if (P.corpse) { ctx.strokeStyle = P.dark ? PAPER : '#111'; ctx.lineWidth = 2.2; const ex_ = hd[0] + F * 11, ey_ = hd[1] - 3; ctx.beginPath(); ctx.moveTo(ex_ - 4, ey_ - 4); ctx.lineTo(ex_ + 4, ey_ + 4); ctx.moveTo(ex_ + 4, ey_ - 4); ctx.lineTo(ex_ - 4, ey_ + 4); ctx.stroke(); }
             }
             if (P.sk2 && KN.complete && KN.naturalWidth) {       // knife stuck in a dead body: drawn inside the body's own rotation

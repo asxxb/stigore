@@ -18,6 +18,107 @@
     const spd = (d, fat) => (CFG.vMin + (CFG.vMax - CFG.vMin) * Math.pow(d, 1.25)) * (1 - .18 * fat);
     const say = (t, s) => { banner.t = t; banner.text = s };
 
+    // ================= gore particles, synth sounds, arrow hit test =================
+    const G = BW.gore = [], STAG = BW.stag = [], rnd = (a, b) => a + Math.random() * (b - a);
+    function bits(x, y, n, spd, dx, dy, col, r0, r1, spread = .9) {
+        for (let i = 0; i < n && G.length < 260; i++) {
+            const an = Math.atan2(dy, dx) + rnd(-spread, spread), s = spd * rnd(.3, 1);
+            G.push({ x, y, vx: Math.cos(an) * s, vy: Math.sin(an) * s - 40, r: rnd(r0, r1), col, t: 0, life: rnd(.7, 1.4), st: 0 });
+        }
+    }
+    function goreTick(dt) {
+        for (let i = G.length - 1; i >= 0; i--) {
+            const p = G[i]; p.t += dt;
+            if (!p.st) { p.vy += (p.g === undefined ? 1300 : p.g) * dt; if (p.dr) { const k = Math.max(0, 1 - p.dr * dt); p.vx *= k; p.vy *= k } p.x += p.vx * dt; p.y += p.vy * dt; const f = floorY(p.x, p.y - 4); if (p.y >= f) { p.y = f; p.st = 1; p.t = 0; p.life = p.str ? rnd(3, 6) : rnd(6, 12) } }
+            if (p.t > p.life) G.splice(i, 1);
+        }
+    }
+    // fine high-pressure mist: lots of tiny fast particles in a narrow cone, light gravity, drawn as streaks
+    function mist(x, y, dx, dy, pw) {
+        const n = Math.round(35 + 70 * pw), base = Math.atan2(dy, dx);
+        for (let i = 0; i < n && G.length < 420; i++) {
+            const an = base + rnd(-.45, .45), s = rnd(260, 650 + 900 * pw);
+            G.push({ x, y, vx: Math.cos(an) * s, vy: Math.sin(an) * s, r: rnd(.7, 1.7), col: Math.random() < .7 ? '#d4121e' : '#ff2b2b', t: 0, life: rnd(.35, .9), st: 0, g: rnd(180, 520), dr: rnd(.6, 1.6), str: 1 });
+        }
+        for (let i = 0; i < 6 && G.length < 420; i++) {                  // heavier droplets that reach the ground
+            const an = base + rnd(-.7, .7), s = rnd(200, 500 + 500 * pw);
+            G.push({ x, y, vx: Math.cos(an) * s, vy: Math.sin(an) * s - 60, r: rnd(2, 3.6), col: '#a30d17', t: 0, life: rnd(.8, 1.4), st: 0 });
+        }
+    }
+    // head snap: damped spring in px; the impulse points along the arrow, so the head whips back away from the shot
+    function headSnap(e, F, pw) { e.snap = e.snap || 0; e.snapV = (e.snapV || 0) + F * (450 + 450 * pw) }
+    function snapTick(dt) {
+        const h = Math.min(dt, .033);
+        for (const e of ENEMIES) if (e.snapV || e.snap) {
+            e.snapV += (-260 * e.snap - 11 * e.snapV) * h; e.snap += e.snapV * h;
+            if (Math.abs(e.snap) < .05 && Math.abs(e.snapV) < 1) e.snap = e.snapV = 0;
+        }
+    }
+    // thud (low sine drop) + crack (high noise snap, bone) + wet squelch (swept band noise, tissue)
+    let AC = null;
+    const audio = () => { try { AC = AC || new (window.AudioContext || window.webkitAudioContext)(); if (AC.state === 'suspended') AC.resume(); return AC } catch (e) { return null } };
+    function hitSnd(pw, crack, wet) {
+        const c = audio(); if (!c) return; const t = c.currentTime;
+        const o = c.createOscillator(), g = c.createGain(); o.type = 'sine';
+        o.frequency.setValueAtTime(150, t); o.frequency.exponentialRampToValueAtTime(42, t + .16);
+        g.gain.setValueAtTime(.25 + .35 * pw, t); g.gain.exponentialRampToValueAtTime(.001, t + .2);
+        o.connect(g).connect(c.destination); o.start(t); o.stop(t + .22);
+        const nz = (f, type, q, dur, vol, delay, f2) => {
+            const s = c.createBufferSource(), fl = c.createBiquadFilter(), gg = c.createGain(), b = c.createBuffer(1, Math.max(1, c.sampleRate * dur | 0), c.sampleRate), d = b.getChannelData(0);
+            for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+            s.buffer = b; fl.type = type; fl.Q.value = q; fl.frequency.setValueAtTime(f, t + delay);
+            if (f2) fl.frequency.exponentialRampToValueAtTime(f2, t + delay + dur);
+            gg.gain.setValueAtTime(vol, t + delay); gg.gain.exponentialRampToValueAtTime(.001, t + delay + dur);
+            s.connect(fl).connect(gg).connect(c.destination); s.start(t + delay);
+        };
+        if (crack) nz(3200, 'highpass', .7, .06, .35, .01);
+        if (wet) nz(260, 'bandpass', 4, .28, .22 + .1 * pw, .05, 900);
+    }
+    // shluck: band-noise ripping downward in pitch (skin tearing) + a short wet "pop" as the head punches in
+    function tearSnd(pw) {
+        const c = audio(); if (!c) return; const t = c.currentTime + .005;
+        const d = .16 + .08 * (1 - pw), b = c.createBuffer(1, c.sampleRate * d | 0, c.sampleRate), ch = b.getChannelData(0);
+        for (let i = 0; i < ch.length; i++) ch[i] = (Math.random() * 2 - 1) * (.6 + .4 * Math.sin(i / c.sampleRate * 170));   // ragged, fibrous
+        const s = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain();
+        s.buffer = b; f.type = 'bandpass'; f.Q.value = 3.5; f.frequency.setValueAtTime(2200, t); f.frequency.exponentialRampToValueAtTime(240, t + d);
+        g.gain.setValueAtTime(.001, t); g.gain.linearRampToValueAtTime(.38 + .2 * pw, t + .02); g.gain.exponentialRampToValueAtTime(.001, t + d);
+        s.connect(f).connect(g).connect(c.destination); s.start(t);
+        const o = c.createOscillator(), og = c.createGain(); o.type = 'sine';
+        o.frequency.setValueAtTime(90, t + d * .5); o.frequency.exponentialRampToValueAtTime(380, t + d * .5 + .06);
+        og.gain.setValueAtTime(.001, t + d * .5); og.gain.linearRampToValueAtTime(.22, t + d * .5 + .01); og.gain.exponentialRampToValueAtTime(.001, t + d * .5 + .09);
+        o.connect(og).connect(c.destination); o.start(t + d * .5); o.stop(t + d * .5 + .1);
+    }
+
+    // segment (px,py)->(a.x,a.y) vs head circle + body box. Returns the earliest hit, with the head's centre for zone maths.
+    function arrowHit(a, px, py, e, S) {
+        const down = e.down > 0 || e.crawl, w = (down ? 120 : 30) * S, zt = Math.min(0, e.z), top = (down ? -70 : -320) * S + zt, bot = 6 * S + zt;
+        const dx = a.x - px, dy = a.y - py;
+        let t0 = 0, t1 = 1;
+        const clip = (p, q) => { if (p === 0) return q >= 0; const r = q / p; if (p < 0) { if (r > t1) return false; if (r > t0) t0 = r } else { if (r < t0) return false; if (r < t1) t1 = r } return true };
+        const tb = (clip(-dx, px - (e.x - w)) && clip(dx, (e.x + w) - px) && clip(-dy, py - top) && clip(dy, bot - py)) ? t0 : null;
+        let th = null, hc = null; const R = 25 * S;
+        if (!down) {
+            hc = [e.x + (e.hdp ? e.hdp[0] * S : 0), e.hdp ? e.hdp[1] * S : -290 * S];
+            const fx = px - hc[0], fy = py - hc[1], A = dx * dx + dy * dy || 1e-9, B = 2 * (fx * dx + fy * dy), C = fx * fx + fy * fy - R * R, D = B * B - 4 * A * C;
+            if (D >= 0) { const sq = Math.sqrt(D), r1 = (-B - sq) / (2 * A), r2 = (-B + sq) / (2 * A); if (r2 >= 0 && r1 <= 1) th = Math.max(0, r1) }
+        }
+        if (th === null && tb === null) return null;
+        const head = th !== null && (tb === null || th <= tb || Math.abs(py + dy * tb - hc[1]) < R), t = head ? th : tb;
+        return { x: px + dx * t, y: py + dy * t, head, hc, d: Math.hypot(dx * t, dy * t) };
+    }
+
+    // where on the head, and how square-on: eye / brainstem (rear-low) / frontal (front-high) / generic brain; obl = angle from the surface normal
+    function zoneOf(e, h, S, vx, vy) {
+        const rx = (h.x - h.hc[0]) / S, ry = (h.y - h.hc[1]) / S, fx = rx * (e.face || 1);
+        const sp = Math.hypot(vx, vy) || 1, nx = h.x - h.hc[0], ny = h.y - h.hc[1], nl = Math.hypot(nx, ny) || 1;
+        const cos = Math.max(0, Math.min(1, -(vx * nx + vy * ny) / (sp * nl))), obl = Math.acos(cos) * 180 / Math.PI;
+        let part = 'brain';
+        if (fx > 4 && fx < 19 && Math.abs(ry + 3) < 6.5) part = 'eye';
+        else if (fx < -6 && ry > 5) part = 'stem';
+        else if (fx > -3 && ry < 3) part = 'frontal';
+        return { fx, ry, obl, part, nx: nx / nl, ny: ny / nl };
+    }
+
     const busy = () => !!(P.mount || swim.on || P.z < 0 || P.pk > 0 || P.stc > 0 || P.cs > 0 || P.fin > 0 || P.thw > 0 || P.tt > 0 || P.stbk > 0 || P.fs > 0 || P.gu > 0 ||
         P.yk > 0 || P.sgp > 0 || P.sm > 0 || P.ln > 0 || P.lb > 0 || P.ld > 0 || P.pu > 0 || P.sqg > 0 || P.sqt > 0 || P.dts > 0 || P.stm > 0 || P.mpk > 0 || P.mSl > 0 ||
         P.sqSl > 0 || P.gun || P.gs === 2 || P.sg || P.kn !== 0 || P.kt > .05 || TH_CL.on || DD.carry || DD.g.on);
@@ -124,20 +225,76 @@
     // ---------------- arrow flight, impacts, sticking ----------------
     function embed(a, e, h) {
         a.st = 'emb'; a.e = e; a.ox = h.x - e.x; a.oy = h.y; a.ang = Math.atan2(a.vy, a.vx); a.age = 0; a.depth = 16 + 12 * a.pw;
+        if (h.head && e.hdp) { const S = CSc(); a.hd = 1; a.hox = a.ox / S - e.hdp[0]; a.hoy = a.oy / S - e.hdp[1]; a.depth = 9 + 9 * a.pw }   // head arrows ride the head
         const mine = A.filter(q => q.st === 'emb' && q.e === e);
         if (mine.length > 5) A.splice(A.indexOf(mine[0]), 1);
     }
+
     function hitEnemy(a, e, h, S) {
-        const F = a.F, pw = a.pw, head = h.head;
-        if (!head && h.y > -150 * S && safe(() => legShot(a, e, h, S))) { embed(a, e, h); return }
-        const dmg = head ? Math.round(30 + 85 * pw) : Math.round(10 + 34 * pw);
-        e.hp -= dmg; e.bar = 2.5; e.kdir = F; e.face = -F; e.hurt = Math.max(e.hurt, .4); e.vx = F * (head ? 220 : 110); e.wait = 1; e.fid = 0;
+        if (h.head && h.hc) return headHit(a, e, h, S);
+        const F = a.F, pw = a.pw;
+        if (h.y > -150 * S && safe(() => legShot(a, e, h, S))) { embed(a, e, h); return }
+        const dmg = Math.round(10 + 34 * pw);
+        e.hp -= dmg; e.bar = 2.5; e.kdir = F; e.face = -F; e.hurt = Math.max(e.hurt, .4); e.vx = F * 110; e.wait = 1; e.fid = 0;
         combo.n++; combo.dmg += dmg; combo.t = 1.8; combo.pop = 1.3;
-        spray(h.x, h.y, head ? 20 : 12, 300 + 300 * pw, F); spray(h.x, h.y, 6, 200, -F); burst(h.x, h.y, head ? 12 : 7, 220, F);
-        impacts.push({ x: h.x, y: h.y, t: 0, life: .18, s: head ? 70 : 48, seed: Math.random() * 50 });
-        hitstop = Math.max(hitstop, head ? .06 : .035); shake = Math.max(shake, head ? 6 : 3.5); playSfx('stab', 1);
-        if (e.hp <= 0) { e.hp = 0; e.dying = .5; say(1.1, head ? 'HEADSHOT KILL!' : 'K.O.!'); if (P.grabbed === e) P.grabbed = null }
-        else say(.8, head ? 'HEADSHOT!' : 'ARROW!');
+        spray(h.x, h.y, Math.round(6 + 10 * pw), 200 + 300 * pw, F); spray(h.x, h.y, 6, 200, -F); burst(h.x, h.y, 7, 220, F);
+        impacts.push({ x: h.x, y: h.y, t: 0, life: .18, s: 48, seed: Math.random() * 50 });
+        hitstop = Math.max(hitstop, .035); shake = Math.max(shake, 3.5); playSfx('stab', .8); hitSnd(pw, false, true);
+        if (e.hp <= 0) { e.hp = 0; e.dying = .5; say(1.1, 'K.O.!'); if (P.grabbed === e) P.grabbed = null } else say(.8, 'ARROW!');
+        embed(a, e, h);
+    }
+
+    function headHit(a, e, h, S) {
+        const F = a.F, pw = a.pw, v = Math.hypot(a.vx, a.vy) || 1, Z = zoneOf(e, h, S, a.vx, a.vy), ux = a.vx / v, uy = a.vy / v;
+        const glance = Z.obl > 45;                                   // oblique: skull deflects, bone chips fly
+        const through = !glance && pw > .72;                         // enough energy to punch out the back
+        const inst = Z.part === 'stem' && !glance;                   // brainstem: instant collapse
+        const dmg = Math.round((30 + 85 * pw) * (glance ? .7 : 1));
+        e.hp -= dmg; if (inst) e.hp = 0;
+        e.bar = 2.5; e.kdir = F; e.wait = 1; e.fid = 0;
+        const fa = e.face || 1;                                      // facing BEFORE he turns (wounds are stored front-relative)
+        if (!inst) { e.face = -F; e.hurt = Math.max(e.hurt, .4); e.vx = F * (180 + 240 * pw * (through ? 1.6 : 1)) }   // head jerks back harder on a through-shot
+        else { e.vx = 0; e.hurt = 0 }                                // no flinch, goes limp
+        combo.n++; combo.dmg += dmg; combo.t = 1.8; combo.pop = 1.3;
+
+        // persistent wound (drawn by drawArrowWounds, survives arrow removal)
+        const wd = { fx: Z.fx, ry: Z.ry, t0: BW.t, r: 4 + 4 * pw, open: 0, openT: 0, seed: Math.random() * 900 };
+        (e.arrWd || (e.arrWd = [])).push(wd); a.wd = wd;
+
+        // entry: high-pressure spray back along the shaft, mist when fast, trickle when slow
+        mist(h.x, h.y, -ux, -uy, pw);                                           // bright crimson mist erupting from the entry
+        spray(h.x, h.y, Math.round(8 + 22 * pw), 200 + 300 * pw, -F);
+        burst(h.x, h.y, Math.round(5 + 9 * pw), 180 + 220 * pw, -F);
+        headSnap(e, F, pw);                                                     // head snaps back
+        bits(h.x, h.y, 6 + Math.round(8 * pw), 180 + 260 * pw, Z.nx, Z.ny, '#e8e4da', 1, 2.6, .9);   // grey-white bone fragments
+        bits(h.x, h.y, 5, 120, Z.nx, Z.ny, '#4a0a0e', 2, 3.6, .7);              // clotted tissue chunks
+        // shaft drag: brain matter streaked along the path
+        for (let k = 1; k <= 4; k++) bits(h.x + ux * k * 6 * S, h.y + uy * k * 6 * S, 1, 50, ux, uy, '#e9786c', 1.2, 2.4, .5);
+        // bone chips on oblique hits / frontal bone at power
+        if (glance || (Z.part === 'frontal' && pw > .6)) bits(h.x, h.y, glance ? 10 : 5, 200 + 300 * pw, Z.nx, Z.ny, '#e8e4da', 1, 2.6, .8);
+
+        // exit wound
+        if (through) {
+            const ex = h.hc[0] + ux * 23 * S, ey = h.hc[1] + uy * 23 * S;
+            spray(ex, ey, Math.round(12 + 22 * pw), 380 + 380 * pw, F);
+            bits(ex, ey, 14, 300 + 300 * pw, ux, uy, '#e9786c', 1.5, 3.2, .6); bits(ex, ey, 6, 260, ux, uy, '#e8e4da', 1, 2, .7);
+            e.arrWd.push({ fx: ux * 23 * fa, ry: uy * 23, t0: BW.t, r: 4 + 3 * pw, open: 0, openT: 0, exit: 1 });
+            impacts.push({ x: ex, y: ey, t: 0, life: .2, s: 60, seed: Math.random() * 50 });
+        }
+        impacts.push({ x: h.x, y: h.y, t: 0, life: .18, s: 50 + 25 * pw, seed: Math.random() * 50 });
+        hitstop = Math.max(hitstop, .04 + .03 * pw); shake = Math.max(shake, 3 + 3.5 * pw);
+        playSfx('stab', .5); hitSnd(pw, true, true); tearSnd(pw);
+
+        // outcome depends on WHERE it hit
+        if (e.hp <= 0 && !inst && (Z.part === 'frontal' || Z.part === 'eye')) {
+            e.hp = 1; e.hCrack = 1; e.hCrackT = 0;                   // clutches his head, staggers 3-5 s, then drops
+            STAG.push({ e, t: Z.part === 'eye' ? rnd(2, 3.2) : rnd(3, 5), eye: Z.part === 'eye', ph: Math.random() * 6 });
+            say(1.2, Z.part === 'eye' ? 'EYE SHOT!' : 'FRONTAL HIT!');
+        } else if (e.hp <= 0) {
+            e.hp = 0; e.dying = .5; say(1.1, inst ? 'BRAINSTEM!' : 'HEADSHOT KILL!'); if (P.grabbed === e) P.grabbed = null;
+        } else say(.8, glance ? 'GLANCING HEADSHOT' : 'HEADSHOT!');
+
+        if (through) { a.ign = e; a.vx *= .45; a.vy *= .45; a.pw *= .5; return }   // arrow keeps flying with what's left
         embed(a, e, h);
     }
     function step(a, i, dt, S) {
@@ -147,8 +304,8 @@
         a.x += a.vx * dt; a.y += a.vy * dt; a.F = a.vx >= 0 ? 1 : -1;
         let best = null, bd = 1e9;
         for (const e of ENEMIES) {
-            if (e.dead > 0 || e.dying > 0) continue;
-            const h = bulletHit(a, px, py, e, S);
+            if (e.dead > 0 || e.dying > 0 || e === a.ign) continue;
+            const h = arrowHit(a, px, py, e, S);
             if (h && h.d < bd) { bd = h.d; best = { e, h } }
         }
         if (best) { hitEnemy(a, best.e, best.h, S); return }
@@ -176,14 +333,14 @@
         const S = CSc();
         for (let i = A.length - 1; i >= 0; i--) {
             const a = A[i]; a.age += dt;
-            if (a.st === 'fly') step(a, i, dt, S);
+            if (a.st === 'fly') { const n = Math.max(1, Math.ceil(dt / .01)); for (let k = 0; k < n && a.st === 'fly' && !a.dead; k++) step(a, i, dt / n, S) }
             else if (a.st === 'emb') {
                 const e = a.e;
                 if (e.dying > 0 || e.dead > 0 || e.decap || e.hsDead || e.gutDead) {   // victim dies: the arrow stays in the body and settles onto the corpse
                     a.st = 'cps'; a.age = 0; a.a0 = a.ang; a.y0 = a.oy; a.ox = Math.max(-30 * S, Math.min(30 * S, a.ox)); a.at = Math.PI / 2 + (Math.random() - .5) * 1.1;
                 } else if (e.crawl) {                                           // crawling victim: arrow pops free and falls
                     a.x = e.x + a.ox; a.y = a.oy; a.vx = (e.vx || 0) * .4 + (Math.random() - .5) * 80; a.vy = -60; a.st = 'fall'; a.spin = (Math.random() - .5) * 7; a.age = 0;
-                }
+                } else if (a.hd && e.hdp) { a.ox = (e.hdp[0] + a.hox) * S; a.oy = (e.hdp[1] + a.hoy) * S }   // arrow rides the head
             } else if (a.st === 'cps') {                                          // arrow stuck in a corpse (can be pulled out with T)
                 const e = a.e, k = sm(c01(a.age / .7)), gnd = floorY(e.x + a.ox, a.y0 - 5) - 12;
                 a.oy = lp(a.y0, gnd, k); const dd = Math.atan2(Math.sin(a.at - a.a0), Math.cos(a.at - a.a0)); a.ang = a.a0 + dd * k;
@@ -200,6 +357,25 @@
             } else if (a.age > CFG.life) a.dead = 1;
             if (a.dead) A.splice(i, 1);
         }
+        goreTick(dt);
+        snapTick(dt);
+        for (let i = STAG.length - 1; i >= 0; i--) {                       // staggering head-shot victims
+            const s = STAG[i], e = s.e;
+            if (e.dying > 0 || e.dead > 0 || e.hp <= 0 || ENEMIES.indexOf(e) < 0) { STAG.splice(i, 1); continue }
+            s.t -= dt; e.wait = 1; e.fid = 0;
+            e.vx = Math.sin(BW.t * (s.eye ? 19 : 3.1) + s.ph) * (s.eye ? 45 : 80) + (s.eye ? Math.sin(BW.t * 47) * 60 : 0);   // lurch / twitch
+            if (s.t <= 0) { e.hp = 0; e.dying = .5; say(1.1, 'HEADSHOT KILL!'); STAG.splice(i, 1) }
+        }
+        for (const e of ENEMIES) {
+            if (!e.arrWd) continue;
+            const dead = e.dying > 0 || e.dead > 0 || e.corpse || e.hsDead || e.gutDead || e.decap;
+            let n = 0; for (const a of A) if (a.st === 'emb' && a.e === e && a.hd) n++;
+            e.arrNod = (e.arrNod || 0) + ((dead ? 0 : Math.min(1, n * .6)) - (e.arrNod || 0)) * Math.min(1, dt * 6);   // arrow weight pulls the head down
+            if (dead) e.pool = Math.min(70, (e.pool || 0) + dt * (3 + 4 * e.arrWd.length + 10 * e.arrWd.filter(w => w.open).length));
+            if (!e.rot && e.hdp) for (const w of e.arrWd)                    // drips while the wound is fresh (or open)
+                if ((BW.t - w.t0 < 10 || w.open) && Math.random() < dt * (w.open ? 14 : 5))
+                    bits(e.x + (e.hdp[0] + (e.face || 1) * w.fx) * S, (e.hdp[1] + w.ry) * S, 1, 40, 0, 1, '#7a0b11', 1, 2.2, .6);
+        }
         while (A.length > 70) { const k = A.findIndex(q => q.st === 'gnd'); A.splice(k < 0 ? 0 : k, 1) }
     }
     const _gt = window.gunTick;
@@ -214,8 +390,12 @@
             A.forEach((a, i) => { if (a.st !== 'gnd' && a.st !== 'cps') return; const d = Math.abs(ax(a) - P.x); if (d < bd && Math.abs(ay(a) - lvl) < 90 * S) { bd = d; bi = i } });
             if (bi >= 0) {
                 const a = A[bi], body = a.st === 'cps', X = ax(a), Y = ay(a); A.splice(bi, 1);
-                if (body) {                                                    // yanked out of a corpse: blood, a thud, and it might snap
-                    safe(() => burst(X, Y, 5, 140, -1)); shake = Math.max(shake, 1.2); playSfx('stab', .35);
+                if (body) {
+                    const F2 = Math.cos(a.ang) >= 0 ? 1 : -1;
+                    safe(() => burst(X, Y, 7, 160, -F2)); safe(() => spray(X, Y, 10 + Math.round(10 * (a.pw || .5)), 260, -F2));
+                    bits(X, Y, 8, 180, -Math.cos(a.ang), -Math.sin(a.ang), '#7a0b11', 1, 2.4, .6);
+                    if (a.wd) { a.wd.open = 1; a.wd.openT = BW.t; a.wd.r *= 1 + (a.pw || .5) }   // hole stays, edges gape wider on a harder-driven arrow
+                    shake = Math.max(shake, 1.2); playSfx('stab', .35); hitSnd(.2, false, true);
                     if (Math.random() < CFG.snap) { say(.8, 'ARROW SNAPPED'); return }
                     say(.8, 'ARROW PULLED OUT'); BW.ammo++; return;
                 }
@@ -467,6 +647,19 @@
     // ---------------- world: arrows in flight / stuck, trajectory dots ----------------
     function worldDraw(gy) {
         const S = CSc(), now = performance.now() / 1000;
+        for (const e of ENEMIES) if (e.pool > 0) {                          // pool grows under bleeding corpses
+            const sx = e.x - P.x + W / 2; if (sx < -200 || sx > W + 200) continue;
+            ctx.save(); ctx.globalAlpha = .75; ctx.fillStyle = '#6a0a10'; ctx.beginPath();
+            ctx.ellipse(sx, gy + 4 + floorY(e.x, 0) - 1, e.pool * S, Math.max(1.5, e.pool * .16 * S), 0, 0, 7); ctx.fill(); ctx.restore();
+        }
+        for (const p of G) {
+            const sx = p.x - P.x + W / 2; if (sx < -50 || sx > W + 50) continue;
+            ctx.fillStyle = ctx.strokeStyle = p.col;
+            ctx.globalAlpha = p.st ? Math.min(1, (p.life - p.t) / 2) : (p.str ? Math.min(1, 1.6 * (1 - p.t / p.life)) : 1);
+            if (p.str && !p.st) { ctx.lineWidth = p.r * 1.5; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(sx, gy + 4 + p.y); ctx.lineTo(sx - p.vx * .022, gy + 4 + p.y - p.vy * .022); ctx.stroke() }
+            else { ctx.beginPath(); if (p.st) ctx.ellipse(sx, gy + 4 + p.y - 1, p.r * 1.6, p.r * .6, 0, 0, 7); else ctx.arc(sx, gy + 4 + p.y, p.r, 0, 7); ctx.fill() }
+        }
+        ctx.globalAlpha = 1;
         for (const a of A) {
             let sx, sy, ang = a.ang, al = 1;
             if (a.st === 'emb' || a.st === 'cps') { sx = a.e.x + a.ox - P.x + W / 2; sy = gy + 4 + a.oy }
@@ -477,7 +670,7 @@
             else if (a.st === 'gnd') {
                 if (!a.flat) { ctx.beginPath(); ctx.rect(sx - 300, sy - 1500, 600, 1500 + 1.5); ctx.clip() }
                 ang += Math.sin(a.age * 55) * .1 * Math.exp(-a.age * 6.5); if (a.age > CFG.life - 8) al = Math.max(0, (CFG.life - a.age) / 8);
-            } else if (a.st === 'emb') ang += Math.sin(a.age * 50) * .09 * Math.exp(-a.age * 6);
+            } else if (a.st === 'emb') { const hd = a.hd ? 1 : 0; ang += Math.sin(a.age * (hd ? 72 : 58)) * (.06 + .16 * a.pw) * (1 + hd * .8) * Math.max(0, 1 - a.age / (hd ? .7 : .5)); if (hd && a.e.snap) sx += a.e.snap }
             ctx.globalAlpha = al; ctx.translate(sx, sy); ctx.rotate(ang); ctx.scale(S, S);
             if (a.st === 'gnd' || a.st === 'emb' || a.st === 'cps') ctx.translate(a.depth || 0, 0);
             if (a.st === 'fly') { ctx.strokeStyle = 'rgba(17,17,17,.28)'; ctx.lineWidth = 1.2; ctx.lineCap = 'round'; for (const k of [-1, 1]) { ctx.beginPath(); ctx.moveTo(-L_ARROW - 8, k * 3); ctx.lineTo(-L_ARROW - 80, k * 3); ctx.stroke() } }
@@ -500,6 +693,44 @@
     }
     const _ds = window.drawShots;
     window.drawShots = function (gy) { _ds.call(this, gy); worldDraw(gy) };
+
+    window.drawArrowWounds = function (hd, F, Q) {
+        const ws = Q.arrWd; if (!ws) return;
+        const rs = s => { const x = Math.sin(s * 12.9898) * 43758.5453; return x - Math.floor(x) };
+        ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        for (const w of ws) {
+            const x = hd[0] + F * w.fx, y = hd[1] + w.ry, age = BW.t - w.t0, sd = w.seed || 1;
+            const nl = Math.hypot(w.fx, w.ry) || 1, ux = F * w.fx / nl, uy = w.ry / nl;
+            const open = w.open ? Math.min(1, (BW.t - w.openT) / .15) : 0, r = w.r * (1.25 + .9 * open) * (w.exit ? 1.3 : 1);
+            const fresh = Math.max(0, 1 - age / 6), blood = fresh > .3 ? '#d4121e' : '#8c0d14';
+            // skull dent around the entry
+            if (!w.exit) { const c = Math.atan2(-uy, -ux); ctx.strokeStyle = '#111'; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.arc(x + ux * (r + 3), y + uy * (r + 3), r + 5, c - 1, c + 1); ctx.stroke() }
+            // blood running down the face (thicker and longer while fresh or open)
+            ctx.strokeStyle = blood; ctx.lineWidth = 2 + 1.4 * fresh + open; ctx.beginPath(); ctx.moveTo(x, y);
+            ctx.quadraticCurveTo(x + Math.sin(sd) * 3, y + 14, x + Math.sin(sd * 2) * 2, y + Math.min(46, age * (7 + (w.open ? 10 : 0)))); ctx.stroke();
+            // jagged hole
+            ctx.beginPath();
+            for (let k = 0; k < 12; k++) {
+                const a = k / 12 * 6.283, rr = r * (k % 2 ? .75 + .3 * rs(sd + k) : 1.5 + 1.2 * rs(sd + k * 3));
+                const px = x + Math.cos(a) * rr, py = y + Math.sin(a) * rr * .85;
+                k ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+            }
+            ctx.closePath(); ctx.fillStyle = '#240407'; ctx.fill(); ctx.strokeStyle = blood; ctx.lineWidth = 1.6; ctx.stroke();
+            // clotted tissue inside: dark clots with greyish-pink brain matter
+            for (let k = 0; k < 4; k++) {
+                const a = rs(sd + 40 + k) * 6.283, d = r * .55 * rs(sd + 50 + k);
+                ctx.fillStyle = k % 2 ? '#4a0a0e' : '#a5736c'; ctx.beginPath(); ctx.ellipse(x + Math.cos(a) * d, y + Math.sin(a) * d, r * (.28 + .2 * rs(sd + k)), r * .22, a, 0, 7); ctx.fill();
+            }
+            ctx.fillStyle = 'rgba(255,170,160,.55)'; ctx.beginPath(); ctx.arc(x - r * .25, y - r * .2, r * .13, 0, 7); ctx.fill();   // wet highlight
+            // bone fragments pushed out around the rim
+            for (let k = 0; k < 5; k++) {
+                const a = k / 5 * 6.283 + rs(sd + 70 + k), d = r * (1.5 + .9 * rs(sd + 80 + k)), bx = x + Math.cos(a) * d, by = y + Math.sin(a) * d * .85, sz = 1.6 + 1.8 * rs(sd + 90 + k);
+                ctx.fillStyle = k % 2 ? '#e6e2d8' : '#b9b5ab'; ctx.strokeStyle = '#111'; ctx.lineWidth = .9;
+                ctx.beginPath(); ctx.moveTo(bx + Math.cos(a) * sz * 1.4, by + Math.sin(a) * sz * 1.4); ctx.lineTo(bx + Math.cos(a + 2.2) * sz, by + Math.sin(a + 2.2) * sz); ctx.lineTo(bx + Math.cos(a - 2.2) * sz, by + Math.sin(a - 2.2) * sz); ctx.closePath(); ctx.fill(); ctx.stroke();
+            }
+        }
+        ctx.restore();
+    };
 
     // ---------------- HUD ----------------
     const _gh = window.drawGunHUD;
