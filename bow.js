@@ -242,14 +242,33 @@
         if (h.head && h.hc) return headHit(a, e, h, S);
         const F = a.F, pw = a.pw;
         if (h.y > -150 * S && safe(() => legShot(a, e, h, S))) { embed(a, e, h); return }
+        // snap the entry onto the real torso line (neck -> hip), on the side facing the shooter
+        const v_ = Math.hypot(a.vx, a.vy) || 1, ux = a.vx / v_, uy = a.vy / v_;
+        let bt;
+        if (e.nkP && e.hipP && !(e.down > 0 || e.crawl)) {
+            const ny = e.nkP[1], hy = e.hipP[1], ty = Math.max(ny, Math.min(hy, h.y / S));
+            bt = (ty - ny) / ((hy - ny) || 1);
+            const tx = e.nkP[0] + (e.hipP[0] - e.nkP[0]) * bt;
+            h = { x: e.x + tx * S - ux * 4 * S, y: ty * S - uy * 4 * S, head: false, d: h.d };
+            a.bt = bt; a.brx = (h.x - e.x) / S - tx; a.bry = h.y / S - ty;     // offset from the torso point, so it rides the body
+        }
         const dmg = Math.round(10 + 34 * pw);
-        e.hp -= dmg; e.bar = 2.5; e.kdir = F; e.face = -F; e.hurt = Math.max(e.hurt, .4); e.vx = F * 110; e.wait = 1; e.fid = 0;
+        e.hp -= dmg; e.bar = 2.5; e.kdir = F; e.face = -F; e.hurt = Math.max(e.hurt, .4); e.vx = F * (110 + 130 * pw); e.wait = 1; e.fid = 0;
         combo.n++; combo.dmg += dmg; combo.t = 1.8; combo.pop = 1.3;
         spray(h.x, h.y, Math.round(6 + 10 * pw), 200 + 300 * pw, F); spray(h.x, h.y, 6, 200, -F); burst(h.x, h.y, 7, 220, F);
         impacts.push({ x: h.x, y: h.y, t: 0, life: .18, s: 48, seed: Math.random() * 50 });
         hitstop = Math.max(hitstop, .035); shake = Math.max(shake, 3.5); playSfx('stab', .8); hitSnd(pw, false, true);
         if (e.hp <= 0) { e.hp = 0; e.dying = .5; say(1.1, 'K.O.!'); if (P.grabbed === e) P.grabbed = null } else say(.8, 'ARROW!');
         embed(a, e, h);
+        a.thru = bt !== undefined && pw > .3;                              // fast enough: goes all the way through the torso
+        a.depth = a.thru ? 16 + 14 * pw : 6 + 14 * pw;                     // thru: tip sticks out the back, otherwise lodged shallow
+        mist(h.x, h.y, -ux, -uy, pw * .6);                                 // entry mist
+        if (a.thru) {
+            const ex = h.x + ux * 8 * S, ey = h.y + uy * 8 * S;            // exit through the back, 8px behind the entry
+            spray(ex, ey, Math.round(10 + 16 * pw), 300 + 300 * pw, F); mist(ex, ey, ux, uy, pw * .8);
+            bits(ex, ey, 8, 260, ux, uy, '#8c0d14', 1.5, 3.2, .7); bits(ex, ey, 5, 220, ux, uy, '#d4443a', 1.5, 3, .6);
+            hitstop = Math.max(hitstop, .05); shake = Math.max(shake, 4 + 2 * pw); tearSnd(pw);
+        }
     }
 
     function headHit(a, e, h, S) {
@@ -356,7 +375,13 @@
                 } else if (e.crawl) {                                           // crawling victim: arrow pops free and falls
                     a.x = e.x + a.ox; a.y = a.oy; a.vx = (e.vx || 0) * .4 + (Math.random() - .5) * 80; a.vy = -60; a.st = 'fall'; a.spin = (Math.random() - .5) * 7; a.age = 0;
                 } else if (a.hd && e.hdp) { a.ox = (e.hdp[0] + a.hox) * S; a.oy = (e.hdp[1] + a.hoy) * S }   // arrow rides the head
+                else if (a.bt !== undefined && e.nkP && e.hipP) {                    // stays in the torso when he leans, hunches or kneels
+                    const tx = e.nkP[0] + (e.hipP[0] - e.nkP[0]) * a.bt, ty = e.nkP[1] + (e.hipP[1] - e.nkP[1]) * a.bt;
+                    a.ox = (tx + a.brx) * S; a.oy = (ty + a.bry) * S;
+                    if (a.thru && Math.random() < dt * 3) bits(e.x + a.ox, a.oy + 4, 1, 30, 0, 1, '#7a0b11', 1, 2, .6);   // dripping from the wound
+                }
             } else if (a.st === 'cps') {                                          // arrow stuck in a corpse (can be pulled out with T)
+                if (a.thru && Math.random() < dt * 2) bits(a.e.x + a.ox, a.oy + 4, 1, 25, 0, 1, '#7a0b11', 1, 2, .8);
                 const e = a.e, k = sm(c01(a.age / .7)), gnd = floorY(e.x + a.ox, a.y0 - 5) - 12;
                 a.oy = lp(a.y0, gnd, k); const dd = Math.atan2(Math.sin(a.at - a.a0), Math.cos(a.at - a.a0)); a.ang = a.a0 + dd * k;
                 if (safe(() => ENEMIES.indexOf(e)) === -1 || (e.hp > 0 && !(e.dying > 0 || e.dead > 0 || e.decap || e.hsDead || e.gutDead))) {   // corpse gone / victim back up: arrow drops
@@ -727,6 +752,19 @@
             } else if (a.st === 'brd') ang += Math.sin(a.age * 60) * .12 * Math.exp(-a.age * 5);
             if (a.st === 'emb' && a.hd) { ctx.translate(sx, sy); ctx.rotate(ang); ctx.beginPath(); ctx.rect(-4000, -4000, 4000, 8000); ctx.clip(); ctx.rotate(-ang); ctx.translate(-sx, -sy) }
             ctx.globalAlpha = al; ctx.translate(sx, sy); ctx.rotate(ang); ctx.scale(S, S);
+            if (a.st === 'emb' && a.thru && !a.hd) {
+                const fr = Math.max(0, 1 - a.age / 10), bl = fr > .3 ? '#b30f19' : '#6a0a10';
+                ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+                // exit wound at the back (x = 8): big, torn, with ragged flaps
+                ctx.fillStyle = '#7a0b11'; ctx.strokeStyle = '#111'; ctx.lineWidth = 1.4;
+                ctx.beginPath(); ctx.ellipse(8, 0, 4.2, 8.5, 0, 0, 7); ctx.fill(); ctx.stroke();
+                ctx.fillStyle = '#c4473d';
+                for (const k of [-1, 1]) { ctx.beginPath(); ctx.moveTo(9, k * 4); ctx.lineTo(15, k * 7.5); ctx.lineTo(11, k * 1.5); ctx.closePath(); ctx.fill() }
+                ctx.fillStyle = '#1a0306'; ctx.beginPath(); ctx.ellipse(8, 0, 2.2, 5, 0, 0, 7); ctx.fill();
+                // entry wound (x = 0): smaller, neat
+                ctx.fillStyle = '#8c0d14'; ctx.beginPath(); ctx.ellipse(0, 0, 3, 6, 0, 0, 7); ctx.fill(); ctx.stroke();
+                ctx.fillStyle = '#1a0306'; ctx.beginPath(); ctx.ellipse(0, 0, 1.5, 3.4, 0, 0, 7); ctx.fill();
+            }
             if (a.st === 'gnd' || a.st === 'emb' || a.st === 'cps' || a.st === 'brd') ctx.translate(a.depth || 0, 0);
             if (a.st === 'fly') { ctx.strokeStyle = 'rgba(17,17,17,.28)'; ctx.lineWidth = 1.2; ctx.lineCap = 'round'; for (const k of [-1, 1]) { ctx.beginPath(); ctx.moveTo(-L_ARROW - 8, k * 3); ctx.lineTo(-L_ARROW - 80, k * 3); ctx.stroke() } }
             arrowShape(); ctx.restore();
@@ -735,6 +773,13 @@
                 ctx.save(); ctx.translate(sx, sy); ctx.rotate(ang); ctx.scale(S, S); ctx.lineCap = 'round';
                 ctx.strokeStyle = fr > .35 ? '#b30f19' : '#6a0a10'; ctx.lineWidth = 3.2; ctx.beginPath(); ctx.moveTo(-1, 0); ctx.lineTo(-10 - 14 * fr, 0); ctx.stroke();   // wet blood on the shaft
                 ctx.fillStyle = '#7a0b11'; ctx.strokeStyle = '#111'; ctx.lineWidth = 1; ctx.beginPath(); ctx.ellipse(-1, 0, 2.4, 5.2, 0, 0, 7); ctx.fill(); ctx.stroke();   // puckered skin ring
+                ctx.restore();
+            }
+            if (a.st === 'emb' && a.thru && !a.hd) {
+                const fr = Math.max(0, 1 - a.age / 10), L = Math.min(42, 5 + a.age * 5) * S, c_ = Math.cos(ang), s_ = Math.sin(ang);
+                ctx.save(); ctx.lineCap = 'round'; ctx.strokeStyle = fr > .3 ? '#b30f19' : '#6a0a10';
+                ctx.lineWidth = 3 * S; ctx.beginPath(); ctx.moveTo(sx - c_ * 2 * S, sy - s_ * 2 * S); ctx.lineTo(sx - c_ * (12 + 16 * fr) * S, sy - s_ * (12 + 16 * fr) * S); ctx.stroke();   // wet blood on the shaft
+                for (const [ox, oy, k] of [[0, 0, 1], [c_ * 8 * S, s_ * 8 * S, 1.3]]) { ctx.lineWidth = 1.8 + fr; ctx.beginPath(); ctx.moveTo(sx + ox, sy + oy); ctx.lineTo(sx + ox + Math.sin(a.age + k) * 1.5, sy + oy + L * k); ctx.stroke() }   // runs down the body
                 ctx.restore();
             }
         }
