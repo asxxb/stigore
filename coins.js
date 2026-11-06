@@ -477,12 +477,11 @@
       kick(-.6);
       ting();
     }
-
     if (TK.took && !TK.put && TK.t >= TK_PUT) {
       TK.put = true;
-      P.puHeld = null;
 
-      dropItem('coin', P.x + P.face * 38 * CSc());
+      // Keep the coin in the player's hand.
+      // Do not drop it onto the ground here.
     }
 
     if (TK.t >= TK_END) TK.on = false;
@@ -600,4 +599,185 @@
   for (const lx of [-330, -200, -120, 130, 210, 290]) {
     dropItem('coin', TH_WX + lx * TH_SC);
   }
+
+
+  // ================= COIN TOSS ANIMATION (G) =================
+  const CT = {
+    active: false,
+    x: 0,          // absolute world x
+    z: 0,          // vertical height
+    vx: 0,         // horizontal velocity
+    vz: 0,         // vertical velocity
+    spin: 0,
+    spinSpeed: 0,
+    t: 0,
+    bounces: 0
+  };
+
+  const CT_GRAVITY = 1100;
+
+  function coinTossStart() {
+    // Only toss if the player is holding a coin.
+    if (CT.active || TK.on) return;
+
+    if (!P.puHeld || P.puHeld.type !== 'coin') return;
+
+    const F = Math.sign(P.face) || 1;
+
+    // Release the coin from the player's hand.
+    P.puHeld = null;
+
+    // Start the coin in the air with forward and upward velocity.
+    Object.assign(CT, {
+      active: true,
+      x: P.x + F * 24,
+      z: 75,
+      vx: F * 240,
+      vz: 520,
+      spin: 0,
+      spinSpeed: F * 38,
+      t: 0,
+      bounces: 0
+    });
+
+    ting();
+  }
+
+  function coinTossTick(dt) {
+    if (!CT.active) return;
+
+    CT.t += dt;
+    CT.x += CT.vx * dt;
+    CT.z += CT.vz * dt;
+    CT.vz -= CT_GRAVITY * dt;
+    CT.spin += CT.spinSpeed * dt;
+
+    // Coin hits the ground.
+    if (CT.z <= 0) {
+      CT.z = 0;
+      CT.bounces++;
+
+      if (CT.bounces === 1) {
+        CT.vz = Math.abs(CT.vz) * 0.32;
+        CT.spinSpeed *= 0.65;
+      } else if (CT.bounces === 2 && Math.abs(CT.vz) > 35) {
+        CT.vz = Math.abs(CT.vz) * 0.15;
+        CT.spinSpeed *= 0.35;
+      } else {
+        CT.active = false;
+
+        // Spawn a normal collectible at the landing position.
+        dropItem('coin', CT.x);
+        ting();
+      }
+    }
+  }
+
+  // Draw the spinning coin on top of the game scene.
+  function coinTossDraw() {
+    if (!CT.active) return;
+
+    const S = CSc();
+
+    const sx = W / 2 + (CT.x - P.x) * S;
+
+    const gy =
+      groundY() + 4 -
+      (P.dh || 0) -
+      (P.mh || 0);
+
+    const sy = gy - CT.z * S;
+
+    // Coin face narrows as it turns edge-on.
+    const faceWidth = Math.abs(Math.cos(CT.spin)) * 4.5;
+    const thickness = 0.9;
+    const coinWidth = faceWidth + thickness;
+    const coinHeight = 4.5;
+
+    ctx.save();
+
+    // Ground shadow stays on the ground.
+    ctx.globalAlpha = Math.max(0.08, 0.30 - CT.z / 500);
+
+    ctx.beginPath();
+    ctx.ellipse(
+      sx,
+      gy,
+      5 * S,
+      2 * S,
+      0,
+      0,
+      Math.PI * 2
+    );
+
+    ctx.fillStyle = '#111';
+    ctx.fill();
+
+    ctx.globalAlpha = 1;
+
+    // Draw the coin in the air.
+    ctx.translate(sx, sy);
+    ctx.scale(S, S);
+
+    // Coin body.
+    ctx.beginPath();
+    ctx.ellipse(
+      0,
+      0,
+      coinWidth,
+      coinHeight,
+      0,
+      0,
+      Math.PI * 2
+    );
+
+    ctx.fillStyle = GOLD;
+    ctx.fill();
+
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = '#17130c';
+    ctx.stroke();
+
+    // Face engraving only appears when the coin face is visible.
+    if (faceWidth > 2) {
+      ctx.beginPath();
+
+      ctx.ellipse(
+        0,
+        0,
+        faceWidth * 0.55,
+        coinHeight * 0.55,
+        0,
+        0,
+        Math.PI * 2
+      );
+
+      ctx.strokeStyle = GOLD_D;
+      ctx.lineWidth = 0.7;
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+  // Tick the toss state along with the existing game update.
+  const _coinTossUpdate = update;
+  update = function (dt) {
+    coinTossTick(dt);
+    return _coinTossUpdate(dt);
+  };
+
+  // Draw the airborne coin after the main game frame.
+  const _coinTossFrame = frame;
+  frame = function (now) {
+    _coinTossFrame(now);
+    coinTossDraw();
+  };
+
+  // G key tosses one coin.
+  addEventListener('keydown', e => {
+    if (e.code !== 'KeyP' || e.repeat) return;
+    if (/INPUT|TEXTAREA/.test(e.target.tagName || '')) return;
+
+    coinTossStart();
+  });
 })();
