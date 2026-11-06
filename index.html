@@ -15241,8 +15241,10 @@
             stick: { label: 'STICK', h: 3 },
             stone: { label: 'STONE', h: 5 },
             plant: { label: 'HERB', h: 13 },
-            knife: { label: 'KNIFE', h: 3 }
+            knife: { label: 'KNIFE', h: 3 },
+            dkid: { label: 'DUCKLING', h: 4 }
         };
+        const keepHeld = h => h && (h.type === 'bird' || h.type === 'duck' || h.type === 'dkid');
         const groundItems = [], INV = {};
         let itemSeq = 0;
         P.pu = 0; P.puM = 0; P.puT = 0; P.puT2 = 0; P.puIt = null; P.puHeld = null; P.puC = null; P.puSent = 0;
@@ -15270,8 +15272,10 @@
             return b;
         }
         function pressPickup() {
-            if (P.puHeld && P.puHeld.type === 'bird' && P.pu === 0) {
-                dropItem('bird', P.x + P.face * 30 * CSc());
+            if (keepHeld(P.puHeld) && P.pu === 0) {
+                const h = P.puHeld;
+                h.x = P.x + P.face * 30 * CSc();
+                groundItems.push(h);
                 P.puHeld = null;
                 return;
             }
@@ -15391,18 +15395,18 @@
                         banner.t = .8; banner.text = 'GOT THE SQUIRREL';
                     } else if (h && h.type === 'knife') {
                         hasKnife = true; banner.t = .8; banner.text = 'KNIFE RECOVERED';
-                    } else if (h && h.type === 'bird') {
-                        banner.t = .8; banner.text = 'GOT THE BIRD';
+                    } else if (keepHeld(h)) {
+                        banner.t = .8; banner.text = 'GOT THE ' + ITEM_DEFS[h.type].label;
                     } else if (h) {
                         INV[h.type] = (INV[h.type] || 0) + 1;
                         banner.t = .8; banner.text = 'PICKED UP: ' + ITEM_DEFS[h.type].label;
                     }
-                    if (!(h && h.type === 'bird')) P.puHeld = null;
+                    if (!keepHeld(h)) P.puHeld = null;
                     if (typeof playSfx === 'function') playSfx('pickup');
                 }
                 if (P.puT2 >= .75) {
                     P.pu = 0; P.puM = 0; P.puIt = null; P.puC = null;
-                    if (!(P.puHeld && P.puHeld.type === 'bird')) P.puHeld = null;   // the bird stays in the hand
+                    if (!keepHeld(P.puHeld)) P.puHeld = null;  // the bird stays in the hand
                 }
             }
         }
@@ -17523,7 +17527,7 @@
             const k = P.stmK, S = CSc(), F = P.face, sc = S * DD_SIZE * k.s;
             P.stmPop = 1;
             stompGore(k.x, F, S, sc);
-            stompRemains.push({ x: k.x, F: Math.sign(k.fv) || F, sc, seed: Math.random() * 99, t: 0 });
+            stompRemains.push({ x: k.x, F: Math.sign(k.fv) || F, sc, seed: Math.random() * 99, t: 0, kid: k });
             k.dead = true; k.respT = 40; k.cap = 0; k.carried = 0; k.stompK = 0; k.vx = 0;
             P.stmBlood = 7;
             hitstop = Math.max(hitstop, .05); shake = Math.max(shake, 4);

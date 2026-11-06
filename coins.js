@@ -1097,144 +1097,125 @@
   };
 })();
 
-// ================= RAGDOLL HELD BIRD =================
+// ================= PICK UP THE DEAD MOTHER DUCK =================
 (() => {
+  ITEM_DEFS.duck = { label: 'DUCK', h: 6 };
   const cl = (v, a, b) => Math.max(a, Math.min(b, v));
-  const mk = a => ({ a, v: 0, acc: 0 });
-  const BR = {
-    it: null, body: mk(0), head: mk(0), w1: mk(0), w2: mk(0),
-    last: 0, init: false, t: 0, dr: 0,
-    phx: 0, phy: 0, hvx: 0, hvy: 0, ahx: 0, ahy: 0, pvx: 0, axw: 0
+
+  function startPick(it) {
+    if (P.skid) endSkid(); P.skidK = 0;
+    P.pu = .0001; P.puM = 1; P.puT = 0; P.puT2 = 0; P.puIt = it; P.puHeld = null; P.puSent = 0; P.puC = null;
+    if (Math.abs(it.x - P.x) > 2) P.face = it.x >= P.x ? 1 : -1;
+    P.idle = 0; P.fid = 0; P.abuf = 0; P.jbuf = 0; P.grabbed = null; P.clast = 0;
+  }
+
+  const _pressDuck = pressPickup;
+  pressPickup = function () {
+    // already holding / busy: let the original handle drop, put-down, etc.
+    if (P.puHeld || P.pu > 0 || P.mpk > 0 || P.mount || DD.carry || DD.g.on) return _pressDuck();
+
+    const S = CSc(), m = DD.m;
+    let cand = null, bd = PU_R * S;
+    if (DD.init && m && m.dead && !m.torn && m.landed) {
+      const d = Math.abs(m.x - P.x);
+      if (d < bd) { bd = d; cand = { k: 'm' }; }
+    }
+    for (const r of stompRemains) if (r.kid) {
+      const d = Math.abs(r.x - P.x);
+      if (d < bd) { bd = d; cand = { k: 'r', r }; }
+    }
+    if (!cand) return _pressDuck();
+
+    const near = puNearest();                         // a closer normal item wins
+    if (near && Math.abs(near.x - P.x) < bd) return _pressDuck();
+
+    if (puBlocked()) {
+      if (P.kn !== 0 || P.kt > .05) { banner.t = .8; banner.text = 'PUT KNIFE AWAY (K)'; }
+      return;
+    }
+
+    let it;
+    if (cand.k === 'm') {
+      const snap = Object.assign({}, m, {
+        dead: 1, air: 0, lie: 0, conv: 0, str: 0, gape: 0, swayR: 0, nb: 0,
+        nkx: 0, vx: 0, tilt: 0, flap: 0, noShadow: 1, dy: 0
+      });
+      it = { id: ++itemSeq, type: 'duck', x: m.x, seed: Math.random() * 99, snap };
+      m.torn = 1;
+    } else {
+      const r = cand.r;
+      const snap = Object.assign({}, r.kid, {
+        dead: 1, air: 0, vx: 0, tilt: 0, flap: 0, wing: .4, noShadow: 1,
+        carried: 0, cap: 0, stompK: 0, dip: 0, str: 0, gape: 0, bn: 0
+      });
+      it = { id: ++itemSeq, type: 'dkid', x: r.x, seed: Math.random() * 99, snap };
+      stompRemains.splice(stompRemains.indexOf(r), 1);
+    }
+    groundItems.push(it);
+    startPick(it);
   };
-  const SB = .85;          // art scale
-  const G = 900;           // gravity: higher = snappier swing
-  const WIND = 1.5;        // how far it trails behind when you run
 
-  // one pendulum step. a = angle from straight down, fx = sideways force on the bob
-  function pend(s, L, fx, g, c, dt) {
-    s.acc = (-g * Math.sin(s.a) + fx * Math.cos(s.a)) / L - c * s.v;
-    s.v += s.acc * dt;
-    s.a += s.v * dt;
-    if (Math.abs(s.a) > 3.1) { s.a = Math.sign(s.a) * 3.1; s.v *= -.3; }
-  }
-  // keeps the swinging end above the ground, so it lies down when you crouch
-  function floor(s, py, len) {
-    const b = (-2 - py) / len;
-    if (b >= 1 || b <= -1) return;
-    const m = Math.acos(b);
-    if (Math.abs(s.a) < m) { s.a = (s.a < 0 ? -1 : 1) * m; s.v *= -.15; }
-  }
+  // lying on the ground
+  const _shapeDuck = drawItemShape;
+  drawItemShape = function (it, now, inHand) {
+    if (it.type !== 'duck' && it.type !== 'dkid') return _shapeDuck(it, now, inHand);
+    const sn = it.snap, F = Math.sign(sn.fv) || 1;
+    sn.lie = 1; sn.conv = 0; sn.flap = 0;
+    ctx.save();
+    ctx.translate(0, ITEM_DEFS[it.type].h);
+    ctx.scale(DD_SIZE * F * (sn.s || 1), DD_SIZE * (sn.s || 1));
+    ddShape(sn, now);
+    ctx.restore();
+  };
 
-  const _dhiBird = drawHeldItem;
+  // held by the feet, swinging
+  const HK = .5;       // size in the hand (raise = bigger)
+  const G = 900, WIND = 1.5;
+  const DK = { it: null, a: 0, v: 0, last: 0, init: false, px: 0, hvx: 0, ahx: 0, pvx: 0 };
+
+  const _dhiDuck = drawHeldItem;
   drawHeldItem = function (F, S, now) {
     const it = P.puHeld, A = P.armPts && P.armPts[0];
-    if (!it || it.type !== 'bird' || !A) { BR.it = null; return _dhiBird(F, S, now); }
+    if (!it || (it.type !== 'duck' && it.type !== 'dkid') || !A) { DK.it = null; return _dhiDuck(F, S, now); }
 
     const el = A[0], wr = A[1];
     let dx = wr[0] - el[0], dy = wr[1] - el[1];
     const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
-    const px = wr[0] + dx * PALM * .6, py = wr[1] + dy * PALM * .6;   // grip point inside the fist
+    const px = wr[0] + dx * PALM * .6, py = wr[1] + dy * PALM * .6;
 
-    if (BR.it !== it) {                       // just picked up: starts lying like it did on the ground
-      BR.it = it; BR.init = false; BR.t = 0; BR.dr = 0; BR.last = now;
-      BR.body.a = 1.45 * F; BR.head.a = 1.2 * F; BR.w1.a = 1.3 * F; BR.w2.a = 1.6 * F;
-      for (const s of [BR.body, BR.head, BR.w1, BR.w2]) { s.v = 0; s.acc = 0; }
-    }
-
-    const raw = now - BR.last;
+    if (DK.it !== it) { DK.it = it; DK.a = 1.5 * F; DK.v = 0; DK.last = now; DK.init = false; }
     const vx = (P.mount && typeof HRS !== 'undefined') ? (HRS.vx || 0) : (P.vx || 0);
+    const raw = now - DK.last;
 
-    if (raw > .004) {                         // physics step (once per frame)
-      const dt = cl(raw, .004, .05); BR.last = now;
-      if (!BR.init) { BR.init = true; BR.phx = px; BR.phy = py; BR.pvx = vx; BR.hvx = 0; BR.hvy = 0; }
-      BR.t += dt;
-
-      const hvx = (px - BR.phx) / dt, hvy = (py - BR.phy) / dt;
-      const rax = cl((vx - BR.pvx) / dt, -4000, 4000) / S;
-      const rahx = cl((hvx - BR.hvx) / dt, -7000, 7000), rahy = cl((hvy - BR.hvy) / dt, -7000, 7000);
-      const k = Math.min(1, dt * 20);
-      BR.axw += (rax - BR.axw) * k; BR.ahx += (rahx - BR.ahx) * k; BR.ahy += (rahy - BR.ahy) * k;
-      BR.phx = px; BR.phy = py; BR.hvx = hvx; BR.hvy = hvy; BR.pvx = vx;
-
-      const fx = cl(-(BR.axw + BR.ahx * .6 + WIND * vx / S), -8000, 8000);
-      const gE = cl(G - BR.ahy * .5, 250, 2200);
-
-      const n = 3, h = dt / n;
+    if (raw > .004) {
+      const dt = cl(raw, .004, .05); DK.last = now;
+      if (!DK.init) { DK.init = true; DK.px = px; DK.hvx = 0; DK.ahx = 0; }
+      const hvx = (px - DK.px) / dt;
+      const ahx = cl((hvx - DK.hvx) / dt, -7000, 7000);
+      DK.ahx += (ahx - DK.ahx) * Math.min(1, dt * 20);
+      DK.px = px; DK.hvx = hvx;
+      const fx = cl(-(DK.ahx * .6 + WIND * vx / S), -8000, 8000);
+      const L = 40, n = 3, h = dt / n;
       for (let i = 0; i < n; i++) {
-        pend(BR.body, 12, fx, gE, 2.2, h);
-        floor(BR.body, py, 16);
-        const th = BR.body.a, sn = Math.sin(th), cs = Math.cos(th);
-        const nkY = py + SB * (19 * cs - (-4) * sn);
-        const bacc = BR.body.acc * cs - BR.body.v * BR.body.v * sn;
-        pend(BR.head, 9, cl(fx - 16 * bacc, -9000, 9000), gE, 3, h);
-        floor(BR.head, nkY, 9);
-        pend(BR.w1, 10, cl(fx * .9 - 10 * bacc, -9000, 9000), gE, 2.6, h);
-        pend(BR.w2, 11, cl(fx * .8 - 10 * bacc, -9000, 9000), gE, 2.9, h);
+        const acc = (-G * Math.sin(DK.a) + fx * Math.cos(DK.a)) / L - 2.4 * DK.v;
+        DK.v += acc * h; DK.a += DK.v * h;
+        if (Math.abs(DK.a) > 3.1) { DK.a = Math.sign(DK.a) * 3.1; DK.v *= -.3; }
       }
     }
 
-    const th = BR.body.a, sn = Math.sin(th), cs = Math.cos(th);
-    const loc = (x, y) => [px + SB * ((x + 8) * sn - (y - 3) * cs), py + SB * ((x + 8) * cs + (y - 3) * sn)];
-    const neck = loc(11, -1), sh = loc(3, -2);
-    const ps = BR.head.a;
-    const H = [neck[0] + 9 * Math.sin(ps), neck[1] + 9 * Math.cos(ps)];
+    const sn = it.snap;
+    sn.air = 0; sn.lie = 0; sn.conv = 0; sn.noShadow = 1;
+    sn.nb = cl(-DK.v * .15, -.5, .5);              // limp neck lags the swing
+    sn.flap = cl(Math.abs(DK.v) * .1, 0, .5);      // wings flop
 
     ctx.save();
-    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-
-    const wing = (s, far) => {
-      ctx.save();
-      ctx.translate(sh[0], sh[1]); ctx.rotate(Math.PI / 2 - s.a); ctx.scale(SB * (far ? .9 : 1), SB);
-      ctx.globalAlpha = far ? .75 : 1;
-      ctx.fillStyle = '#111'; ctx.strokeStyle = '#111'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(0, -3.2); ctx.quadraticCurveTo(9, -6, 17, -1.5);
-      ctx.quadraticCurveTo(10, 3.2, 0, 3.2); ctx.closePath(); ctx.fill(); ctx.stroke();
-      ctx.strokeStyle = PAPER; ctx.lineWidth = .7; ctx.globalAlpha *= .4;
-      ctx.beginPath(); ctx.moveTo(4, -1.6); ctx.lineTo(13, -1.2); ctx.moveTo(4, 1); ctx.lineTo(11, .8); ctx.stroke();
-      ctx.restore();
-    };
-
-    wing(BR.w2, true);
-
-    // body (tail up at the hand, belly toward the head)
-    ctx.save();
-    ctx.translate(px, py); ctx.rotate(Math.PI / 2 - th); ctx.scale(SB, SB); ctx.translate(8, -3);
-    ctx.fillStyle = '#111'; ctx.strokeStyle = '#111'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(-11, -2); ctx.lineTo(-27, -6); ctx.lineTo(-26, 3); ctx.lineTo(-11, 3);
-    ctx.closePath(); ctx.fill(); ctx.stroke();
-    ctx.beginPath(); ctx.ellipse(0, 0, 13, 6.5, 0, 0, 7); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = PAPER; ctx.globalAlpha = .5;
-    ctx.beginPath(); ctx.ellipse(1, 3, 7, 2, 0, 0, 7); ctx.fill(); ctx.globalAlpha = 1;
-    ctx.fillStyle = '#8c0d14';
-    ctx.beginPath(); ctx.ellipse(1, 1.5, 5, 2.8, .2, 0, 7); ctx.fill();
+    ctx.translate(px, py);
+    ctx.rotate(Math.PI - DK.a);                    // feet at the hand, body hangs down
+    const hs = HK * (it.snap.mother ? 1 : 1.4);     // duckling is drawn larger in the hand
+    ctx.scale(F * hs, hs);
+    ddShape(sn, now);
     ctx.restore();
 
-    // limp neck + head
-    ctx.strokeStyle = '#111'; ctx.lineWidth = 3.2;
-    ctx.beginPath(); ctx.moveTo(neck[0], neck[1]); ctx.lineTo(H[0], H[1]); ctx.stroke();
-    ctx.save();
-    ctx.translate(H[0], H[1]); ctx.rotate(Math.PI / 2 - ps);
-    ctx.fillStyle = '#111'; ctx.strokeStyle = '#111'; ctx.lineWidth = 1.6;
-    ctx.beginPath(); ctx.arc(0, 0, 4.6, 0, 7); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = '#c99a3a';
-    ctx.beginPath(); ctx.moveTo(3.4, -1.8); ctx.lineTo(11, 0); ctx.lineTo(3.4, 1.5); ctx.closePath(); ctx.fill();
-    ctx.strokeStyle = PAPER; ctx.lineWidth = .9;
-    ctx.beginPath(); ctx.moveTo(-1, -3.2); ctx.lineTo(1.4, -.8); ctx.moveTo(1.4, -3.2); ctx.lineTo(-1, -.8); ctx.stroke();
-    ctx.restore();
-
-    wing(BR.w1, false);
-    ctx.restore();
-
-    // blood drips from the wound for the first few seconds
-    BR.dr -= Math.max(0, raw > .004 ? Math.min(raw, .05) : 0);
-    if (BR.dr <= 0 && BR.t < 20 && typeof bgDrop === 'function') {
-      BR.dr = .15 + Math.random() * .25 + BR.t * .04;
-      const w = loc(1, 1.5);
-      bgDrop(P.x + w[0] * S, w[1] * S - (P.dh || 0) - (P.mh || 0),
-        (Math.random() - .5) * 20, 10 + Math.random() * 30, 1 + Math.random() * 1.2);
-    }
-
-    // fist on top, so the feet look gripped
     const f = P.fistInfo && P.fistInfo[0];
     if (f && FIST.complete) {
       ctx.save(); ctx.translate(f.x, f.y); ctx.scale(f.F, 1); ctx.rotate(f.a - Math.PI / 2);
