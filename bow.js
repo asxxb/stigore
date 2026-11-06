@@ -247,55 +247,40 @@
     function headHit(a, e, h, S) {
         const F = a.F, pw = a.pw, v = Math.hypot(a.vx, a.vy) || 1, Z = zoneOf(e, h, S, a.vx, a.vy), ux = a.vx / v, uy = a.vy / v;
         const glance = Z.obl > 45;                                   // oblique: skull deflects, bone chips fly
-        const through = !glance && pw > .72;                         // enough energy to punch out the back
         const inst = Z.part === 'stem' && !glance;                   // brainstem: instant collapse
         const dmg = Math.round((30 + 85 * pw) * (glance ? .7 : 1));
         e.hp -= dmg; if (inst) e.hp = 0;
         e.bar = 2.5; e.kdir = F; e.wait = 1; e.fid = 0;
-        const fa = e.face || 1;                                      // facing BEFORE he turns (wounds are stored front-relative)
-        if (!inst) { e.face = -F; e.hurt = Math.max(e.hurt, .4); e.vx = F * (180 + 240 * pw * (through ? 1.6 : 1)) }   // head jerks back harder on a through-shot
-        else { e.vx = 0; e.hurt = 0 }                                // no flinch, goes limp
+        if (!inst) { e.face = -F; e.hurt = Math.max(e.hurt, .4); e.vx = F * (140 + 160 * pw) }
+        else { e.vx = 0; e.hurt = 0 }
         combo.n++; combo.dmg += dmg; combo.t = 1.8; combo.pop = 1.3;
 
-        // persistent wound (drawn by drawArrowWounds, survives arrow removal)
-        const wd = { fx: Z.fx, ry: Z.ry, t0: BW.t, r: 4 + 4 * pw, open: 0, openT: 0, seed: Math.random() * 900 };
+        const wd = { fx: Z.fx, ry: Z.ry, t0: BW.t, r: 4 + 4 * pw, cr: glance ? .3 : .4 + .6 * pw, open: 0, openT: 0, seed: Math.random() * 900 };
         (e.arrWd || (e.arrWd = [])).push(wd); a.wd = wd;
 
-        // entry: high-pressure spray back along the shaft, mist when fast, trickle when slow
-        mist(h.x, h.y, -ux, -uy, pw);                                           // bright crimson mist erupting from the entry
+        // entry: heavy crunch, mist, bone shatter
+        mist(h.x, h.y, -ux, -uy, pw);
         spray(h.x, h.y, Math.round(8 + 22 * pw), 200 + 300 * pw, -F);
         burst(h.x, h.y, Math.round(5 + 9 * pw), 180 + 220 * pw, -F);
-        headSnap(e, F, pw);                                                     // head snaps back
-        bits(h.x, h.y, 6 + Math.round(8 * pw), 180 + 260 * pw, Z.nx, Z.ny, '#e8e4da', 1, 2.6, .9);   // grey-white bone fragments
-        bits(h.x, h.y, 5, 120, Z.nx, Z.ny, '#4a0a0e', 2, 3.6, .7);              // clotted tissue chunks
-        // shaft drag: brain matter streaked along the path
+        headSnap(e, F, pw);
+        bits(h.x, h.y, 10 + Math.round(14 * pw), 180 + 300 * pw, Z.nx, Z.ny, '#e8e4da', 1, 2.8, 1.1);   // shattered bone
+        bits(h.x, h.y, 6, 120, Z.nx, Z.ny, '#4a0a0e', 2, 3.6, .7);
         for (let k = 1; k <= 4; k++) bits(h.x + ux * k * 6 * S, h.y + uy * k * 6 * S, 1, 50, ux, uy, '#e9786c', 1.2, 2.4, .5);
-        // bone chips on oblique hits / frontal bone at power
-        if (glance || (Z.part === 'frontal' && pw > .6)) bits(h.x, h.y, glance ? 10 : 5, 200 + 300 * pw, Z.nx, Z.ny, '#e8e4da', 1, 2.6, .8);
+        impacts.push({ x: h.x, y: h.y, t: 0, life: .14, s: 28 + 14 * pw, seed: Math.random() * 50 });
+        hitstop = Math.max(hitstop, .05 + .04 * pw); shake = Math.max(shake, 3.5 + 3.5 * pw);
+        playSfx('stab', .6); hitSnd(pw, true, true); tearSnd(pw);
 
-        // exit wound
-        if (through) {
-            const ex = h.hc[0] + ux * 23 * S, ey = h.hc[1] + uy * 23 * S;
-            spray(ex, ey, Math.round(12 + 22 * pw), 380 + 380 * pw, F);
-            bits(ex, ey, 14, 300 + 300 * pw, ux, uy, '#e9786c', 1.5, 3.2, .6); bits(ex, ey, 6, 260, ux, uy, '#e8e4da', 1, 2, .7);
-            e.arrWd.push({ fx: ux * 23 * fa, ry: uy * 23, t0: BW.t, r: 4 + 3 * pw, open: 0, openT: 0, exit: 1 });
-            impacts.push({ x: ex, y: ey, t: 0, life: .2, s: 60, seed: Math.random() * 50 });
-        }
-        impacts.push({ x: h.x, y: h.y, t: 0, life: .18, s: 50 + 25 * pw, seed: Math.random() * 50 });
-        hitstop = Math.max(hitstop, .04 + .03 * pw); shake = Math.max(shake, 3 + 3.5 * pw);
-        playSfx('stab', .5); hitSnd(pw, true, true); tearSnd(pw);
-
-        // outcome depends on WHERE it hit
-        if (e.hp <= 0 && !inst && (Z.part === 'frontal' || Z.part === 'eye')) {
-            e.hp = 1; e.hCrack = 1; e.hCrackT = 0;                   // clutches his head, staggers 3-5 s, then drops
-            STAG.push({ e, t: Z.part === 'eye' ? rnd(2, 3.2) : rnd(3, 5), eye: Z.part === 'eye', ph: Math.random() * 6 });
-            say(1.2, Z.part === 'eye' ? 'EYE SHOT!' : 'FRONTAL HIT!');
+        if (e.hp <= 0 && !inst) {                                    // lethal: he claws at the arrow for a few seconds, then drops
+            const hard = Z.part === 'frontal' || Z.part === 'eye', t = Z.part === 'eye' ? rnd(2, 3.2) : rnd(2.5, 4.5);
+            e.hp = 1; if (hard) { e.hCrack = 1; e.hCrackT = 0 }
+            STAG.push({ e, t, eye: Z.part === 'eye', ph: Math.random() * 6 }); e.clawT = t;
+            say(1.2, Z.part === 'eye' ? 'EYE SHOT!' : hard ? 'FRONTAL HIT!' : 'HEADSHOT!');
         } else if (e.hp <= 0) {
-            e.hp = 0; e.dying = .5; say(1.1, inst ? 'BRAINSTEM!' : 'HEADSHOT KILL!'); if (P.grabbed === e) P.grabbed = null;
-        } else say(.8, glance ? 'GLANCING HEADSHOT' : 'HEADSHOT!');
+            e.hp = 0; e.dying = .5; say(1.1, 'BRAINSTEM!'); if (P.grabbed === e) P.grabbed = null;
+        } else { e.clawT = 2 + 2.5 * pw; say(.8, glance ? 'GLANCING HEADSHOT' : 'HEADSHOT!') }
 
-        if (through) { a.ign = e; a.vx *= .45; a.vy *= .45; a.pw *= .5; return }   // arrow keeps flying with what's left
         embed(a, e, h);
+        a.depth = glance ? 4 + 6 * pw : 12 + 22 * pw;                // speed decides how deep; max 34 < 48 skull width, so it never exits
     }
     function step(a, i, dt, S) {
         const px = a.x, py = a.y, v = Math.hypot(a.vx, a.vy);
@@ -369,6 +354,18 @@
         for (const e of ENEMIES) {
             if (!e.arrWd) continue;
             const dead = e.dying > 0 || e.dead > 0 || e.corpse || e.hsDead || e.gutDead || e.decap;
+            if (e.clawT > 0 && !dead) {
+                e.clawT -= dt;
+                const ha = A.filter(q => q.st === 'emb' && q.e === e && q.hd).pop();
+                if (ha) {
+                    e.arrGrip = { hx: ha.hox, hy: ha.hoy, dx: Math.cos(ha.ang), dy: Math.sin(ha.ang), s: ha.depth - (L_ARROW - 30) };   // fletching, relative to the head
+                    if (Math.random() < dt * 4) bits(e.x + ha.ox, ha.oy, 2, 90, -Math.cos(ha.ang), -Math.sin(ha.ang), '#e9786c', 1, 2.4, .6);   // brain matter grinding out
+                    if (Math.random() < dt * 1.5) hitSnd(.05, false, true);
+                }
+                e.wait = Math.max(e.wait || 0, .3);
+                if (!STAG.some(s => s.e === e)) e.vx = Math.sin(BW.t * 47) * 30;
+            }
+            e.arrClawK = (e.arrClawK || 0) + (((!dead && e.clawT > 0 && e.arrGrip) ? 1 : 0) - (e.arrClawK || 0)) * Math.min(1, dt * 10);
             let n = 0; for (const a of A) if (a.st === 'emb' && a.e === e && a.hd) n++;
             e.arrNod = (e.arrNod || 0) + ((dead ? 0 : Math.min(1, n * .6)) - (e.arrNod || 0)) * Math.min(1, dt * 6);   // arrow weight pulls the head down
             if (dead) e.pool = Math.min(70, (e.pool || 0) + dt * (3 + 4 * e.arrWd.length + 10 * e.arrWd.filter(w => w.open).length));
@@ -670,11 +667,25 @@
             else if (a.st === 'gnd') {
                 if (!a.flat) { ctx.beginPath(); ctx.rect(sx - 300, sy - 1500, 600, 1500 + 1.5); ctx.clip() }
                 ang += Math.sin(a.age * 55) * .1 * Math.exp(-a.age * 6.5); if (a.age > CFG.life - 8) al = Math.max(0, (CFG.life - a.age) / 8);
-            } else if (a.st === 'emb') { const hd = a.hd ? 1 : 0; ang += Math.sin(a.age * (hd ? 72 : 58)) * (.06 + .16 * a.pw) * (1 + hd * .8) * Math.max(0, 1 - a.age / (hd ? .7 : .5)); if (hd && a.e.snap) sx += a.e.snap }
+            } else if (a.st === 'emb') {
+                if (a.hd) {                                                       // violent shaft vibration, plus tremble while he claws at it
+                    const cl = a.e.arrClawK || 0;
+                    ang += Math.sin(a.age * 64) * (.10 + .22 * a.pw) * Math.exp(-a.age * 1.2) + (Math.sin(a.age * 23) * .05 + Math.sin(BW.t * 41) * .04) * cl;
+                    if (a.e.snap) sx += a.e.snap;
+                } else ang += Math.sin(a.age * 58) * (.06 + .16 * a.pw) * Math.max(0, 1 - a.age / .5);
+            }
+            if (a.st === 'emb' && a.hd) { ctx.translate(sx, sy); ctx.rotate(ang); ctx.beginPath(); ctx.rect(-4000, -4000, 4000, 8000); ctx.clip(); ctx.rotate(-ang); ctx.translate(-sx, -sy) }
             ctx.globalAlpha = al; ctx.translate(sx, sy); ctx.rotate(ang); ctx.scale(S, S);
             if (a.st === 'gnd' || a.st === 'emb' || a.st === 'cps') ctx.translate(a.depth || 0, 0);
             if (a.st === 'fly') { ctx.strokeStyle = 'rgba(17,17,17,.28)'; ctx.lineWidth = 1.2; ctx.lineCap = 'round'; for (const k of [-1, 1]) { ctx.beginPath(); ctx.moveTo(-L_ARROW - 8, k * 3); ctx.lineTo(-L_ARROW - 80, k * 3); ctx.stroke() } }
             arrowShape(); ctx.restore();
+            if (a.st === 'emb' && a.hd && !a.e.hsDead) {                    // skin pushed around the shaft + blood smeared along it
+                const fr = Math.max(0, 1 - a.age / 8);
+                ctx.save(); ctx.translate(sx, sy); ctx.rotate(ang); ctx.scale(S, S); ctx.lineCap = 'round';
+                ctx.strokeStyle = fr > .35 ? '#b30f19' : '#6a0a10'; ctx.lineWidth = 3.2; ctx.beginPath(); ctx.moveTo(-1, 0); ctx.lineTo(-10 - 14 * fr, 0); ctx.stroke();   // wet blood on the shaft
+                ctx.fillStyle = '#7a0b11'; ctx.strokeStyle = '#111'; ctx.lineWidth = 1; ctx.beginPath(); ctx.ellipse(-1, 0, 2.4, 5.2, 0, 0, 7); ctx.fill(); ctx.stroke();   // puckered skin ring
+                ctx.restore();
+            }
         }
         const f = BW.fr;
         if (CFG.preview && f && BW.d > .55 && BW.w > .9) {                 // faint path of the shot, only near full draw
@@ -697,36 +708,57 @@
     window.drawArrowWounds = function (hd, F, Q) {
         const ws = Q.arrWd; if (!ws) return;
         const rs = s => { const x = Math.sin(s * 12.9898) * 43758.5453; return x - Math.floor(x) };
+        const blob = (cx, cy, R, j, s0) => {                       // slightly irregular, near-round outline
+            ctx.beginPath();
+            for (let k = 0; k <= 10; k++) {
+                const a = k / 10 * 6.283, rr = R * (1 + j * (rs(s0 + k % 10) - .5) * 2), px = cx + Math.cos(a) * rr, py = cy + Math.sin(a) * rr * .9;
+                k ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+            }
+            ctx.closePath();
+        };
         ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
         for (const w of ws) {
             const x = hd[0] + F * w.fx, y = hd[1] + w.ry, age = BW.t - w.t0, sd = w.seed || 1;
-            const nl = Math.hypot(w.fx, w.ry) || 1, ux = F * w.fx / nl, uy = w.ry / nl;
-            const open = w.open ? Math.min(1, (BW.t - w.openT) / .15) : 0, r = w.r * (1.25 + .9 * open) * (w.exit ? 1.3 : 1);
-            const fresh = Math.max(0, 1 - age / 6), blood = fresh > .3 ? '#d4121e' : '#8c0d14';
-            // skull dent around the entry
-            if (!w.exit) { const c = Math.atan2(-uy, -ux); ctx.strokeStyle = '#111'; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.arc(x + ux * (r + 3), y + uy * (r + 3), r + 5, c - 1, c + 1); ctx.stroke() }
-            // blood running down the face (thicker and longer while fresh or open)
-            ctx.strokeStyle = blood; ctx.lineWidth = 2 + 1.4 * fresh + open; ctx.beginPath(); ctx.moveTo(x, y);
-            ctx.quadraticCurveTo(x + Math.sin(sd) * 3, y + 14, x + Math.sin(sd * 2) * 2, y + Math.min(46, age * (7 + (w.open ? 10 : 0)))); ctx.stroke();
-            // jagged hole
-            ctx.beginPath();
-            for (let k = 0; k < 12; k++) {
-                const a = k / 12 * 6.283, rr = r * (k % 2 ? .75 + .3 * rs(sd + k) : 1.5 + 1.2 * rs(sd + k * 3));
-                const px = x + Math.cos(a) * rr, py = y + Math.sin(a) * rr * .85;
-                k ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+            const open = w.open ? Math.min(1, (BW.t - w.openT) / .15) : 0;
+            const r = (2.6 + .35 * w.r) * (1 + .5 * open) * (w.exit ? 1.2 : 1);             // small, tight hole (about 4-6 px)
+            const fresh = Math.max(0, 1 - age / 8), blood = fresh > .35 ? '#c4101b' : '#7a0b11';
+
+            // hairline cracks spreading through the skull from the impact
+            if (!w.exit && w.cr) {
+                ctx.strokeStyle = 'rgba(30,6,8,.75)'; ctx.lineWidth = .9; ctx.beginPath();
+                for (let k = 0; k < 4; k++) {
+                    const an = k / 4 * 6.283 + rs(sd + k * 7) * 1.1, len = r * (1.8 + 2.2 * w.cr * rs(sd + k * 5 + 1));
+                    let px = x + Math.cos(an) * r, py = y + Math.sin(an) * r; ctx.moveTo(px, py);
+                    for (let j = 1; j <= 2; j++) { const aa = an + (rs(sd + k * 11 + j) - .5) * .8; px += Math.cos(aa) * len / 2; py += Math.sin(aa) * len / 2; ctx.lineTo(px, py) }
+                }
+                ctx.stroke();
             }
-            ctx.closePath(); ctx.fillStyle = '#240407'; ctx.fill(); ctx.strokeStyle = blood; ctx.lineWidth = 1.6; ctx.stroke();
-            // clotted tissue inside: dark clots with greyish-pink brain matter
-            for (let k = 0; k < 4; k++) {
-                const a = rs(sd + 40 + k) * 6.283, d = r * .55 * rs(sd + 50 + k);
-                ctx.fillStyle = k % 2 ? '#4a0a0e' : '#a5736c'; ctx.beginPath(); ctx.ellipse(x + Math.cos(a) * d, y + Math.sin(a) * d, r * (.28 + .2 * rs(sd + k)), r * .22, a, 0, 7); ctx.fill();
+            // blood running down the face: thin trails that lengthen with time, pooling bead at the end
+            const L1 = Math.min(52, 6 + age * (w.open ? 12 : 6)), L2 = Math.min(34, 4 + age * 4);
+            ctx.strokeStyle = blood; ctx.lineWidth = 1.6 + 1.2 * fresh + open;
+            ctx.beginPath(); ctx.moveTo(x + r * .3, y + r * .6); ctx.quadraticCurveTo(x + Math.sin(sd) * 2.5, y + L1 * .5, x + Math.sin(sd * 2) * 2, y + L1); ctx.stroke();
+            ctx.lineWidth = 1.1 + .6 * fresh; ctx.beginPath(); ctx.moveTo(x - r * .5, y + r * .5); ctx.quadraticCurveTo(x - 3 + Math.sin(sd * 3), y + L2 * .5, x - 4 + Math.sin(sd * 4) * 1.5, y + L2); ctx.stroke();
+            ctx.fillStyle = blood; ctx.beginPath(); ctx.arc(x + Math.sin(sd * 2) * 2, y + L1, 1.6 + .8 * fresh, 0, 7); ctx.fill();
+
+            // torn skin rim
+            blob(x, y, r * 1.5, .18, sd); ctx.fillStyle = '#a02a2a'; ctx.fill(); ctx.strokeStyle = '#111'; ctx.lineWidth = 1.3; ctx.stroke();
+            ctx.fillStyle = '#c4473d';                                                            // 3 small skin flaps folded outward
+            for (let k = 0; k < 3; k++) {
+                const a = rs(sd + 20 + k) * 6.283, bx = x + Math.cos(a) * r * 1.4, by = y + Math.sin(a) * r * 1.3;
+                ctx.beginPath(); ctx.moveTo(bx + Math.cos(a + 1.5) * 1.6, by + Math.sin(a + 1.5) * 1.6);
+                ctx.lineTo(bx + Math.cos(a) * 3.8, by + Math.sin(a) * 3.8); ctx.lineTo(bx + Math.cos(a - 1.5) * 1.6, by + Math.sin(a - 1.5) * 1.6); ctx.closePath(); ctx.fill();
             }
-            ctx.fillStyle = 'rgba(255,170,160,.55)'; ctx.beginPath(); ctx.arc(x - r * .25, y - r * .2, r * .13, 0, 7); ctx.fill();   // wet highlight
-            // bone fragments pushed out around the rim
-            for (let k = 0; k < 5; k++) {
-                const a = k / 5 * 6.283 + rs(sd + 70 + k), d = r * (1.5 + .9 * rs(sd + 80 + k)), bx = x + Math.cos(a) * d, by = y + Math.sin(a) * d * .85, sz = 1.6 + 1.8 * rs(sd + 90 + k);
-                ctx.fillStyle = k % 2 ? '#e6e2d8' : '#b9b5ab'; ctx.strokeStyle = '#111'; ctx.lineWidth = .9;
-                ctx.beginPath(); ctx.moveTo(bx + Math.cos(a) * sz * 1.4, by + Math.sin(a) * sz * 1.4); ctx.lineTo(bx + Math.cos(a + 2.2) * sz, by + Math.sin(a + 2.2) * sz); ctx.lineTo(bx + Math.cos(a - 2.2) * sz, by + Math.sin(a - 2.2) * sz); ctx.closePath(); ctx.fill(); ctx.stroke();
+            // dark hole with a little exposed tissue
+            blob(x, y, r * .85, .22, sd + 3); ctx.fillStyle = '#1a0306'; ctx.fill();
+            ctx.fillStyle = '#a5736c'; ctx.beginPath(); ctx.ellipse(x - r * .2, y + r * .15, r * .35, r * .22, .4, 0, 7); ctx.fill();   // grey-pink brain matter
+            ctx.fillStyle = '#4a0a0e'; ctx.beginPath(); ctx.ellipse(x + r * .25, y - r * .1, r * .25, r * .18, -.3, 0, 7); ctx.fill();   // clot
+            ctx.fillStyle = 'rgba(255,170,160,.5)'; ctx.beginPath(); ctx.arc(x - r * .3, y - r * .3, r * .12, 0, 7); ctx.fill();         // wet highlight
+
+            // a few tiny bone chips lodged in the rim
+            for (let k = 0; k < 3; k++) {
+                const a = k / 3 * 6.283 + rs(sd + 70 + k), d = r * (1.5 + .5 * rs(sd + 80 + k)), bx = x + Math.cos(a) * d, by = y + Math.sin(a) * d * .9, sz = 1 + 1.1 * rs(sd + 90 + k);
+                ctx.fillStyle = '#e6e2d8'; ctx.strokeStyle = '#111'; ctx.lineWidth = .7;
+                ctx.beginPath(); ctx.moveTo(bx + Math.cos(a) * sz * 1.3, by + Math.sin(a) * sz * 1.3); ctx.lineTo(bx + Math.cos(a + 2.2) * sz, by + Math.sin(a + 2.2) * sz); ctx.lineTo(bx + Math.cos(a - 2.2) * sz, by + Math.sin(a - 2.2) * sz); ctx.closePath(); ctx.fill(); ctx.stroke();
             }
         }
         ctx.restore();

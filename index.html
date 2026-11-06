@@ -3100,6 +3100,7 @@
             const dbk = (P !== PL) ? sm(P.dbK || 0) : 0;   // doubled over, clutching his stomach
             const lmK = (P !== PL && P.legHurt && !P.legGone) ? sm(P.lmK || 0) : 0;   // limping with an exposed bone
             const hpK = (P !== PL && P.hCrack && !P.hsDead) ? sm(P.hpK || 0) : 0;   // clutching his cracked head
+            const arK = (P !== PL && P.arrClawK > .01 && P.arrGrip) ? sm(P.arrClawK) : 0;   // clawing at an arrow in his head
             const gk = (P !== PL && P.gutDead) ? (P.gutK || 0) : ((P !== PL && (P.hsDead || P.crawl || P.corpse)) ? Math.min(1, Math.abs(P.rot || 0) / (Math.PI / 2)) : 0);   // headshot body: "flat" amount follows how far he has toppled
             const gkv = (P !== PL && (P.hsDead || P.crawl || P.corpse)) ? 0 : gk * (1 - Math.min(1, Math.abs(P.rot || 0) / (Math.PI / 2)));   // no split for the headshot body
             let hl = 0;   // head lift: 0 = on the ground, 1 = raised looking at his guts
@@ -3473,6 +3474,14 @@
                     const [ha, hf] = ikTo(sh, tx, ty, F);
                     ang = ang * (1 - hpK) + ha * hpK; flex = flex * (1 - hpK) + hf * hpK;
                 }
+                if (arK > .01 && !isGrabbed) {   // hands tremble on the fletching, sliding along the shaft as they try to rip it out
+                    const G = P.arrGrip, hh = rot(-F * 7, -T - 24), s = G.s + 15 * Math.sin(now * 6.5 + i * 2.4) * (i ? 1 : .5);
+                    let gx = G.hx + G.dx * s, gy = G.hy + G.dy * s; const gl = Math.hypot(gx, gy); if (gl > 78) { gx *= 78 / gl; gy *= 78 / gl }
+                    const tx = hh[0] + gx + Math.sin(now * 38 + i * 2) * 2.2 * arK + Math.sin(now * 53 + i) * 1.4 * arK;
+                    const ty = hh[1] + gy + Math.sin(now * 43 + i * 2) * 2 * arK;
+                    const [ca, cf] = ikTo(sh, tx, ty, F);
+                    ang = ang * (1 - arK) + ca * arK; flex = flex * (1 - arK) + cf * arK;
+                }
                 if (lmK > .01 && i === 0 && !isGrabbed) { const th_ = rot(F * 12, 30), [ta, tf] = ikTo(sh, th_[0], th_[1], F); ang = ang * (1 - lmK) + ta * lmK; flex = flex * (1 - lmK) + tf * lmK }
                 if (sk > .01 && !pq && P.tt <= 0) { ang = ang * (1 - sk) + ((i ? .55 : 1.3) + Math.sin(now * 18 + i) * .08) * sk; flex = flex * (1 - sk) + .25 * sk }
                 if (st > .01) { ang = ang * (1 - st) + (i ? 3.5 : 2.75) * st + Math.sin(now * 28 + i) * .03 * st; flex = flex * (1 - st) + .15 * st }
@@ -3626,6 +3635,7 @@
             const hdX = -F * 7 + F * (cb ? cb.hx * cb.w : 0) + F * pq * 10 + L * 10 - F * 5 * st + grabHdOffX - kux * kpull * 7 * kk + F * 9 * R * P.amp + F * sTilt[0] + (pain ? Math.sin(now * 58) * 2.5 * pain + Math.sin(now * 37) * 2 * pain - F * spasm * 8 : 0) + (mpa ? F * MP.pose.lean * 12 * MP.W : 0) + F * 3 * (P.arrNod || 0) + Math.max(-22, Math.min(22, P.snap || 0));
             const hdY = -T - 24 + (cb ? cb.hy * cb.w : 0) - 6 * st - Math.abs(L) * 1.5 + grabHdOffY - kuy * kpull * 7 * kk + 6 * kk + 5 * R * P.amp + sTilt[1] + (pain ? Math.sin(now * 49) * 2 * pain - spasm * 6 : 0) - (mpa ? MP.pose.lean * 8 * MP.W : 0) + 5 * (P.arrNod || 0) - Math.abs(Math.max(-22, Math.min(22, P.snap || 0))) * .25;
             const hd = rot(hdX, hdY);
+            if (arK > .01) { hd[0] += Math.sin(now * 52) * 1.8 * arK; hd[1] += (Math.sin(now * 47) * 1.2 + 3) * arK }   // head trembling, bowed
             if (hpK > .01) { hd[0] += Math.sin(now * 33) * 1.4 * hpK; hd[1] += 5 * hpK }   // wincing, head bowed
             if (hl > .01) {
                 const o = hlo(-P.kdir * (7 + 5 * Math.sin(now * 1.6)) * hl, -(26 + 2 * Math.sin(now * 2.2)) * hl);   // up, and slowly looking around at his guts
