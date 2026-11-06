@@ -126,7 +126,20 @@ const FLM_SMOKE = 1;            // smoke amount multiplier at the muzzle
 const FLM_DROPS = 1;            // molten droplet amount multiplier
 const FLM_JET_LEN = 430;        // length of the muzzle flame in px (at normal scale)
 const FLM_JET_T = .5;           // how long the flame keeps spitting after the shot (s)
-const FLM = { drops: [], fade: [], prev: new Set(), jet: null };
+const FLM_EMBERS = 1;           // multiplier for flying embers and bright sparks (try 1.6 for a firestorm)
+const FLM = { drops: [], fade: [], prev: new Set(), jet: null, em: [], muz: null };
+
+function flmRate(r) { return Math.floor(r) + (Math.random() < r % 1 ? 1 : 0) }   // fractional spawn counts
+
+function flmEm(kind, x, y, vx, vy, sz, life, dh) {              // kind 0 = drifting ember, kind 1 = fast bright spark streak
+    if (FLM.em.length > 420) FLM.em.shift();
+    FLM.em.push({ kind, x, y, vx, vy, sz, life, dh: dh || 0, t: 0, ph: Math.random() * 6.28 });
+}
+function flmEmBurst(x, y, dirA, spread, nEm, nSp, S, f, dh) {   // burst of sparks and embers around a direction, spread = half-angle x2
+    const R = Math.random;
+    for (let i = 0, n = Math.round(nSp * FLM_EMBERS); i < n; i++) { const a = dirA + (R() - .5) * spread, sp = (250 + R() * 750) * f; flmEm(1, x + (R() - .5) * 6, y + (R() - .5) * 6, Math.cos(a) * sp, Math.sin(a) * sp, (1 + R() * 1.4) * S, .15 + R() * .3, dh) }
+    for (let i = 0, n = Math.round(nEm * FLM_EMBERS); i < n; i++) { const a = dirA + (R() - .5) * spread * 1.3, sp = (40 + R() * 420) * f; flmEm(0, x + (R() - .5) * 8, y + (R() - .5) * 8, Math.cos(a) * sp, Math.sin(a) * sp, (1 + R() * 2.2) * S, .6 + R() * 1.4, dh) }
+}
 
 function flmDrop(x, y, vx, vy, sz, dh) {
     if (FLM.drops.length > 180) FLM.drops.shift();
@@ -162,6 +175,10 @@ function flareFire() {                                     // called from pressF
         flmDrop(m[0] + ux * 6, m[1] - dh + uy * 6, F * Math.cos(aa) * sp, Math.sin(aa) * sp, 1.2 + R() * 2.4, dh);
     }
     for (let i = 0; i < 16; i++) addSpark(m[0], m[1] - dh, ux * (200 + R() * 700) + (R() - .5) * 260, uy * (200 + R() * 700) + (R() - .5) * 260, .2 + R() * .3);
+    const dA = Math.atan2(uy, ux);
+    flmEmBurst(m[0], m[1] - dh, dA, 1.1, 55, 80, S, 1, dh);          // forward cone
+    flmEmBurst(m[0], m[1] - dh, dA + Math.PI, 1.8, 12, 16, S, .5, dh);   // blowback
+    FLM.muz = { t: 0, life: .45 };                           // keeps spitting for a moment
     FLM.jet = { t: 0, life: FLM_JET_T, seed: R() * 100 };
     shake = Math.max(shake, 6);
 }
@@ -370,8 +387,9 @@ function flmEnd(p) {                                       // flare stopped flyi
     const tl = p.tl; p.tl = null;
     if (!tl || !tl.length) return;
     if (tl.length > 1) FLM.fade.push({ tl, t: 0, seed: p.seed });
-    const R = Math.random, x = tl[0][0], y = tl[0][1];
+    const R = Math.random, x = tl[0][0], y = (p.dh > 0) ? tl[0][1] : Math.min(0, tl[0][1]);
     for (let i = 0, k = Math.round(12 * FLM_DROPS); i < k; i++) flmDrop(x, y, (R() - .5) * 560 + p.F * 70, -(80 + R() * 440), 2 + R() * 3.6, p.dh);
+    flmEmBurst(x, y, -Math.PI / 2, 3.2, 40, 55, CSc(), .8, p.dh);                 // shower of sparks and embers
 }
 
 function flmTick(dt) {
@@ -383,11 +401,44 @@ function flmTick(dt) {
         for (const q of p.tl) q[2] += dt;
         p.tl.unshift([p.x, p.y, 0]);
         while (p.tl.length > 2 && p.tl[p.tl.length - 1][2] > FLM_LIFE) p.tl.pop();
+        for (let c = flmRate(dt * 240 * FLM_EMBERS); c > 0; c--) {      // embers drifting chaotically around the flare and its trail
+            const q = p.tl[Math.min(p.tl.length - 1, Math.floor(R() * R() * 10))], a = R() * 6.283, sp = 30 + R() * 260;
+            flmEm(0, q[0] + (R() - .5) * 18 * S, q[1] + (R() - .5) * 18 * S, Math.cos(a) * sp - p.vx * .05, Math.sin(a) * sp - p.vy * .05 - 20, (1 + R() * 2.2) * S, .5 + R() * 1.3, p.dh);
+        }
+        for (let c = flmRate(dt * 150 * FLM_EMBERS); c > 0; c--) {      // bright sparks flung out in every direction
+            const a = R() * 6.283, sp = 200 + R() * 650;
+            flmEm(1, p.x + (R() - .5) * 8, p.y + (R() - .5) * 8, Math.cos(a) * sp - p.vx * .1, Math.sin(a) * sp - p.vy * .1, (1 + R() * 1.5) * S, .12 + R() * .28, p.dh);
+        }
         if (R() < dt * 55 * FLM_TRAIL_SMOKE) { const q = p.tl[Math.floor(R() * p.tl.length)]; addSmoke(q[0] + (R() - .5) * 8, q[1] + (R() - .5) * 8, (R() - .5) * 18, -10 - R() * 22, (4 + R() * 4) * S, 1.8 + R() * 1.2, .26) }   // thin smoke hanging in the air behind it
         if (R() < dt * 70) { const q = p.tl[Math.floor(R() * p.tl.length)]; addSpark(q[0], q[1], (R() - .5) * 140, -(R() * 120), .25 + R() * .3) }   // embers shed along the whole trail
         if (R() < dt * 150 * FLM_DROPS) flmDrop(p.x, p.y, -p.vx * .05 + (R() - .5) * 170, -p.vy * .05 + (R() - .5) * 170 - 40, 1 + R() * 1.7, p.dh);
     }
     FLM.prev = cur;
+
+    if (FLM.muz) {                                         // sparks and embers keep spitting from the barrel just after the shot
+        const z = FLM.muz; z.t += dt;
+        if (z.t >= z.life || !P.gun || P.wt !== 'flare' || !P.muzzle) FLM.muz = null;
+        else {
+            const m = P.muzzle, F = P.face, th = P.gunA || 0, env = 1 - z.t / z.life, dA = Math.atan2(Math.sin(th), F * Math.cos(th));
+            const dh = (P.thDeck && P.dh > 0) ? P.dh : 0;
+            for (let c = flmRate(dt * 160 * env * FLM_EMBERS); c > 0; c--) { const a = dA + (R() - .5) * 1.3, sp = 200 + R() * 700; flmEm(1, m[0], m[1] - dh, Math.cos(a) * sp, Math.sin(a) * sp, (1 + R() * 1.4) * S, .12 + R() * .3, dh) }
+            for (let c = flmRate(dt * 140 * env * FLM_EMBERS); c > 0; c--) { const a = dA + (R() - .5) * 1.8, sp = 40 + R() * 380; flmEm(0, m[0], m[1] - dh, Math.cos(a) * sp, Math.sin(a) * sp, (1 + R() * 2.2) * S, .6 + R() * 1.3, dh) }
+        }
+    }
+
+    for (let i = FLM.em.length - 1; i >= 0; i--) {         // move embers and sparks
+        const e = FLM.em[i]; e.t += dt;
+        if (e.t >= e.life) { FLM.em.splice(i, 1); continue }
+        if (e.kind) { e.vy += 500 * dt; const d = Math.max(0, 1 - 2.2 * dt); e.vx *= d; e.vy *= d }
+        else {
+            e.vx += (R() - .5) * 2400 * dt; e.vy += (R() - .5) * 2400 * dt - 90 * dt;           // chaotic turbulence plus a slight updraft
+            const d = Math.max(0, 1 - 1.8 * dt); e.vx *= d; e.vy *= d;
+        }
+        e.x += e.vx * dt; e.y += e.vy * dt;
+        const onDeck = e.dh > 0 && typeof TH_WX !== 'undefined' && typeof TH_SC !== 'undefined' && e.x >= (TH_WX - 285 * TH_SC) && e.x <= (TH_WX + 205 * TH_SC);
+        const floorY = onDeck ? -e.dh : 0;
+        if (e.y > floorY) FLM.em.splice(i, 1);
+    }
 
     if (FLM.jet) {                                         // long flame spitting from the muzzle
         const j = FLM.jet; j.t += dt;
@@ -486,6 +537,25 @@ function flmJetDraw(gy, now, S) {                          // long flame roaring
     ctx.fillStyle = g; ctx.beginPath(); ctx.arc(sx, sy, R, 0, 7); ctx.fill(); ctx.restore();
 }
 
+function flmEmDraw(gy, now) {                               // glowing embers (flicker, cool from white to red) and streaking sparks
+    ctx.save(); ctx.lineCap = 'round';
+    for (const e of FLM.em) {
+        const sx = e.x - P.x + W / 2, sy = gy + 4 + e.y; if (sx < -30 || sx > W + 30) continue;
+        const k = e.t / e.life;
+        if (e.kind) {
+            const tx = sx - e.vx * .022, ty = sy - e.vy * .022;
+            ctx.globalAlpha = (1 - k) * .6; ctx.strokeStyle = '#ff7a1a'; ctx.lineWidth = e.sz * 1.8 + .6; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(tx, ty); ctx.stroke();
+            ctx.globalAlpha = 1 - k * k; ctx.strokeStyle = k < .35 ? '#fffbe6' : '#ffc650'; ctx.lineWidth = e.sz * .8 + .4; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(tx, ty); ctx.stroke();
+        } else {
+            const fl = .55 + .45 * Math.sin(now * 38 + e.ph) * Math.sin(now * 23 + e.ph * 2), r = e.sz * (1 - .55 * k);
+            const col = k < .25 ? '255,244,180' : k < .6 ? '255,170,50' : '220,70,25';
+            ctx.globalAlpha = (1 - k) * .22 * fl; ctx.fillStyle = 'rgb(255,130,40)'; ctx.beginPath(); ctx.arc(sx, sy, r * 3.4, 0, 7); ctx.fill();
+            ctx.globalAlpha = Math.min(1, (1 - k) * 1.4) * (.55 + .45 * fl); ctx.fillStyle = 'rgb(' + col + ')'; ctx.beginPath(); ctx.arc(sx, sy, r, 0, 7); ctx.fill();
+        }
+    }
+    ctx.restore();
+}
+
 function flmDropDraw(d, gy) {                              // teardrop of molten metal, tail pointing back along its motion
     const sx = d.x - P.x + W / 2, sy = gy + 4 + d.y; if (sx < -30 || sx > W + 30) return;
     const l = Math.hypot(d.vx, d.vy) || 1, ux = d.vx / l, uy = d.vy / l, sz = d.sz, tail = sz + Math.min(sz * 3, l * .02);
@@ -531,6 +601,7 @@ function drawFlareFX(gy) {
     }
     ctx.globalAlpha = 1;
     for (const d of FLM.drops) flmDropDraw(d, gy);
+    flmEmDraw(gy, now);
 
     // flames on burning enemies
     for (const e of ENEMIES) {
