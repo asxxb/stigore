@@ -842,7 +842,7 @@
       const a = rot(-F * 12, -12), g = SK.ang;
       const mouth = [a[0] - 5 * Math.sin(g), a[1] + 5 * Math.cos(g)];
       const front = [sh[0] + F * 46, sh[1] + 54];
-      const rest  = [sh[0] + F * 14, sh[1] + 80];
+      const rest = [sh[0] + F * 14, sh[1] + 80];
 
       let T;
       if (t < PB_REL) {
@@ -876,7 +876,7 @@
   const SB_URL = 'https://ovnnchjubnlbdkitmegn.supabase.co';
   const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im92bm5jaGp1Ym5sYmRraXRtZWduIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM5NTc4MDcsImV4cCI6MjEwOTUzMzgwN30.IAdGM8p9yGe4Opd88-oMwPU0WqXN_71nvg6TIuNgy-4';
   const sb = window.supabase ? window.supabase.createClient(SB_URL, SB_KEY) : null;
-
+  window.sb = sb;
   // coins in the sack + in the hand + in the air
   const coinTotal = () =>
     (INV.coin || 0) +
@@ -913,7 +913,11 @@
     if (!sb) return;
     try {
       let { data: { session } } = await sb.auth.getSession();
-      if (!session) session = (await sb.auth.signInAnonymously()).data.session;
+      if (!session) {
+        const r = await sb.auth.signInAnonymously();
+        if (r.error) console.error('anon sign-in', r.error);
+        session = r.data.session;
+      }
       if (!session) return;
       uid = session.user.id;
 
@@ -930,7 +934,7 @@
       if (!data || local > data.coin) pending = lastSaved;  // first run, or offline progress
       ready = true;
       flushCloud();
-    } catch (e) { }
+    } catch (e) { console.error('cloudInit failed', e); }
   }
 
   const _updSave = update;
