@@ -12,8 +12,9 @@
 
     const TP = window.TP = {
         // ---- tuning ----
-        key: 'KeyR',
-        stealKey: true,       // KeyR is also pressReload(): swallow it when a teleport fires
+        key: 'KeyS',
+        shift: true,          // require Shift to be held, so plain S keeps doing whatever it does now
+        stealKey: true,       // when a teleport fires, swallow the key so the bow / reload code doesn't also run
         dist: 550,            // world px, x CSc() if scaleDist
         scaleDist: true,
         minDist: 70,
@@ -71,7 +72,8 @@
     // ---------- input ----------
     addEventListener('keydown', e => {
         if (e.code !== TP.key) return;
-        if (held && TP.stealKey) { e.stopImmediatePropagation(); e.preventDefault(); return; }
+        if (held && TP.stealKey) { e.stopImmediatePropagation(); e.preventDefault(); return; }   // swallow auto-repeat of a teleport press
+        if (TP.shift && !e.shiftKey) return;                          // plain key press: leave it to the game
         if (e.repeat) return;
         if (canTeleport()) {
             trigger(PL);
