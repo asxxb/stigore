@@ -54,6 +54,7 @@
         bounds: function () { return typeof MT_STOP_X === 'function' ? [MT_STOP_X(), Infinity] : null; },
         blocked: function () { return !!(window.paused || window.gamePaused || window.menuOpen); },   // TODO real pause flag
         ext: false,
+        debug: false,         // true = print phase / time / alpha in the top-left corner
 
         // ---- state (read-only) ----
         cd: 0, phase: 'idle', t: 0, dir: 1, depSide: 1, arrSide: -1, travel: 0, fromX: 0, alpha: 1
@@ -181,11 +182,11 @@
         let mn = Infinity, mx = -Infinity;
         for (const p of pts) { const v = f(p.x, p.h); if (v < mn) mn = v; if (v > mx) mx = v; }
         const rg = (mx - mn) || 1;
-        return (x, h) => clamp01(((f(x, h) - mn) / rg + .2) / 1.4);   // .2 margin each side: hat / weapon beyond the body points still dissolve in order
+        return (x, h) => clamp01(((f(x, h) - mn) / rg + .1) / 1.2);   // .1 margin each side: hat / weapon beyond the body points still dissolve in order
     }
     // grid of squares over the body; each square gets the same 0..1 key (+ a little noise so the edge is ragged)
     function buildCells(ord) {
-        const S = scale(), cs = TP.cell * S, halfW = 110 * S, top = 370 * S, bottom = 20 * S;
+        const S = scale(), cs = TP.cell * S, halfW = 140 * S, top = 390 * S, bottom = 20 * S;
         const cols = Math.ceil(2 * halfW / cs), rows = Math.ceil((top + bottom) / cs), K = new Float32Array(cols * rows);
         for (let r = 0; r < rows; r++) for (let q = 0; q < cols; q++)
             K[r * cols + q] = clamp01(ord(-halfW + (q + .5) * cs, top - (r + .5) * cs) + rnd(-.07, .07));
@@ -273,7 +274,7 @@
         if (TP.phase === 'wind') {
             TP.t += dt;
             P.x = TP.fromX;                                          // he stays put while he comes apart
-            TP.alpha = TP.t < TP.spread + .04 ? 1 : 0;              // sprite is eroded by the clip until then, fully hidden after
+            TP.alpha = TP.t < TP.spread + .02 ? 1 : 0;              // sprite is eroded by the clip until then, fully hidden after
             if (TP.t >= TP.wind) {
                 const x0 = TP.fromX, d = resolveDist(P, TP.dir) || 0;   // re-check at the moment of the jump
                 P.x = x0 + TP.dir * d;                                  // instant relocation
@@ -399,16 +400,21 @@
     // ============================================================
     //  HOOKS
     // ============================================================
+    // hide the sprite two independent ways (clip to an off-screen pixel AND opacity 0)
+    function hideAll(c, cx, gy) { c.beginPath(); c.rect(cx - 5000, gy - 5000, 1, 1); c.clip(); c.globalAlpha = 0; }
     function clipCells(c, cx, gy, dep) {
-        const g = TP._grid, K = TP._cells; if (!g || !K) return;
+        const g = TP._grid, K = TP._cells; if (!g || !K) { if (!dep) return 0; return 1; }
+        let n = 0;
         const t = TP.t, sp = TP.spread, mid = (TP.moteDur[0] + TP.moteDur[1]) / 2, x0 = cx - g.halfW, y0 = gy - g.top;
         c.beginPath();
-        if (dep) c.rect(-1e5, -1e5, 2e5, 2e5);                       // everything, minus the erased cells (even-odd)
+        if (dep) c.rect(cx - 4000, gy - 4000, 8000, 8000);           // everything, minus the erased cells (even-odd)
+        else c.rect(cx - 5000, gy - 5000, 1, 1);                     // never an empty path (some browsers ignore an empty clip): off-screen 1px square
         for (let r = 0; r < g.rows; r++) for (let q = 0; q < g.cols; q++) {
             const k = K[r * g.cols + q];
-            if (dep ? t >= k * sp : t >= (1 - k) * sp + mid) c.rect(x0 + q * g.cs, y0 + r * g.cs, g.cs, g.cs);
+            if (dep ? t >= k * sp : t >= (1 - k) * sp + mid) { c.rect(x0 + q * g.cs, y0 + r * g.cs, g.cs, g.cs); n++; }
         }
         c.clip(dep ? 'evenodd' : 'nonzero');
+        return dep ? 1 : n;
     }
 
     function install() {
@@ -432,11 +438,14 @@
             const c = ctx;
             c.save();
             c.globalAlpha *= TP.alpha;
-            if (TP.phase === 'wind' && TP.alpha > 0) clipCells(c, cx, gy, true);                       // erase cells that have turned to mist
-            else if (TP.phase === 'arrive' && TP.t < settleT() + .06) clipCells(c, cx, gy, false);      // show only cells that have re-formed
+            if (TP.phase === 'wind') { if (TP.alpha > 0) clipCells(c, cx, gy, true); else hideAll(c, cx, gy); }   // erase cells that turned to mist, then hide
+            else if (TP.phase === 'arrive' && TP.t < settleT() + .06) {                                 // show only cells that have re-formed
+                if (!clipCells(c, cx, gy, false)) hideAll(c, cx, gy);                                   // none yet: sprite must be fully hidden
+            }
             orig.apply(this, arguments);                             // always runs so hdp / hipP / armFullPts stay current
             c.restore();
             TP.render(c, cx, gy, P.x);
+            if (TP.debug) { c.save(); c.fillStyle = '#c00'; c.font = '14px monospace'; c.fillText(TP.phase + '  t=' + TP.t.toFixed(2) + '  alpha=' + TP.alpha, 12, 24); c.restore(); }
         };
         TP._installed = true; return true;
     }
