@@ -1,9 +1,9 @@
 /* ============================================================
    teleport.js : Azazel-style smoke teleport for Ink Walker (v4, body-shaped dissolve)
-   The sprite is NOT shown while teleporting. Instead the body is rebuilt out of ink
-   strokes that turn to mist + sparks and stream away to the top-right (~2 o'clock);
-   on arrival it plays in reverse: mist and sparks pour down from the top-right and
-   assemble into the body. No horizontal travel effect.
+   The real sprite itself crumbles away cell by cell (following the dissolve order) while
+   black mist ribbons, ink strokes and sparks stream out of the spots that vanish and flow to
+   the top corner in front of him. Arrival plays in reverse from the opposite top corner: the
+   mist pours down and the sprite re-forms cell by cell. No horizontal travel effect.
    Load AFTER the main script. Wraps window.update, window.drawChar (and window.leg
    if it is a global function, to read the leg poses).
    ============================================================ */
@@ -21,13 +21,12 @@
         failCooldown: 0.6,
         slow: 1.25,           // 1 = base speed, higher = slower motion (cooldown stays real-time)
         // timings in effect-seconds (real time = value x slow)
-        spread: 0.14,         // how long the body takes to start dissolving / finish assembling
+        order: 'sweep',       // dissolve order: 'sweep' (front hand/head -> back/feet), 'front', 'head', 'feet', 'distance' (to exit point)
+        spread: 0.18,         // how long the sweep takes to cross the body (also the assembly time on arrival)
         moteDur: [0.18, 0.24],// time each ink stroke needs to fly between the body and the exit point
-        wind: 0.40,           // departure phase length (must be >= spread + moteDur max)
-        vanish: 0.03,         // real sprite crossfades to the ink strokes in this time
-        appearAt: 0.30,       // real sprite starts returning here
-        appearRamp: 0.08,
-        arrive: 0.46,         // arrival phase length
+        wind: 0.44,           // departure phase length (must be >= spread + moteDur max)
+        cell: 10,             // px (at CSc()=1): size of the squares the real sprite is eroded in (smaller = finer crumble, more rects)
+        arrive: 0.50,         // arrival phase length
         // exit / entry point of the mist, relative to the body (30 degrees above horizontal)
         portAngle: 30,        // degrees above horizontal
         portDist: 300,        // px at CSc()=1
@@ -164,15 +163,45 @@
     function addSpark(o) { if (sparks.length >= TP.maxSparks) sparks.shift(); sparks.push(o); }
     const unit = (dx, dh) => { const l = Math.hypot(dx, dh) || 1; return [dx / l, dh / l]; };
 
+    // Returns ord(x,h) -> 0..1 : 0 dissolves first (and re-forms last). 'front' follows the facing direction.
+    function orderFn(pts, E) {
+        const fs = TP.depSide, mode = TP.order;
+        let x0 = Infinity, x1 = -Infinity, h0 = Infinity, h1 = -Infinity;
+        for (const p of pts) { const x = fs * p.x; if (x < x0) x0 = x; if (x > x1) x1 = x; if (p.h < h0) h0 = p.h; if (p.h > h1) h1 = p.h; }
+        const rx = (x1 - x0) || 1, rh = (h1 - h0) || 1;
+        const f = mode === 'distance' ? (x, h) => Math.hypot(E[0] - x, E[1] - h) : (x, h) => {
+            const nx = (fs * x - x0) / rx, nh = (h - h0) / rh;           // nx: 1 = furthest forward, nh: 1 = top
+            switch (mode) {
+                case 'feet': return nh;                                   // peel from the feet up
+                case 'head': return 1 - nh;                               // top down
+                case 'front': return 1 - nx;                              // leading hand / front first, sweeping back
+                default: return 1 - (.55 * nx + .45 * nh);                // 'sweep': leading hand + head first, trailing foot last
+            }
+        };
+        let mn = Infinity, mx = -Infinity;
+        for (const p of pts) { const v = f(p.x, p.h); if (v < mn) mn = v; if (v > mx) mx = v; }
+        const rg = (mx - mn) || 1;
+        return (x, h) => clamp01(((f(x, h) - mn) / rg + .2) / 1.4);   // .2 margin each side: hat / weapon beyond the body points still dissolve in order
+    }
+    // grid of squares over the body; each square gets the same 0..1 key (+ a little noise so the edge is ragged)
+    function buildCells(ord) {
+        const S = scale(), cs = TP.cell * S, halfW = 110 * S, top = 370 * S, bottom = 20 * S;
+        const cols = Math.ceil(2 * halfW / cs), rows = Math.ceil((top + bottom) / cs), K = new Float32Array(cols * rows);
+        for (let r = 0; r < rows; r++) for (let q = 0; q < cols; q++)
+            K[r * cols + q] = clamp01(ord(-halfW + (q + .5) * cs, top - (r + .5) * cs) + rnd(-.07, .07));
+        TP._grid = { cols, rows, cs, halfW, top }; TP._cells = K;
+    }
+    const settleT = () => TP.spread + (TP.moteDur[0] + TP.moteDur[1]) / 2;   // when the last cell is back on arrival
+
     // dep=true : body -> ink strokes -> flows to the exit point and vanishes
     // dep=false: strokes pour from the exit point down into the body shape (the same motion, reversed)
     // follow=true: effect stays attached to the player (so he can already move while he re-forms)
     function spawnBody(dep, base, follow, pts) {
         if (!pts.length) return;
         const S = scale(), E = portPoint(dep ? TP.depSide : TP.arrSide), g0 = follow ? 0 : elevAt(base), sp = TP.spread;
-        const ds = pts.map(p => Math.hypot(E[0] - p.x, E[1] - p.h));
-        let mn = Infinity, mx = 0; for (const d of ds) { if (d < mn) mn = d; if (d > mx) mx = d; }
-        const rg = (mx - mn) || 1, dly = i => (dep ? (ds[i] - mn) / rg : 1 - (ds[i] - mn) / rg) * sp;
+        const ord = orderFn(pts, E);         // 0 = dissolves first (and re-forms last)
+        const dly = i => { const k = ord(pts[i].x, pts[i].h); return dep ? k * sp : (1 - k) * sp; };
+        buildCells(ord);
 
         for (let i = 0; i < pts.length; i++) {                       // ink strokes that make up the body
             if (motes.length >= TP.maxMotes) motes.shift();
@@ -208,7 +237,7 @@
             const p = pts[(Math.random() * pts.length) | 0], ember = k >= 10, a = rnd(0, TAU), v = (ember ? rnd(60, 170) : rnd(250, 600)) * S;
             addSpark({
                 ember, rel: true, wx: p.x, g0: 0, h: p.h, vx: Math.cos(a) * v, vy: Math.sin(a) * v,
-                age: -TP.appearAt, life: ember ? rnd(.3, .5) : rnd(.14, .24), w: rnd(1.4, 2.6) * S, k: ember ? .03 : .045,
+                age: -settleT(), life: ember ? rnd(.3, .5) : rnd(.14, .24), w: rnd(1.4, 2.6) * S, k: ember ? .03 : .045,
                 col: Math.random() < .5 ? '#e8731a' : '#ff9d4a'
             });
         }
@@ -244,17 +273,17 @@
         if (TP.phase === 'wind') {
             TP.t += dt;
             P.x = TP.fromX;                                          // he stays put while he comes apart
-            TP.alpha = 1 - clamp01(TP.t / TP.vanish);
+            TP.alpha = TP.t < TP.spread + .04 ? 1 : 0;              // sprite is eroded by the clip until then, fully hidden after
             if (TP.t >= TP.wind) {
                 const x0 = TP.fromX, d = resolveDist(P, TP.dir) || 0;   // re-check at the moment of the jump
                 P.x = x0 + TP.dir * d;                                  // instant relocation
-                TP.phase = 'arrive'; TP.t = 0; TP.alpha = 0;
+                TP.phase = 'arrive'; TP.t = 0; TP.alpha = 1;
                 spawnBody(false, P.x, true, samplePoints(110));
                 smudge(P.x, 20 * scale());
             }
         } else if (TP.phase === 'arrive') {
             TP.t += dt;
-            TP.alpha = clamp01((TP.t - TP.appearAt) / TP.appearRamp);
+            TP.alpha = 1;                                           // visibility comes from the cell clip
             if (TP.t >= TP.arrive) { TP.phase = 'idle'; TP.alpha = 1; }
         }
 
@@ -333,7 +362,8 @@
         }
 
         c.fillStyle = '#111';
-        for (const m of motes) {                                         // ink strokes forming the body
+        for (const m of motes) {                                         // ink strokes leaving / entering the body
+            if (m.dep && m.age < m.delay) continue;                      // the real sprite is still there
             const u = clamp01((m.age - m.delay) / m.dur), ut = Math.max(0, u - .14);
             pathPos(m, m.dep ? u : 1 - u); let hx = tmp[0], hh = tmp[1];
             pathPos(m, m.dep ? ut : 1 - ut); const px0 = tmp[0], ph0 = tmp[1];
@@ -369,6 +399,18 @@
     // ============================================================
     //  HOOKS
     // ============================================================
+    function clipCells(c, cx, gy, dep) {
+        const g = TP._grid, K = TP._cells; if (!g || !K) return;
+        const t = TP.t, sp = TP.spread, mid = (TP.moteDur[0] + TP.moteDur[1]) / 2, x0 = cx - g.halfW, y0 = gy - g.top;
+        c.beginPath();
+        if (dep) c.rect(-1e5, -1e5, 2e5, 2e5);                       // everything, minus the erased cells (even-odd)
+        for (let r = 0; r < g.rows; r++) for (let q = 0; q < g.cols; q++) {
+            const k = K[r * g.cols + q];
+            if (dep ? t >= k * sp : t >= (1 - k) * sp + mid) c.rect(x0 + q * g.cs, y0 + r * g.cs, g.cs, g.cs);
+        }
+        c.clip(dep ? 'evenodd' : 'nonzero');
+    }
+
     function install() {
         if (TP._installed || typeof window.drawChar !== 'function') return false;
         if (typeof window.leg === 'function') {                      // record leg poses (hip -> foot) for the body shape
@@ -389,7 +431,9 @@
             if (!TP.ext) { const now = performance.now() / 1000; TP.update(now - lastClock); lastClock = now; }
             const c = ctx;
             c.save();
-            c.globalAlpha *= TP.alpha;                               // real sprite is hidden while the ink body is shown
+            c.globalAlpha *= TP.alpha;
+            if (TP.phase === 'wind' && TP.alpha > 0) clipCells(c, cx, gy, true);                       // erase cells that have turned to mist
+            else if (TP.phase === 'arrive' && TP.t < settleT() + .06) clipCells(c, cx, gy, false);      // show only cells that have re-formed
             orig.apply(this, arguments);                             // always runs so hdp / hipP / armFullPts stay current
             c.restore();
             TP.render(c, cx, gy, P.x);
