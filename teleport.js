@@ -28,10 +28,11 @@
         appearAt: 0.30,       // real sprite starts returning here
         appearRamp: 0.08,
         arrive: 0.46,         // arrival phase length
-        // exit / entry point of the mist, relative to the body (2 o'clock = 30 degrees above horizontal, to the right)
+        // exit / entry point of the mist, relative to the body (30 degrees above horizontal)
         portAngle: 30,        // degrees above horizontal
         portDist: 300,        // px at CSc()=1
-        mirror: false,        // true = exit point flips with the teleport direction
+        // sides: he dissolves toward the top corner in FRONT of him and re-forms from the opposite top corner
+        //   facing right: vanishes to top-right, reappears from top-left   |   facing left: the mirror of that
         step: 12, clear: 24, edge: 40,
         bodyH: 330,
         maxMotes: 150, maxWisps: 40, maxSparks: 90,
@@ -56,7 +57,7 @@
         ext: false,
 
         // ---- state (read-only) ----
-        cd: 0, phase: 'idle', t: 0, dir: 1, travel: 0, fromX: 0, alpha: 1
+        cd: 0, phase: 'idle', t: 0, dir: 1, depSide: 1, arrSide: -1, travel: 0, fromX: 0, alpha: 1
     };
 
     const TAU = 6.2832;
@@ -152,8 +153,8 @@
         }
         return pts;
     }
-    function portPoint() {
-        const S = scale(), R = TP.portDist * S, a = TP.portAngle * Math.PI / 180, sg = TP.mirror ? TP.dir : 1;
+    function portPoint(side) {
+        const S = scale(), R = TP.portDist * S, a = TP.portAngle * Math.PI / 180, sg = side;
         return [sg * Math.cos(a) * R, TP.bodyH * S * .55 + Math.sin(a) * R];
     }
 
@@ -168,7 +169,7 @@
     // follow=true: effect stays attached to the player (so he can already move while he re-forms)
     function spawnBody(dep, base, follow, pts) {
         if (!pts.length) return;
-        const S = scale(), E = portPoint(), g0 = follow ? 0 : elevAt(base), sp = TP.spread;
+        const S = scale(), E = portPoint(dep ? TP.depSide : TP.arrSide), g0 = follow ? 0 : elevAt(base), sp = TP.spread;
         const ds = pts.map(p => Math.hypot(E[0] - p.x, E[1] - p.h));
         let mn = Infinity, mx = 0; for (const d of ds) { if (d < mn) mn = d; if (d > mx) mx = d; }
         const rg = (mx - mn) || 1, dly = i => (dep ? (ds[i] - mn) / rg : 1 - (ds[i] - mn) / rg) * sp;
@@ -225,6 +226,7 @@
             TP.cd = TP.failCooldown; return;
         }
         TP.phase = 'wind'; TP.t = 0; TP.cd = TP.cooldown; TP.fromX = P.x;
+        TP.depSide = P.face || 1; TP.arrSide = -TP.depSide;    // fixed now, so a turn mid-teleport changes nothing
         spawnBody(true, P.x, false, samplePoints(110));
         smudge(P.x, 30 * S);
     }
